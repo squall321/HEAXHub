@@ -1,0 +1,55 @@
+# 태그 push 시 GitHub Release 자동 생성.
+# 본 워크플로우는 사내 GitHub / GitHub Enterprise 모두에서 동작하는 일반 형태이다.
+# HEAXHub 자체는 별도로 manifest의 version을 기준으로 빌드를 수행하므로,
+# 여기서는 단순 릴리스 노트 생성만 담당한다.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          prev_tag=$(git describe --tags --abbrev=0 "HEAD^" 2>/dev/null || echo "")
+          if [ -n "$prev_tag" ]; then
+            echo "## Changes since ${prev_tag}" >> notes.md
+            git log "${prev_tag}..HEAD" --pretty=format:'- %s (%h)' >> notes.md
+          else
+            echo "## Initial release" >> notes.md
+            git log --pretty=format:'- %s (%h)' >> notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: |
+            dist/*.tar.gz
+            dist/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

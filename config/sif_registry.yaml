@@ -1,0 +1,29 @@
+# HEAXHub SIF Registry
+# ---------------------------------------------------------------------------
+# Logical-name -> absolute SIF path mapping consumed by
+# backend/app/services/sif_registry.py and ApptainerRunner.
+#
+# Why a registry?
+#   - Operators staging an offline server should only need to drop SIFs into a
+#     known directory and update this file; manifest authors reference a stable
+#     logical name (lsdyna_smp_s) instead of an absolute path that may change
+#     between hosts.
+#   - The production target is *offline* — every entry here MUST exist on disk
+#     before the platform boots. See offline_bundle.json for the canonical
+#     ship list.
+#
+# Schema:
+#   <logical_name>: <absolute SIF path>
+#
+# Lookups are case-sensitive. Missing files cause resolve_sif() to raise
+# NotFoundError at job-start time (not at registry-load time), so partial
+# bundles can still run jobs whose SIFs are present.
+
+# LS-DYNA — MPP single precision (aocc 4.2.0 / openmpi 4.0.5)
+lsdyna_smp_s: /home/koopark/serviceApptainers/LSDynaBasic_aocc420_ompi4.0.5_mpp_s.sif
+
+# LS-DYNA — MPP double precision (ifort 2022 / impi latest)
+lsdyna_smp_d: /home/koopark/serviceApptainers/LSDynaBasic_ifort2022_impilatest_mpp_d.sif
+
+# Ansys Mechanical / Structures 2025 R2
+ansys_structures_2025r2: /home/koopark/serviceApptainers/AnsysStructures2025R2.sif

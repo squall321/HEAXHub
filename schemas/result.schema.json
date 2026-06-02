@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://heaxhub/schemas/result.schema.json",
+  "title": "HEAXHub Job Result",
+  "description": "result.json produced by every app run, stored at job_storage/{...}/output/result.json",
+  "type": "object",
+  "required": ["status"],
+  "additionalProperties": true,
+  "properties": {
+    "job_id": { "type": "string" },
+    "app_id": { "type": "string" },
+    "app_version": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["success", "warning", "failed"]
+    },
+    "summary": {
+      "type": "object",
+      "description": "Free-form numeric/string summary for portal cards"
+    },
+    "outputs": {
+      "type": "object",
+      "description": "Map of logical output name → relative path under output/",
+      "additionalProperties": { "type": "string" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Optional numeric metrics for dashboards",
+      "additionalProperties": { "type": "number" }
+    }
+  }
+}

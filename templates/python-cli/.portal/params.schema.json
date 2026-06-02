@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "my_python_cli params",
+  "description": "HEAXHub 실행 폼이 이 스키마로부터 자동 생성된다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["data_dir"],
+  "properties": {
+    "data_dir": {
+      "type": "string",
+      "title": "입력 디렉터리",
+      "description": "처리할 파일들이 들어 있는 폴더 경로 (포탈이 JOB_INPUT으로 매핑)"
+    },
+    "sample_count": {
+      "type": "integer",
+      "title": "샘플 수",
+      "description": "0 = 전체",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 100000
+    },
+    "enable_report": {
+      "type": "boolean",
+      "title": "리포트 생성",
+      "default": true
+    }
+  }
+}

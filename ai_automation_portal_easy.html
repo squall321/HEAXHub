@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI 자동화 포탈 — 비전공자용 쉬운 설명</title>
+<style>
+:root{
+  --blue:#1e40af; --blue2:#3b82f6; --blue-dark:#1e3a8a;
+  --light:#eff6ff; --dark:#0f172a; --darker:#020617;
+  --gray:#64748b; --border:#e2e8f0;
+  --green:#16a34a; --orange:#ea580c;
+  --red:#dc2626; --purple:#7c3aed; --teal:#0d9488;
+  --cyan:#0891b2; --amber:#d97706; --pink:#db2777;
+  --indigo:#4338ca;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:'Segoe UI','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+  background:#f1f5f9;color:var(--dark);}
+
+.nav{position:fixed;top:0;left:0;right:0;z-index:200;
+  background:var(--darker);color:#fff;height:50px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 1.6rem;font-size:.8rem;box-shadow:0 2px 10px rgba(0,0,0,.3);}
+.nav-title{font-weight:800;letter-spacing:.04em;display:flex;align-items:center;gap:.8rem;}
+.nav-badge{background:rgba(217,119,6,.3);border:1px solid rgba(217,119,6,.55);
+  color:#fcd34d;padding:.25rem .75rem;border-radius:100px;font-size:.7rem;font-weight:700;}
+.nav-pages{display:flex;gap:.35rem;flex-wrap:wrap;}
+.nav-pages a{background:#1e293b;color:#94a3b8;text-decoration:none;
+  padding:.28rem .65rem;border-radius:5px;font-size:.7rem;font-weight:700;transition:all .15s;}
+.nav-pages a:hover{background:var(--amber);color:#fff;}
+
+.pages{padding-top:50px;}
+.page{min-height:calc(100vh - 50px);display:flex;flex-direction:column;
+  scroll-margin-top:50px;position:relative;}
+
+/* ── COVER ── */
+.page-cover{
+  background:linear-gradient(140deg,#020617 0%,#1e1b4b 40%,#4338ca 100%);
+  justify-content:center;padding:3.5rem 5rem;overflow:hidden;}
+.page-cover::after{content:'';position:absolute;right:-100px;top:-80px;
+  width:480px;height:480px;border-radius:50%;
+  background:radial-gradient(circle,rgba(252,211,77,.22) 0%,transparent 70%);}
+.page-cover::before{content:'';position:absolute;left:-60px;bottom:-60px;
+  width:320px;height:320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(67,56,202,.32) 0%,transparent 70%);}
+
+.cover-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.25em;
+  text-transform:uppercase;color:#fcd34d;margin-bottom:1.1rem;display:flex;align-items:center;gap:.7rem;}
+.cover-eyebrow::before{content:'';display:block;width:28px;height:2px;background:#fcd34d;}
+
+.cover-h1{font-size:3.4rem;font-weight:900;color:#fff;line-height:1.05;
+  margin-bottom:.6rem;letter-spacing:-.02em;position:relative;z-index:2;}
+.cover-h1 em{font-style:normal;color:#fcd34d;}
+.cover-sub{font-size:1.05rem;color:rgba(255,255,255,.8);font-weight:500;
+  margin-bottom:1.8rem;line-height:1.6;max-width:820px;position:relative;z-index:2;}
+
+.relation-note{background:rgba(255,255,255,.06);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:1rem 1.3rem;
+  margin-bottom:1.6rem;max-width:820px;position:relative;z-index:2;
+  display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:center;}
+.rn-stack{display:flex;flex-direction:column;gap:.3rem;}
+.rn-layer{font-size:.72rem;font-weight:800;letter-spacing:.04em;padding:.3rem .7rem;border-radius:6px;
+  display:flex;align-items:center;gap:.4rem;}
+.rn-layer.bottom{background:rgba(22,163,74,.2);color:#86efac;border-left:3px solid #86efac;}
+.rn-layer.top{background:rgba(252,211,77,.18);color:#fcd34d;border-left:3px solid #fcd34d;}
+.rn-text{font-size:.82rem;color:rgba(255,255,255,.78);line-height:1.6;}
+.rn-text strong{color:#fcd34d;}
+
+.cover-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;
+  max-width:820px;position:relative;z-index:2;}
+.kpi{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;padding:.9rem 1.1rem;text-align:center;}
+.kpi .n{font-size:1.7rem;font-weight:900;color:#fff;line-height:1;}
+.kpi .n em{font-style:normal;color:#fcd34d;}
+.kpi .l{font-size:.64rem;color:rgba(255,255,255,.6);text-transform:uppercase;
+  letter-spacing:.1em;margin-top:.4rem;font-weight:700;}
+
+.cover-pg{position:absolute;bottom:1.8rem;right:2.3rem;
+  font-size:.7rem;color:rgba(255,255,255,.35);font-weight:700;letter-spacing:.1em;}
+
+/* ── CONCEPT PAGE ── */
+.concept-page{background:#fff;padding:2.8rem 4.5rem;justify-content:flex-start;}
+.concept-hero{background:linear-gradient(135deg,#020617,#1e1b4b);border-radius:14px;
+  padding:1.5rem 1.9rem;margin-bottom:1.3rem;color:#fff;
+  border-left:5px solid #fcd34d;}
+.concept-hero .ch-eyebrow{font-size:.66rem;font-weight:800;letter-spacing:.2em;
+  text-transform:uppercase;color:#fcd34d;margin-bottom:.5rem;}
+.concept-hero h2{font-size:1.7rem;font-weight:900;color:#fff;line-height:1.25;margin-bottom:.5rem;}
+.concept-hero h2 em{font-style:normal;color:#fcd34d;}
+.concept-hero p{font-size:.92rem;color:rgba(255,255,255,.82);line-height:1.65;}
+.concept-hero p strong{color:#fcd34d;}
+
+/* 3-stage flow */
+.flow-diagram{display:grid;grid-template-columns:1fr 40px 1fr 40px 1fr;align-items:stretch;
+  margin-bottom:1.3rem;gap:0;}
+.flow-stage{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:1rem 1rem;
+  display:flex;flex-direction:column;gap:.45rem;position:relative;border-top:3px solid;}
+.flow-stage.s1{border-top-color:var(--indigo);}
+.flow-stage.s2{border-top-color:var(--amber);background:linear-gradient(180deg,#fffbeb,#fff);}
+.flow-stage.s3{border-top-color:var(--pink);}
+.flow-stage .fs-when{font-size:.6rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gray);}
+.flow-stage .fs-title{font-size:.95rem;font-weight:900;line-height:1.25;}
+.flow-stage.s1 .fs-title{color:var(--indigo);}
+.flow-stage.s2 .fs-title{color:var(--amber);}
+.flow-stage.s3 .fs-title{color:var(--pink);}
+.flow-stage .fs-body{font-size:.72rem;color:#475569;line-height:1.55;}
+.flow-stage .fs-body code{background:#f1f5f9;color:#0f172a;padding:.1em .4em;border-radius:3px;
+  font-family:'Consolas',monospace;font-size:.92em;}
+.flow-arrow{display:flex;align-items:center;justify-content:center;
+  font-size:1.6rem;font-weight:900;color:#fcd34d;}
+
+/* Architecture mock */
+.arch-mock{background:linear-gradient(135deg,#1e1b4b,#4338ca);border-radius:12px;
+  padding:1.2rem 1.4rem;margin-bottom:1.3rem;color:#fff;
+  border:1px solid rgba(252,211,77,.3);}
+.am-label{font-size:.62rem;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+  color:#fcd34d;margin-bottom:.5rem;}
+.am-stage{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;align-items:start;}
+.am-meta{font-family:'Consolas','Menlo',monospace;font-size:.72rem;line-height:1.7;color:#c7d2fe;}
+.am-meta .k{color:#86efac;} .am-meta .v{color:#fcd34d;} .am-meta .c{color:#94a3b8;font-style:italic;}
+.am-meta .arrow{color:#fcd34d;font-weight:700;}
+.am-narr{background:rgba(255,255,255,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;
+  padding:.85rem 1rem;}
+.am-narr .an-quote{font-size:.78rem;color:rgba(255,255,255,.7);font-style:italic;margin-bottom:.5rem;}
+.am-narr .an-caption{font-size:.84rem;font-weight:600;color:#fff;line-height:1.6;}
+.am-narr .an-caption em{font-style:normal;color:#fcd34d;background:linear-gradient(180deg,transparent 55%,rgba(252,211,77,.25) 55%);padding:0 .15rem;}
+
+/* 5 teaser cards */
+.teaser-row{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem;margin-bottom:1.2rem;}
+.teaser-row.cols6{grid-template-columns:repeat(6,1fr);}
+.teaser{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:.8rem .75rem;
+  border-top:3px solid;position:relative;}
+.teaser.tA{border-top-color:var(--cyan);}
+.teaser.tB{border-top-color:var(--purple);}
+.teaser.tC{border-top-color:var(--amber);}
+.teaser.tD{border-top-color:var(--pink);}
+.teaser.tE{border-top-color:var(--green);}
+.teaser .ts-num{position:absolute;top:.4rem;right:.6rem;font-size:.68rem;font-weight:900;
+  color:#cbd5e1;font-family:'Consolas',monospace;}
+.teaser .ts-icon{display:none;}
+.teaser .ts-title{font-size:.78rem;font-weight:800;color:var(--dark);line-height:1.3;margin-bottom:.2rem;}
+.teaser .ts-desc{font-size:.65rem;color:var(--gray);line-height:1.45;}
+
+/* 4 source layers strip */
+.source-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem;}
+.source-card{background:#0f172a;color:#fff;border-radius:10px;padding:.85rem 1rem;border-left:3px solid;}
+.source-card.s1{border-left-color:#86efac;}
+.source-card.s2{border-left-color:#67e8f9;}
+.source-card.s3{border-left-color:#c4b5fd;}
+.source-card.s4{border-left-color:#fcd34d;}
+.source-card .src-name{font-size:.74rem;font-weight:900;color:#fff;margin-bottom:.25rem;display:flex;align-items:center;gap:.4rem;}
+.source-card .src-desc{font-size:.66rem;color:rgba(255,255,255,.7);line-height:1.5;}
+
+/* ── IDEA PAGE ── */
+.idea-page{background:#fff;padding:3rem 4.5rem;justify-content:flex-start;}
+.idea-page:nth-child(odd){background:#f8fafc;}
+
+.idea-hero{display:grid;grid-template-columns:auto 1fr auto;gap:1.5rem;align-items:center;
+  background:linear-gradient(135deg,#020617,#1e1b4b);border-radius:14px;
+  padding:1.3rem 1.7rem;margin-bottom:1.4rem;color:#fff;
+  border-left:5px solid var(--idea-color, #fcd34d);}
+.idea-hero .ih-num{font-size:3rem;font-weight:900;line-height:1;color:var(--idea-color,#fcd34d);
+  font-family:'Consolas',monospace;}
+.idea-hero .ih-mid h2{font-size:1.4rem;font-weight:900;color:#fff;line-height:1.2;margin-bottom:.3rem;}
+.idea-hero .ih-mid h2 em{font-style:normal;color:#fcd34d;}
+.idea-hero .ih-mid p{font-size:.82rem;color:rgba(255,255,255,.75);line-height:1.55;font-style:italic;}
+.idea-hero .ih-tag{display:flex;flex-direction:column;gap:.3rem;flex-shrink:0;}
+.ih-pill{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;
+  padding:.25rem .7rem;border-radius:100px;font-size:.65rem;font-weight:700;
+  letter-spacing:.04em;text-align:center;white-space:nowrap;}
+.ih-pill.primary{background:rgba(252,211,77,.2);border-color:rgba(252,211,77,.45);color:#fcd34d;}
+
+.idea-A{--idea-color:#0891b2;}
+.idea-B{--idea-color:#7c3aed;}
+.idea-C{--idea-color:#d97706;}
+.idea-D{--idea-color:#db2777;}
+.idea-E{--idea-color:#16a34a;}
+
+.scenario-strip{background:linear-gradient(90deg,#0f172a,#1e1b4b);border-radius:10px;
+  padding:.7rem 1.1rem;margin-bottom:1.1rem;display:flex;align-items:center;gap:.85rem;
+  border-left:4px solid var(--idea-color,#fcd34d);}
+.scenario-strip .ss-icon{font-size:1.4rem;flex-shrink:0;}
+.scenario-strip .ss-text{color:#fff;font-size:.84rem;font-weight:600;line-height:1.5;}
+.scenario-strip .ss-text strong{color:#fcd34d;font-weight:800;}
+
+.impact-band{display:grid;grid-template-columns:1fr 56px 1fr;gap:0;
+  margin-bottom:1.1rem;border-radius:14px;overflow:hidden;
+  box-shadow:0 4px 16px rgba(0,0,0,.08);}
+.ib-before,.ib-after{padding:1rem 1.2rem;display:flex;flex-direction:column;gap:.5rem;}
+.ib-before{background:linear-gradient(135deg,#f8fafc,#f1f5f9);border:1.5px solid #cbd5e1;}
+.ib-after{background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fcd34d;}
+.ib-tag{font-size:.58rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:.4rem;width:fit-content;
+  padding:.18rem .6rem;border-radius:100px;}
+.ib-before .ib-tag{background:#e2e8f0;color:#475569;}
+.ib-after .ib-tag{background:rgba(217,119,6,.18);color:#92400e;}
+.ib-scene{font-size:.74rem;color:#64748b;line-height:1.5;font-style:italic;}
+.ib-result{font-size:.96rem;font-weight:900;line-height:1.4;}
+.ib-before .ib-result{color:#475569;}
+.ib-after .ib-result{color:#78350f;}
+.ib-after .ib-result em{font-style:normal;color:var(--idea-color,#92400e);
+  background:linear-gradient(180deg,transparent 55%,rgba(252,211,77,.5) 55%);padding:0 .15rem;}
+.ib-divider{display:flex;align-items:center;justify-content:center;
+  background:var(--idea-color,#fcd34d);color:#fff;font-weight:900;font-size:1.3rem;position:relative;}
+.ib-divider::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.25);}
+.ib-divider span{position:relative;z-index:2;}
+
+.qual-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem;margin-bottom:1.1rem;}
+.qual{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+  padding:.85rem .8rem;text-align:center;position:relative;overflow:hidden;
+  border-top:3px solid var(--idea-color,#fcd34d);}
+.qual .ql-icon{display:none;}
+.qual .ql-title{font-size:.78rem;font-weight:800;color:var(--dark);line-height:1.3;margin-bottom:.25rem;}
+.qual .ql-desc{font-size:.66rem;color:var(--gray);line-height:1.45;}
+
+/* 6-col variant for execution targets */
+.qual-row.cols6{grid-template-columns:repeat(6,1fr);}
+
+.track-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem;margin-bottom:1.1rem;}
+.track{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:.9rem 1rem;border-top:3px solid;}
+.track.in{border-top-color:#0891b2;}
+.track.proc{border-top-color:#7c3aed;}
+.track.out{border-top-color:#16a34a;}
+.tr-head{font-size:.62rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;margin-bottom:.45rem;}
+.track.in .tr-head{color:#0891b2;}
+.track.proc .tr-head{color:#7c3aed;}
+.track.out .tr-head{color:#16a34a;}
+.tr-title{font-size:.86rem;font-weight:900;color:var(--dark);line-height:1.25;margin-bottom:.4rem;}
+.tr-body{font-size:.72rem;color:#475569;line-height:1.55;}
+.tr-body ul{list-style:none;padding:0;}
+.tr-body ul li{position:relative;padding-left:.85rem;margin-bottom:.2rem;}
+.tr-body ul li::before{content:'▸';position:absolute;left:0;font-weight:900;}
+.track.in ul li::before{color:#0891b2;}
+.track.proc ul li::before{color:#7c3aed;}
+.track.out ul li::before{color:#16a34a;}
+.tr-body code{background:#f1f5f9;color:#0f172a;padding:.08em .3em;border-radius:3px;
+  font-family:'Consolas',monospace;font-size:.95em;}
+
+.outcome-row{display:grid;grid-template-columns:1fr auto;gap:1.2rem;align-items:center;
+  background:linear-gradient(135deg,#1e1b4b,#4338ca);border-radius:12px;
+  padding:1.05rem 1.4rem;color:#fff;}
+.outcome-row.alt1{background:linear-gradient(135deg,#155e75,#0891b2);}
+.outcome-row.alt2{background:linear-gradient(135deg,#581c87,#7c3aed);}
+.outcome-row.alt3{background:linear-gradient(135deg,#78350f,#d97706);}
+.outcome-row.alt4{background:linear-gradient(135deg,#831843,#db2777);}
+.outcome-row.alt5{background:linear-gradient(135deg,#14532d,#16a34a);}
+.outcome-left h4{font-size:.66rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.65);margin-bottom:.35rem;}
+.outcome-left p{font-size:.98rem;font-weight:800;color:#fff;line-height:1.45;}
+.outcome-left p em{font-style:normal;color:#fcd34d;}
+.outcome-right{flex-shrink:0;font-size:2.4rem;}
+
+.prereq{background:#1e293b;border-radius:10px;padding:.85rem 1.1rem;margin-top:.9rem;color:#e2e8f0;}
+.prereq .pr-title{font-size:.62rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+  color:#fcd34d;margin-bottom:.4rem;}
+.prereq .pr-body{font-size:.72rem;line-height:1.6;color:#cbd5e1;}
+.prereq .pr-body strong{color:#fff;}
+
+/* === GitHub Layer page-specific === */
+/* 2-Repo diagram */
+.repo-diagram{display:grid;grid-template-columns:1fr 50px 1fr;gap:0;align-items:stretch;margin-bottom:1.2rem;}
+.repo-card{background:#0f172a;color:#fff;border-radius:12px;padding:1rem 1.2rem;
+  border-top:3px solid;display:flex;flex-direction:column;gap:.5rem;}
+.repo-card.upstream{border-top-color:#86efac;}
+.repo-card.overlay{border-top-color:#fcd34d;}
+.repo-card .rc-tag{font-size:.6rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;}
+.repo-card.upstream .rc-tag{color:#86efac;}
+.repo-card.overlay .rc-tag{color:#fcd34d;}
+.repo-card .rc-title{font-size:1rem;font-weight:900;color:#fff;line-height:1.3;}
+.repo-card .rc-owner{font-size:.7rem;color:rgba(255,255,255,.6);font-style:italic;}
+.repo-card .rc-tree{font-family:'Consolas','Menlo',monospace;font-size:.68rem;line-height:1.65;
+  color:#cbd5e1;background:rgba(255,255,255,.04);border-radius:6px;padding:.6rem .75rem;margin-top:.3rem;}
+.repo-card .rc-tree .h{color:#fcd34d;}
+.repo-card .rc-tree .c{color:#94a3b8;font-style:italic;}
+.repo-arrow{display:flex;align-items:center;justify-content:center;
+  font-size:1.4rem;font-weight:900;color:var(--idea-color,#fcd34d);
+  background:transparent;flex-direction:column;gap:.2rem;}
+.repo-arrow .ra-label{font-size:.55rem;font-weight:800;letter-spacing:.12em;
+  color:#64748b;text-transform:uppercase;text-align:center;line-height:1.3;}
+
+/* CI/CD sync chain */
+.sync-chain{display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem;margin-bottom:1.2rem;
+  background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:12px;padding:1rem;border-left:4px solid #fcd34d;}
+.sync-step{background:rgba(255,255,255,.06);border-radius:8px;padding:.7rem .65rem;
+  border-left:3px solid #fcd34d;display:flex;flex-direction:column;gap:.25rem;position:relative;}
+.sync-step .ss-no{font-family:'Consolas',monospace;font-size:.62rem;font-weight:900;color:#fcd34d;letter-spacing:.1em;}
+.sync-step .ss-name{font-size:.74rem;font-weight:800;color:#fff;line-height:1.25;}
+.sync-step .ss-desc{font-size:.62rem;color:rgba(255,255,255,.7);line-height:1.45;}
+.sync-step .ss-desc code{background:rgba(252,211,77,.15);color:#fcd34d;padding:.05em .3em;border-radius:3px;font-family:'Consolas',monospace;font-size:.95em;}
+
+/* Role split table */
+.role-table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;
+  overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:1.1rem;}
+.role-table th{background:#0f172a;color:#e2e8f0;padding:.5rem .8rem;font-size:.66rem;
+  font-weight:800;text-transform:uppercase;letter-spacing:.06em;text-align:left;}
+.role-table th.dev{background:linear-gradient(135deg,#14532d,#16a34a);}
+.role-table th.ops{background:linear-gradient(135deg,#78350f,#d97706);}
+.role-table td{padding:.55rem .8rem;border-bottom:1px solid #f1f5f9;font-size:.72rem;color:#334155;vertical-align:top;line-height:1.55;}
+.role-table tr:last-child td{border-bottom:none;}
+.role-table td.area{font-weight:800;color:var(--dark);background:#f8fafc;width:130px;}
+.role-table td code{background:#f1f5f9;color:#0f172a;padding:.05em .3em;border-radius:3px;font-family:'Consolas',monospace;font-size:.95em;}
+
+/* Template highlight band */
+.template-band{display:grid;grid-template-columns:auto 1fr auto;gap:1.2rem;align-items:center;
+  background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fcd34d;border-radius:12px;
+  padding:1rem 1.3rem;margin-bottom:1.2rem;}
+.template-band .tb-icon{font-size:2rem;flex-shrink:0;}
+.template-band .tb-mid h4{font-size:.95rem;font-weight:900;color:#78350f;margin-bottom:.25rem;}
+.template-band .tb-mid h4 em{font-style:normal;color:#92400e;background:linear-gradient(180deg,transparent 55%,rgba(252,211,77,.5) 55%);padding:0 .15rem;}
+.template-band .tb-mid p{font-size:.72rem;color:#78350f;line-height:1.6;}
+.template-band .tb-mid p code{background:#fde68a;color:#78350f;padding:.05em .35em;border-radius:3px;font-family:'Consolas',monospace;font-size:.95em;}
+.template-band .tb-cmd{font-family:'Consolas',monospace;font-size:.7rem;color:#fff;background:#78350f;
+  padding:.5rem .8rem;border-radius:6px;flex-shrink:0;font-weight:700;}
+
+/* code block (manifest example) */
+.code-block{background:#0f172a;color:#e2e8f0;border-radius:10px;padding:.9rem 1.1rem;
+  font-family:'Consolas','Menlo',monospace;font-size:.7rem;line-height:1.65;
+  margin-bottom:1.1rem;overflow-x:auto;border-left:3px solid var(--idea-color,#fcd34d);}
+.code-block .k{color:#86efac;}
+.code-block .v{color:#fcd34d;}
+.code-block .c{color:#94a3b8;font-style:italic;}
+.code-block .s{color:#7dd3fc;}
+
+.pg-num{position:absolute;bottom:1.5rem;right:2.3rem;
+  font-size:.7rem;color:#cbd5e1;font-weight:700;letter-spacing:.1em;}
+
+/* Summary */
+.summary-page{background:#fff;padding:3rem 4.5rem;}
+.summary-page .pg-eyebrow{font-size:.7rem;font-weight:800;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--amber);margin-bottom:.5rem;}
+.summary-page .pg-title{font-size:2.1rem;font-weight:900;line-height:1.1;margin-bottom:.4rem;color:var(--dark);}
+.summary-page .pg-title em{font-style:normal;color:var(--amber);}
+.summary-page .pg-desc{font-size:.88rem;color:var(--gray);margin-bottom:1.4rem;max-width:900px;line-height:1.65;}
+
+.sum-table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;
+  overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:1.2rem;}
+.sum-table th{background:#0f172a;color:#e2e8f0;padding:.55rem .8rem;font-size:.66rem;
+  font-weight:800;text-transform:uppercase;letter-spacing:.06em;text-align:left;}
+.sum-table td{padding:.6rem .8rem;border-bottom:1px solid #f1f5f9;font-size:.76rem;
+  color:#334155;vertical-align:middle;}
+.sum-table tr:last-child td{border-bottom:none;}
+.sum-table tr:hover td{background:#fefce8;}
+.sum-table .st-num{font-family:'Consolas',monospace;font-weight:900;font-size:.9rem;width:48px;text-align:center;}
+.sum-table .st-num.n1{color:#0891b2;}
+.sum-table .st-num.n2{color:#7c3aed;}
+.sum-table .st-num.n3{color:#d97706;}
+.sum-table .st-num.n4{color:#db2777;}
+.sum-table .st-num.n5{color:#16a34a;}
+.sum-table .st-name{font-weight:800;color:var(--dark);}
+.sum-table .badge-rank{display:inline-block;padding:.15rem .55rem;border-radius:100px;
+  font-size:.64rem;font-weight:800;letter-spacing:.04em;white-space:nowrap;}
+.sum-table .badge-rank.start{background:#fef3c7;color:#a16207;border:1px solid #fcd34d;}
+.sum-table .badge-rank.followup{background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;}
+.sum-table .badge-rank.expand{background:#fce7f3;color:#9d174d;border:1px solid #f9a8d4;}
+.sum-table .badge-rank.recall{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;}
+.sum-table .badge-rank.discover{background:#dcfce7;color:#14532d;border:1px solid #86efac;}
+
+/* 10 rules grid */
+.rules-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem;margin-bottom:1.3rem;}
+.rule-item{background:#fff;border:1.5px solid var(--border);border-radius:8px;
+  padding:.6rem .85rem;display:grid;grid-template-columns:auto 1fr;gap:.7rem;align-items:center;}
+.rule-item .rl-num{font-family:'Consolas',monospace;font-weight:900;font-size:1.05rem;
+  color:var(--amber);width:28px;text-align:center;}
+.rule-item .rl-text{font-size:.74rem;color:#334155;line-height:1.45;}
+.rule-item .rl-text strong{color:var(--dark);font-weight:800;}
+
+.next-step{background:linear-gradient(135deg,#020617,#1e1b4b);border-radius:14px;
+  padding:1.5rem 2rem;color:#fff;border-left:4px solid #fcd34d;}
+.next-step h3{font-size:1.1rem;font-weight:900;color:#fff;margin-bottom:.5rem;}
+.next-step h3 em{font-style:normal;color:#fcd34d;}
+.next-step p{font-size:.82rem;color:rgba(255,255,255,.78);line-height:1.7;}
+.next-step p strong{color:#fcd34d;}
+
+/* === "이게 뭐예요?" easy-mode box === */
+.easy-box{display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:start;
+  background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1.5px solid #93c5fd;
+  border-left:5px solid #2563eb;border-radius:12px;
+  padding:1rem 1.2rem;margin-bottom:1.2rem;}
+.easy-box .eb-icon{font-size:1.7rem;flex-shrink:0;line-height:1;}
+.easy-box .eb-content{display:flex;flex-direction:column;gap:.35rem;}
+.easy-box .eb-tag{font-size:.6rem;font-weight:900;letter-spacing:.18em;
+  text-transform:uppercase;color:#1e40af;}
+.easy-box .eb-title{font-size:.95rem;font-weight:800;color:#1e3a8a;line-height:1.4;}
+.easy-box .eb-title em{font-style:normal;color:#1d4ed8;
+  background:linear-gradient(180deg,transparent 55%,rgba(147,197,253,.55) 55%);padding:0 .15rem;}
+.easy-box .eb-body{font-size:.78rem;color:#1e3a8a;line-height:1.65;}
+.easy-box .eb-body strong{color:#1e40af;font-weight:800;}
+.easy-box .eb-analogy{background:rgba(255,255,255,.6);border-left:3px solid #2563eb;
+  border-radius:0 6px 6px 0;padding:.5rem .75rem;margin-top:.35rem;
+  font-size:.74rem;color:#1e3a8a;font-style:italic;line-height:1.55;}
+.easy-box .eb-analogy::before{content:'일상 비유 — ';font-style:normal;font-weight:800;color:#1d4ed8;}
+
+/* Reader hint banner on cover */
+.reader-hint{background:rgba(96,165,250,.15);border:1px solid rgba(147,197,253,.4);
+  border-radius:10px;padding:.7rem 1rem;margin-bottom:1.2rem;
+  font-size:.78rem;color:rgba(255,255,255,.85);line-height:1.6;
+  max-width:820px;position:relative;z-index:2;display:flex;align-items:center;gap:.7rem;}
+.reader-hint .rh-icon{font-size:1.3rem;flex-shrink:0;}
+.reader-hint strong{color:#bfdbfe;}
+
+@media(max-width:900px){
+  .easy-box{grid-template-columns:1fr;}
+  .page-cover{padding:2.5rem 1.8rem;}
+  .cover-h1{font-size:2.2rem;}
+  .relation-note{grid-template-columns:1fr;}
+  .cover-kpi{grid-template-columns:repeat(2,1fr);}
+  .concept-page,.idea-page,.summary-page{padding:2rem 1.8rem;}
+  .flow-diagram{grid-template-columns:1fr;}
+  .flow-arrow{transform:rotate(90deg);height:30px;}
+  .am-stage{grid-template-columns:1fr;}
+  .teaser-row,.teaser-row.cols6{grid-template-columns:repeat(2,1fr);}
+  .source-strip{grid-template-columns:1fr;}
+  .idea-hero{grid-template-columns:1fr;gap:.8rem;}
+  .impact-band{grid-template-columns:1fr;}
+  .ib-divider{height:44px;}
+  .qual-row,.qual-row.cols6{grid-template-columns:repeat(2,1fr);}
+  .track-grid{grid-template-columns:1fr;}
+  .outcome-row{grid-template-columns:1fr;}
+  .rules-grid{grid-template-columns:1fr;}
+  .repo-diagram{grid-template-columns:1fr;}
+  .repo-arrow{transform:rotate(90deg);height:36px;}
+  .sync-chain{grid-template-columns:1fr;}
+  .template-band{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-title">
+    AI 자동화 포탈 · 쉬운 설명 버전
+    <span class="nav-badge">비전공자용</span>
+  </div>
+  <div class="nav-pages">
+    <a href="#p0">00 들어가기</a>
+    <a href="#p1">01 전체 개념</a>
+    <a href="#p2">02 코드 보관소</a>
+    <a href="#p3">03 앱 종류</a>
+    <a href="#p4">04 실행 장소</a>
+    <a href="#p5">05 앱 명함</a>
+    <a href="#p6">06 작업 번호</a>
+    <a href="#p7">07 윈도우 앱</a>
+    <a href="#p8">08 단계별 도입</a>
+  </div>
+</nav>
+
+<div class="pages">
+
+<!-- ════════════════════════════════════════
+     PAGE 0 — COVER
+════════════════════════════════════════ -->
+<section class="page page-cover" id="p0">
+  <div class="cover-eyebrow">사내 자동화 도구 통합 안내 · 2026</div>
+
+  <div class="cover-h1">
+    AI 자동화 포탈<br/>
+    <em>흩어진 프로그램을 한 곳에서</em>
+  </div>
+  <div class="cover-sub">
+    팀마다, 사람마다 만든 자동화 프로그램이 너무 많고 흩어져 있어요.<br/>
+    이걸 <strong>전부 다시 만들지 않고도</strong>, 한 곳에서 찾아 쓰고 결과를 모을 수 있게 만드는 안내서입니다.
+  </div>
+
+  <div class="reader-hint">
+    <div class="rh-icon"></div>
+    <div>
+      <strong>이 문서를 어떻게 읽으면 되나요?</strong>
+      &nbsp;각 페이지 위쪽에 파란색 <strong>"이게 뭐예요?"</strong> 박스가 있어요.
+      어려운 단어가 나오면 그 박스를 먼저 보세요 — 일상 비유로 풀어서 설명합니다.
+    </div>
+  </div>
+
+  <div class="relation-note">
+    <div class="rn-stack">
+      <div class="rn-layer top">포탈 (관리하는 곳) — 등록·실행·이력 규칙</div>
+      <div class="rn-layer bottom">자동화 프로그램들 — 지금 형태 그대로 유지</div>
+    </div>
+    <div class="rn-text">
+      <strong>지금 쓰는 프로그램은 그대로 둡니다.</strong><br/>
+      대신 포탈에 <strong>"이렇게 부르면 실행돼요"</strong> 한 줄만 등록하면 됩니다.<br/>
+      포탈은 <strong>모든 걸 새로 만드는 곳이 아니라, 한곳에 모아 안내하는 곳</strong>입니다.
+    </div>
+  </div>
+
+  <div class="cover-kpi">
+    <div class="kpi"><div class="n">2<em>층</em></div><div class="l">개발자 + 운영자</div></div>
+    <div class="kpi"><div class="n">7<em>종</em></div><div class="l">프로그램 종류</div></div>
+    <div class="kpi"><div class="n">6<em>곳</em></div><div class="l">실행되는 장소</div></div>
+    <div class="kpi"><div class="n">10<em>개</em></div><div class="l">꼭 지킬 약속</div></div>
+  </div>
+
+  <div class="cover-pg">PAGE 00 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     PAGE 1 — CONCEPT
+════════════════════════════════════════ -->
+<section class="page concept-page" id="p1">
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">한 줄로 말하면 — <em>"앱 스토어" 같은 사내 사이트를 만드는 이야기예요</em></div>
+      <div class="eb-body">
+        스마트폰의 앱 스토어에서 우리가 앱을 찾고, 누르고, 설치하잖아요? 그런데 <strong>회사 안에 흩어진 자동화 프로그램들도 똑같이</strong>
+        한곳에서 찾아 쓰고 결과를 받을 수 있게 하자는 겁니다.
+      </div>
+      <div class="eb-analogy">
+        앱 스토어가 앱을 직접 만들지 않듯, 우리 포탈도 프로그램을 새로 만들지 않아요.
+        그저 <strong>"여기 이런 프로그램이 있어요, 이렇게 쓰세요"</strong> 라고 안내하고 결과를 모아주는 역할입니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="concept-hero">
+    <div class="ch-eyebrow">슬라이드 01 · 전체 개념</div>
+    <h2>흩어진 프로그램을 <em>"한 곳에서 찾아 쓰는"</em> 사내 앱 스토어로</h2>
+    <p>
+      AI로 빠르게 만든 자동화 프로그램은 종류도 만든 방식도 다 달라요.<br/>
+      <strong>전부 다시 만들 필요 없습니다.</strong> 한 곳(포탈)에 "이런 프로그램이 있어요" 라고 등록만 하고,
+      누가 언제 무엇을 실행했는지 <strong>작업 번호(job_id)로 기록</strong>해 두면 충분합니다.
+    </p>
+  </div>
+
+  <!-- 3-stage flow: Register → Execute → Recall -->
+  <div class="flow-diagram">
+    <div class="flow-stage s1">
+      <div class="fs-when">① 등록하기</div>
+      <div class="fs-title">"이런 프로그램이에요" 명함 만들기</div>
+      <div class="fs-body">프로그램마다 <strong>이름·만든 사람·버전·실행 방법</strong>을 적은 작은 안내 카드(<code>manifest</code>)를 만들어 포탈에 붙입니다.</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-stage s2">
+      <div class="fs-when">② 실행하기</div>
+      <div class="fs-title">버튼 한 번으로 실행</div>
+      <div class="fs-body">사용자는 그저 <strong>실행 버튼</strong>만 누릅니다. 포탈이 알아서 "이 프로그램은 어디서 돌릴지" 정하고 실행시켜요.</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-stage s3">
+      <div class="fs-when">③ 결과 받기</div>
+      <div class="fs-title">작업 번호로 결과 보관</div>
+      <div class="fs-body">한 번 돌릴 때마다 <strong>작업 번호(job_id)</strong>가 생겨요. 입력 파일·실행 옵션·결과가 그 번호 안에 다 모여 — <strong>6개월 뒤에도 똑같이 다시 돌릴 수 있어요.</strong></div>
+    </div>
+  </div>
+
+  <!-- Architecture mock -->
+  <div class="arch-mock">
+    <div class="am-label">▶ 전체 그림 — 중앙 포탈이 여러 종류의 실행 장소를 연결합니다</div>
+    <div class="am-stage">
+      <div class="am-meta">
+        <span class="c">// Linux Portal Server (중앙 허브)</span><br/>
+        <span class="k">portal_web</span>: <span class="v">React + TS + Ant Design</span><br/>
+        <span class="k">backend_api</span>: <span class="v">FastAPI / Flask</span><br/>
+        <span class="k">registry_db</span>: <span class="v">PostgreSQL · apps · versions</span><br/>
+        <span class="k">job_history</span>: <span class="v">jobs · permissions · logs</span><br/>
+        <span class="k">file_storage</span>: <span class="v">NAS / NFS / MinIO</span><br/>
+        <span class="k">queue</span>: <span class="v">Redis Queue · Celery</span><br/>
+        <span class="arrow">↓</span> dispatch by execution_target<br/>
+        <span class="k">backends</span>: <span class="v">linux · apptainer · slurm · windows_agent</span>
+      </div>
+      <div class="am-narr">
+        <div class="an-quote">"모두 같은 모양으로 만들지 말고, 부르는 방법만 똑같이"</div>
+        <div class="an-caption">
+          지금 쓰는 프로그램을 <em>그대로 두고</em>,<br/>
+          포탈은 <em>"명함"으로 찾아서</em>, <em>"작업 번호"로 결과를 모을 뿐</em>입니다.<br/>
+          심지어 Windows 프로그램도 작은 도우미를 통해 같은 흐름으로 들어옵니다.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 sub-task teasers (GitHub Layer 추가) -->
+  <div class="teaser-row cols6">
+    <div class="teaser tA" style="border-top-color:#1e293b;">
+      <div class="ts-num">02</div>
+      <div class="ts-icon">🐙</div>
+      <div class="ts-title">코드 보관소</div>
+      <div class="ts-desc">개발자는 코드를,<br/>운영자는 포탈 게시를</div>
+    </div>
+    <div class="teaser tA">
+      <div class="ts-num">03</div>
+      <div class="ts-icon">📦</div>
+      <div class="ts-title">프로그램 종류</div>
+      <div class="ts-desc">명령어형 · 웹 · 윈도우 ·<br/>외부 링크 · 컨테이너 등</div>
+    </div>
+    <div class="teaser tB">
+      <div class="ts-num">04</div>
+      <div class="ts-icon">🚀</div>
+      <div class="ts-title">실행되는 장소</div>
+      <div class="ts-desc">내 PC · 사내 서버 ·<br/>계산 서버 · 윈도우 등</div>
+    </div>
+    <div class="teaser tC">
+      <div class="ts-num">05</div>
+      <div class="ts-icon">📜</div>
+      <div class="ts-title">앱 명함 (Manifest)</div>
+      <div class="ts-desc">이름·만든이·실행법을<br/>한 장에 적은 카드</div>
+    </div>
+    <div class="teaser tD">
+      <div class="ts-num">06</div>
+      <div class="ts-icon">🗂️</div>
+      <div class="ts-title">작업 번호 규칙</div>
+      <div class="ts-desc">실행마다 번호 한 개 ·<br/>입력·결과·기록 한 폴더</div>
+    </div>
+    <div class="teaser tE">
+      <div class="ts-num">07</div>
+      <div class="ts-icon">🪟</div>
+      <div class="ts-title">윈도우 프로그램</div>
+      <div class="ts-desc">윈도우용 EXE도<br/>같은 흐름에 합치기</div>
+    </div>
+  </div>
+
+  <!-- 4 source layers (what portal manages) -->
+  <div class="source-strip">
+    <div class="source-card s1">
+      <div class="src-name">앱 카탈로그</div>
+      <div class="src-desc">어떤 프로그램이 있나요? 누가 만들었나요?</div>
+    </div>
+    <div class="source-card s2">
+      <div class="src-name">실행 도우미</div>
+      <div class="src-desc">버튼 누르면 알아서 실행 · 진행 상태 표시</div>
+    </div>
+    <div class="source-card s3">
+      <div class="src-name">실행 기록</div>
+      <div class="src-desc">누가 언제 무엇을 돌렸나요? 결과는 어디 있나요?</div>
+    </div>
+    <div class="source-card s4">
+      <div class="src-name">로그인 · 권한</div>
+      <div class="src-desc">사내 계정으로 로그인 · 볼 수 있는 사람 제한</div>
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 01 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA 0 — GitHub Layer (NEW)
+════════════════════════════════════════ -->
+<section class="page idea-page idea-A" id="p2" style="--idea-color:#16a34a;">
+  <div class="idea-hero">
+    <div class="ih-num">02</div>
+    <div class="ih-mid">
+      <h2>코드 보관소 두 층 — <em>개발자와 운영자가 따로 일해요</em></h2>
+      <p>개발자는 평소처럼 자유롭게 코드를 만들고, 포탈 운영자는 그 위에 "포탈에 게시할 안내"만 덧붙입니다</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">2층 구조</div>
+      <div class="ih-pill">관리가 쉬워요</div>
+    </div>
+  </div>
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">GitHub은 <em>"코드를 보관·공유하는 사물함"</em>이에요</div>
+      <div class="eb-body">
+        같은 문서를 여러 사람이 같이 수정하면 누가 뭘 바꿨는지 헷갈리잖아요? GitHub은 그걸 <strong>줄 단위로 기록·복원</strong>해 주는
+        코드용 사물함입니다. 우리는 그 사물함을 <strong>두 칸으로 나눠서</strong> 쓰자는 이야기입니다.
+      </div>
+      <div class="eb-analogy">
+        <strong>1층(개발자 사물함)</strong> — 요리사가 쓰는 주방. 자기 레시피·재료를 자유롭게 둠.<br/>
+        <strong>2층(포탈 사물함)</strong> — 가게 메뉴판. "어떤 요리를, 얼마에, 어떻게 주문" 만 적혀 있음.<br/>
+        주방을 안 건드리고 메뉴판만 고치면 되니, <strong>유지보수가 훨씬 쉬워져요.</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon"></div>
+    <div class="ss-text">우리 조직처럼 <strong>각자 룰 없이 만든 프로그램이 많을 때</strong> — 먼저 GitHub에 올려 버전관리를 시작하고, 포탈 운영자가 그 위에 게시용 코드를 덧붙인다. <strong>원본 코드는 침범하지 않는다.</strong></div>
+  </div>
+
+  <!-- Template band — 신규 프로젝트는 즉시 게시 -->
+  <div class="template-band">
+    <div class="tb-icon"></div>
+    <div class="tb-mid">
+      <h4><em>새로 시작하는 프로젝트는 — "기본 양식" 한 벌 제공</em></h4>
+      <p>
+        새 프로그램을 만들 때는 <strong>빈 종이부터 시작하지 마세요.</strong> 회사가 미리 만들어 둔 <code>기본 양식</code>을 복사해서
+        시작하면, <strong>포탈에 바로 등록될 수 있는 형태</strong>로 자동으로 갖춰져요.
+        — 마치 이력서를 빈 워드로 쓰지 않고 양식 파일을 받아 채우는 것과 같습니다.
+      </p>
+    </div>
+    <div class="tb-cmd">"이 양식으로 시작" 버튼 클릭</div>
+  </div>
+
+  <!-- 2-Repo diagram: Upstream + Overlay -->
+  <div class="repo-diagram">
+    <div class="repo-card upstream">
+      <div class="rc-tag">▸ LAYER 1 · 개발자 소유</div>
+      <div class="rc-title">Upstream Repo</div>
+      <div class="rc-owner">github.com/{팀}/{tool-name}</div>
+      <div class="rc-tree">
+<span class="h">{tool-name}/</span>
+ ├─ src/                  <span class="c"># 자유로운 구현</span>
+ ├─ tests/
+ ├─ requirements.txt
+ ├─ README.md
+ └─ <span class="h">.github/workflows/</span>
+     └─ release.yml       <span class="c"># tag push 시 사건 전파</span>
+
+<span class="c"># 개발자는 평소처럼:</span>
+<span class="c"># git commit · PR · tag v1.2.0</span>
+      </div>
+    </div>
+    <div class="repo-arrow">
+      <div>→</div>
+      <div class="ra-label">tag 이벤트<br/>(webhook)</div>
+    </div>
+    <div class="repo-card overlay">
+      <div class="rc-tag">▸ LAYER 2 · 포탈 운영자 소유</div>
+      <div class="rc-title">Portal Overlay Repo</div>
+      <div class="rc-owner">github.com/{org}/portal-overlays/{tool-name}</div>
+      <div class="rc-tree">
+<span class="h">{tool-name}-overlay/</span>
+ ├─ <span class="h">.portal/</span>
+ │   ├─ manifest.yaml     <span class="c"># 포탈 등록 메타</span>
+ │   ├─ run.sh            <span class="c"># 표준 wrapper</span>
+ │   └─ params.schema.json
+ ├─ upstream.lock         <span class="c"># 핀된 버전 v1.2.0</span>
+ └─ README.md             <span class="c"># 포탈 사용 안내</span>
+
+<span class="c"># 운영자는 manifest만 관리:</span>
+<span class="c"># upstream 코드는 절대 수정 안 함</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5-step sync chain (쉬운 버전) -->
+  <div class="sync-chain">
+    <div class="sync-step">
+      <div class="ss-no">단계 ①</div>
+      <div class="ss-name">개발자가 새 버전 발표</div>
+      <div class="ss-desc">"버전 1.2 완성!" 이라고 깃발 꽂기</div>
+    </div>
+    <div class="sync-step">
+      <div class="ss-no">단계 ②</div>
+      <div class="ss-name">자동 알림</div>
+      <div class="ss-desc">새 버전이 나왔다는 신호가 운영자에게 자동 전달</div>
+    </div>
+    <div class="sync-step">
+      <div class="ss-no">단계 ③</div>
+      <div class="ss-name">운영자 사물함에 자동 메모</div>
+      <div class="ss-desc">"새 버전 쓸까요?" 라는 검토 요청 자동 작성</div>
+    </div>
+    <div class="sync-step">
+      <div class="ss-no">단계 ④</div>
+      <div class="ss-name">운영자 확인</div>
+      <div class="ss-desc">새 버전을 살펴보고 OK / 보류 결정</div>
+    </div>
+    <div class="sync-step">
+      <div class="ss-no">단계 ⑤</div>
+      <div class="ss-name">포탈에 자동 게시</div>
+      <div class="ss-desc">사용자가 포탈에서 새 버전을 바로 쓸 수 있음</div>
+    </div>
+  </div>
+
+  <!-- Role split table (쉬운 버전) -->
+  <table class="role-table">
+    <thead>
+      <tr>
+        <th>맡은 일</th>
+        <th class="dev">개발자 (코드 만든 사람)</th>
+        <th class="ops">포탈 운영자 (게시 담당)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="area">프로그램 코드</td>
+        <td>새로 만들고 · 고치고 · 시험함</td>
+        <td>읽기만 · <strong>절대 손대지 않음</strong></td>
+      </tr>
+      <tr>
+        <td class="area">버전 관리</td>
+        <td>"이제 1.2 버전" 같이 깃발 꽂기</td>
+        <td>"우리는 1.2 버전 사용 중" 메모만</td>
+      </tr>
+      <tr>
+        <td class="area">앱 명함</td>
+        <td>(양식 쓸 때) 초안만 살짝 작성</td>
+        <td>최종 책임 — 누가 쓸 수 있나, 얼마나 큰 일인가</td>
+      </tr>
+      <tr>
+        <td class="area">실행 방법</td>
+        <td>"이렇게 켜는 거예요" 사용설명서</td>
+        <td>포탈이 부를 수 있게 한 줄로 정리</td>
+      </tr>
+      <tr>
+        <td class="area">필요한 환경</td>
+        <td>"이 도구 필요해요" 목록 작성</td>
+        <td>실제로 그 환경을 서버에 설치·준비</td>
+      </tr>
+      <tr>
+        <td class="area">결과물</td>
+        <td>프로그램이 알아서 결과 파일 만듦</td>
+        <td>요약·전체파일을 통일된 형태로 정리</td>
+      </tr>
+      <tr>
+        <td class="area">사용자 문의</td>
+        <td>"버그예요 / 기능 추가해주세요"</td>
+        <td>"포탈에서 어떻게 써요?" "권한 문의"</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 유지보수 Before/After (쉬운 버전) -->
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">지금</div>
+      <div class="ib-scene">각자 PC, 공유폴더, USB에 흩어진 파일</div>
+      <div class="ib-result">"이게 누가 만든 거지?"<br/>"내 PC 버전은 다른데?"<br/>이전 버전으로 못 돌아감</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">두 층 GitHub</div>
+      <div class="ib-scene">모든 변경이 사물함에 기록 · 누구나 볼 수 있음</div>
+      <div class="ib-result"><em>한 줄 변경도 자취가 남음</em><br/>빠른 수정 = 새 버전 깃발<br/>되돌리기 = 이전 깃발로 한 줄</div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt5">
+    <div class="outcome-left">
+      <h4>이렇게 되면 좋아요</h4>
+      <p>개발자는 <em>코드</em>에만 집중, 운영자는 <em>게시 안내</em>에만 집중. 새 프로젝트는 <em>양식</em>으로 즉시 시작!</p>
+    </div>
+    <div class="outcome-right"></div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">그 전에 확인할 일들</div>
+    <div class="pr-body">
+      <strong>1. 어디에 사물함을 둘까?</strong> — 사내 GitHub 쓸지 외부망 쓸지 정책 확인.<br/>
+      <strong>2. 양식은 누가 관리할까?</strong> — 기본 양식 자체를 책임지고 업데이트할 담당자.<br/>
+      <strong>3. 운영자 일이 너무 많아지지 않을까?</strong> — 앱이 늘어나면 자동 봇으로 검토 부담 줄이기.<br/>
+      <strong>4. 기존 프로그램은 언제 옮길까?</strong> — 중요한 것부터, 시간 여유를 두고 천천히.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 02 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA A — App Type
+════════════════════════════════════════ -->
+<section class="page idea-page idea-A" id="p3">
+  <div class="idea-hero">
+    <div class="ih-num">03</div>
+    <div class="ih-mid">
+      <h2>프로그램 종류 — <em>7가지로 나누어요</em></h2>
+      <p>모든 프로그램은 "어떤 종류인가요?" 한 줄로 분류됩니다 — 그래야 포탈이 알맞게 안내할 수 있어요</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">7가지 분류</div>
+      <div class="ih-pill">모든 앱이 가짐</div>
+    </div>
+  </div>
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">프로그램을 <em>종류별로 라벨링</em>하는 거예요</div>
+      <div class="eb-body">
+        도서관 책에 "소설/과학/만화" 라벨이 붙어 있듯, 포탈의 모든 프로그램에도 <strong>"이건 명령어형이에요" "이건 웹사이트예요" "이건 윈도우 프로그램이에요"</strong>
+        라는 라벨을 붙여요. 그래야 포탈이 알맞게 다룰 수 있어요.
+      </div>
+      <div class="eb-analogy">
+        식당 메뉴판이 <strong>"한식 · 양식 · 분식 · 디저트"</strong>로 나뉘어 있는 것과 같아요.
+        라벨이 있어야 손님이 찾기 쉽고, 주방도 어디로 갈지 알아요.
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon"></div>
+    <div class="ss-text">윈도우 프로그램이든, 웹사이트든, 명령어 도구든 — <strong>"종류" 라벨 한 줄</strong>만 붙이면 모두 포탈에서 똑같이 다뤄집니다</div>
+  </div>
+
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">현재</div>
+      <div class="ib-scene">기술별 문서·관리 방식 제각각</div>
+      <div class="ib-result">Python은 README,<br/>GUI는 사내 공유 폴더,<br/>웹앱은 URL 메모 …</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">표준화 후</div>
+      <div class="ib-scene">모든 앱이 동일한 카탈로그에서 검색됨</div>
+      <div class="ib-result"><em>app_type 한 필드로</em><br/>실행 방식이 결정된다</div>
+    </div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">💻</div>
+      <div class="ql-title">명령어 도구</div>
+      <div class="ql-desc">터미널에 한 줄 치면<br/>알아서 일하는 프로그램</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🌐</div>
+      <div class="ql-title">웹사이트형</div>
+      <div class="ql-desc">브라우저에서 여는<br/>사내 페이지나 대시보드</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🪟</div>
+      <div class="ql-title">윈도우 프로그램</div>
+      <div class="ql-desc">창이 뜨는 EXE 파일<br/>(우리가 흔히 보는 그것)</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📡</div>
+      <div class="ql-title">원격 접속형</div>
+      <div class="ql-desc">먼 서버에 접속해서 쓰는<br/>그래프 · 분석 도구</div>
+    </div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">🔗</div>
+      <div class="ql-title">외부 링크 모음</div>
+      <div class="ql-desc">사내 위키 · 문서함 ·<br/>이미 있는 사이트 안내</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🖥️</div>
+      <div class="ql-title">대규모 계산 작업</div>
+      <div class="ql-desc">엄청 큰 계산을 줄 서서<br/>차례차례 처리하는 서버</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📦</div>
+      <div class="ql-title">상자(컨테이너) 앱</div>
+      <div class="ql-desc">필요한 도구를 한 박스에<br/>포장해 둔 프로그램</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🏷️</div>
+      <div class="ql-title">모두에게 붙는 정보</div>
+      <div class="ql-desc">만든이 · 버전 · 상태<br/>볼 수 있는 사람</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 시작 상태</div>
+      <div class="tr-title">흩어진 프로그램들</div>
+      <div class="tr-body">
+        <ul>
+          <li>만든 방식이 제각각</li>
+          <li>실행 방법도 제각각</li>
+          <li>설명서가 어디 있는지 모름</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 하는 일</div>
+      <div class="tr-title">"종류 라벨" 한 줄 붙이기</div>
+      <div class="tr-body">
+        <ul>
+          <li>앱 명함 한 장 작성</li>
+          <li>포탈에 등록</li>
+          <li>만든이·버전·권한 명시</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 결과 상태</div>
+      <div class="tr-title">한 권의 사내 앱 카탈로그</div>
+      <div class="tr-body">
+        <ul>
+          <li>검색 가능한 앱 목록</li>
+          <li>실행 버튼 · 사용 안내</li>
+          <li>중복으로 만드는 일 방지</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt1">
+    <div class="outcome-left">
+      <h4>이렇게 되면 좋아요</h4>
+      <p>흩어진 프로그램이 <em>한 권의 카탈로그</em>에서 검색·실행되고, "누가 만들었나·어느 버전인가"가 분명해집니다</p>
+    </div>
+    <div class="outcome-right"></div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">그 전에 확인할 일들</div>
+    <div class="pr-body">
+      <strong>1. 7가지 분류가 충분할까?</strong> — 우리 실제 프로그램들이 모두 어딘가에 들어맞는지 확인.<br/>
+      <strong>2. 기존 앱은 언제 옮길까?</strong> — 명함 붙이는 데도 시간이 들어요. 중요한 것부터.<br/>
+      <strong>3. 어떤 앱을 먼저 보여줄까?</strong> — 완성된 것 / 시범 운영 중 / 사용 중지된 것 구분 노출.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 03 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA B — Execution Target
+════════════════════════════════════════ -->
+<section class="page idea-page idea-B" id="p4">
+  <div class="idea-hero">
+    <div class="ih-num">04</div>
+    <div class="ih-mid">
+      <h2>실행되는 장소 — <em>이 프로그램은 어디서 돌아가요?</em></h2>
+      <p>같은 프로그램도 "내 PC에서 / 사내 서버에서 / 윈도우 서버에서" 등 돌아가는 곳이 달라요</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">자동 분배</div>
+      <div class="ih-pill">사용자는 몰라도 OK</div>
+    </div>
+  </div>
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">"이 일은 어느 부서에 맡길까?" 같은 거예요</div>
+      <div class="eb-body">
+        회사에서 어떤 일이 들어오면 누군가가 "이건 회계팀 일, 저건 디자인팀 일" 이라고 정리해주잖아요?
+        포탈도 똑같이 <strong>"이 프로그램은 어디서 돌리면 되는지" 정해서 자동으로 보내줘요</strong>. 사용자는 그저 실행 버튼만 누르면 됩니다.
+      </div>
+      <div class="eb-analogy">
+        택배 분류센터를 생각해 보세요. 우리는 상자만 맡기고, 분류센터가 알아서 <strong>"이건 서울행, 저건 부산행"</strong> 정해줘요.
+        포탈도 그런 역할입니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon"></div>
+    <div class="ss-text">사용자는 그저 실행 버튼만 누릅니다 — 포탈이 알아서 "이건 사내 서버에서, 저건 계산 서버에서" 정해 보냅니다</div>
+  </div>
+
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">지금</div>
+      <div class="ib-scene">실행 방법을 사용자가 일일이 외워야 해요</div>
+      <div class="ib-result">"이건 서버 접속해서…"<br/>"저건 별도 도구 켜서…"<br/>"이건 윈도우 PC에서만…"</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">표준화 후</div>
+      <div class="ib-scene">포탈이 알아서 적절한 곳으로 보내요</div>
+      <div class="ib-result"><em>모든 프로그램이</em><br/>똑같은 방식으로 실행돼요</div>
+    </div>
+  </div>
+
+  <div class="qual-row cols6">
+    <div class="qual">
+      <div class="ql-icon">🐧</div>
+      <div class="ql-title">사내 일반 서버</div>
+      <div class="ql-desc">평소 쓰는 회사 서버에서<br/>바로 실행</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🖥️</div>
+      <div class="ql-title">큰 계산 서버</div>
+      <div class="ql-desc">엄청 무거운 계산을<br/>줄 서서 처리하는 곳</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📦</div>
+      <div class="ql-title">상자에 담긴 환경</div>
+      <div class="ql-desc">필요한 도구를 미리 담은<br/>박스에서 실행</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🪟</div>
+      <div class="ql-title">윈도우 서버</div>
+      <div class="ql-desc">윈도우 전용 도우미가<br/>EXE를 대신 실행</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🌐</div>
+      <div class="ql-title">이미 있는 웹</div>
+      <div class="ql-desc">사내 위키 · 대시보드 등<br/>이미 운영 중인 페이지</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">💻</div>
+      <div class="ql-title">내 PC</div>
+      <div class="ql-desc">사용자 PC에 설치된 앱을<br/>포탈에서 띄우기</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 사용자 행동</div>
+      <div class="tr-title">실행 버튼 누르기</div>
+      <div class="tr-body">
+        <ul>
+          <li>어떤 앱을 쓸지 고르기</li>
+          <li>입력 파일 올리기</li>
+          <li>"쓸 수 있는 사람인가" 확인</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 포탈이 하는 일</div>
+      <div class="tr-title">적절한 곳으로 자동 분배</div>
+      <div class="tr-body">
+        <ul>
+          <li>새 작업 번호 부여</li>
+          <li>알맞은 서버로 보내기</li>
+          <li>"대기 중 → 실행 중 → 완료" 상태 표시</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 사용자가 받는 것</div>
+      <div class="tr-title">결과 + 진행 상태</div>
+      <div class="tr-body">
+        <ul>
+          <li>실시간 진행률 보기</li>
+          <li>완성된 결과 파일 받기</li>
+          <li>"똑같이 다시 돌리기" 가능</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt2">
+    <div class="outcome-left">
+      <h4>이렇게 되면 좋아요</h4>
+      <p>복잡한 실행 방법은 포탈이 숨겨주고, 사용자는 <em>"실행 버튼 하나"</em>로 모든 프로그램을 똑같이 쓸 수 있어요</p>
+    </div>
+    <div class="outcome-right"></div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">그 전에 확인할 일들</div>
+    <div class="pr-body">
+      <strong>1. 각 서버는 얼마나 받을 수 있나?</strong> — 한 번에 처리할 수 있는 작업 수 한계 확인.<br/>
+      <strong>2. 대기열 시스템은 뭘로 할까?</strong> — 작업이 많을 때 줄을 어떻게 세울지 미리 정하기.<br/>
+      <strong>3. 도중에 서버가 멈추면?</strong> — 자동 재시도할지, 사용자에게 알릴지 정책 결정.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 04 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA C — Manifest
+════════════════════════════════════════ -->
+<section class="page idea-page idea-C" id="p5">
+  <div class="idea-hero">
+    <div class="ih-num">05</div>
+    <div class="ih-mid">
+      <h2>앱 명함 (Manifest) — <em>한 장에 다 적어요</em></h2>
+      <p>프로그램마다 이름·만든이·실행 방법·필요한 정보를 적은 작은 카드 한 장</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">한 장 카드</div>
+      <div class="ih-pill">한 곳에 모음</div>
+    </div>
+  </div>
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">프로그램에 붙이는 <em>"명함"</em>이에요</div>
+      <div class="eb-body">
+        명함을 보면 그 사람의 <strong>이름·회사·연락처·직책</strong>을 한 번에 알 수 있죠?
+        프로그램에도 똑같이 <strong>"이 앱은 누구 거고, 어떻게 실행하고, 누가 쓸 수 있는지"</strong>를 한 장에 적은 명함을 붙입니다.
+      </div>
+      <div class="eb-analogy">
+        식당 메뉴판이 음식 사진만 보여주는 게 아니라 <strong>가격·재료·매운맛 정도</strong>까지 적혀 있어야 손님이 안심하고 주문하잖아요?
+        앱 명함도 그런 역할이에요.
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon"></div>
+    <div class="ss-text">앱마다 명함 한 장을 작성하면, 포탈은 그것만으로 <strong>등록 화면·실행 폼·권한 체크</strong>를 자동으로 만들어줍니다</div>
+  </div>
+
+  <div class="code-block">
+<span class="c"># LS-DYNA K File Checker — manifest 예시</span>
+<span class="k">id</span>: <span class="v">lsdyna_kfile_checker</span>
+<span class="k">name</span>: <span class="v">LS-DYNA K File Checker</span>
+<span class="k">version</span>: <span class="v">1.2.0</span>
+<span class="k">owner</span>: <span class="v">CAE Automation Part</span>
+<span class="k">status</span>: <span class="v">stable</span>           <span class="c"># draft / beta / stable / deprecated / archived</span>
+<span class="k">app_type</span>: <span class="v">cli_tool</span>
+<span class="k">execution_target</span>: <span class="v">linux_runner</span>
+
+<span class="k">launch</span>:
+  <span class="k">mode</span>: <span class="v">job_runner</span>
+  <span class="k">command</span>: <span class="s">./run.sh input output params.json</span>
+
+<span class="k">inputs</span>:
+  - <span class="k">name</span>: <span class="v">k_file</span>
+    <span class="k">type</span>: <span class="v">file</span>
+    <span class="k">required</span>: <span class="v">true</span>
+    <span class="k">extensions</span>: <span class="s">[".k", ".key"]</span>
+
+<span class="k">outputs</span>:
+  - <span class="k">name</span>: <span class="v">report_html</span>
+    <span class="k">path</span>: <span class="v">output/report.html</span>
+  - <span class="k">name</span>: <span class="v">summary_json</span>
+    <span class="k">path</span>: <span class="v">output/result.json</span>
+
+<span class="k">permissions</span>:
+  <span class="k">visibility</span>: <span class="v">team</span>           <span class="c"># private / team / department / company</span>
+  <span class="k">executable_by</span>: <span class="s">["cae_engineer", "admin"]</span>
+
+<span class="k">resources</span>:
+  <span class="k">cpu</span>: <span class="v">4</span>
+  <span class="k">memory_gb</span>: <span class="v">8</span>
+  <span class="k">gpu</span>: <span class="v">false</span>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">🆔</div>
+      <div class="ql-title">기본 정보</div>
+      <div class="ql-desc">이름 · 버전 · 만든이<br/>상태 · 검색용 태그</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">⚡</div>
+      <div class="ql-title">실행 방법</div>
+      <div class="ql-desc">어떤 종류인지 · 어디서 도나<br/>어떤 명령으로 실행</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📥</div>
+      <div class="ql-title">입력 · 결과</div>
+      <div class="ql-desc">어떤 파일·옵션을 받는지<br/>어떤 결과를 만드는지</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🔐</div>
+      <div class="ql-title">권한 · 필요 자원</div>
+      <div class="ql-desc">누가 쓸 수 있나<br/>CPU·메모리 얼마나 필요한가</div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt3">
+    <div class="outcome-left">
+      <h4>이렇게 되면 좋아요</h4>
+      <p>포탈은 명함 한 장만 읽으면 <em>등록 화면·실행 폼·권한 체크</em>까지 자동으로 만들어줍니다</p>
+    </div>
+    <div class="outcome-right"></div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">그 전에 확인할 일들</div>
+    <div class="pr-body">
+      <strong>1. 명함 양식이 바뀌면?</strong> — 양식 자체에도 버전이 있어야 옛날 앱도 계속 작동해요.<br/>
+      <strong>2. 잘못 쓴 명함은 누가 잡아주나?</strong> — 자동으로 문법 검사해주는 도구 준비.<br/>
+      <strong>3. 옛날 버전 명함도 보관?</strong> — 6개월 전 결과를 재현하려면 그때 명함도 남아 있어야 해요.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 05 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA D — Job Standard
+════════════════════════════════════════ -->
+<section class="page idea-page idea-D" id="p6">
+  <div class="idea-hero">
+    <div class="ih-num">06</div>
+    <div class="ih-mid">
+      <h2>작업 번호 규칙 — <em>실행마다 한 폴더에 다 모아요</em></h2>
+      <p>한 번 실행할 때마다 번호를 부여하고, 그 폴더 안에 입력·결과·기록을 전부 모읍니다</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">재현 가능</div>
+      <div class="ih-pill">추적 가능</div>
+    </div>
+  </div>
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">실행 한 번마다 <em>"증빙 폴더"</em>를 하나씩 만드는 거예요</div>
+      <div class="eb-body">
+        영수증을 카드별·날짜별로 한 봉투에 모아두면 나중에 찾기 쉽잖아요?
+        실행 한 번이 끝날 때마다 <strong>"무엇을 입력했고, 어떤 옵션이었고, 결과는 뭐고, 로그는 이거다"</strong>를 한 폴더에 다 모아 둡니다.
+      </div>
+      <div class="eb-analogy">
+        병원 진료기록을 생각해 보세요. 진료 한 번마다 <strong>"환자 정보·증상·진단·처방"</strong>이 한 차트에 다 모여요.
+        6개월 뒤 다시 와도 그 차트만 보면 됩니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon"></div>
+    <div class="ss-text">실행하면 자동으로 <strong>작업번호 폴더</strong>가 생기고, 입력·결과·기록이 한곳에 — <strong>6개월 뒤에도 그대로 다시 돌릴 수 있어요</strong></div>
+  </div>
+
+  <div class="code-block">
+<span class="c"># 표준 Job 폴더 구조</span>
+/storage/automation_jobs/
+ └─ job_20260527_0001/
+     ├─ input/                  <span class="c"># 업로드 파일 · 참조 파일</span>
+     │   └─ uploaded_file.k
+     ├─ work/                   <span class="c"># 중간 산출물 (선택)</span>
+     ├─ <span class="k">output/</span>
+     │   ├─ <span class="v">result.json</span>          <span class="c"># 표준 결과 요약 (필수)</span>
+     │   ├─ <span class="v">report.html</span>          <span class="c"># 사람이 읽는 리포트</span>
+     │   ├─ plots/
+     │   └─ <span class="v">output.zip</span>           <span class="c"># 전체 결과 묶음</span>
+     ├─ logs/
+     │   ├─ stdout.log · stderr.log
+     │   └─ app.log   · runner.log
+     └─ <span class="k">params.json</span>              <span class="c"># 사용자 실행 파라미터</span>
+  </div>
+
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">지금</div>
+      <div class="ib-scene">결과가 사용자 PC · 메일 첨부 · USB로 흩어짐</div>
+      <div class="ib-result">3개월 전 결과를<br/>다시 찾을 수 없어요</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">작업 번호 폴더</div>
+      <div class="ib-scene">한 폴더에 입력·결과·기록 다 모임</div>
+      <div class="ib-result"><em>언제든 다시 돌리고</em><br/>검증할 수 있어요</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 한곳에 모이는 입력</div>
+      <div class="tr-title">올린 파일 · 선택한 옵션</div>
+      <div class="tr-body">
+        <ul>
+          <li>사용자가 올린 입력 파일</li>
+          <li>"이 옵션으로 돌렸어요" 기록</li>
+          <li>당시 실행 환경 정보</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 한곳에 모이는 기록</div>
+      <div class="tr-title">실행 중 일어난 모든 일</div>
+      <div class="tr-body">
+        <ul>
+          <li>언제 시작/끝났는지 · 누가</li>
+          <li>어느 버전 프로그램이었는지</li>
+          <li>경고·에러 메시지</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 한곳에 모이는 결과</div>
+      <div class="tr-title">요약 · 리포트 · 전체 파일</div>
+      <div class="tr-body">
+        <ul>
+          <li><strong>요약</strong> — "성공/실패, 핵심 숫자"</li>
+          <li><strong>리포트</strong> — 사람이 보는 보고서</li>
+          <li><strong>압축본</strong> — 모든 결과 한 파일로</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">🔁</div>
+      <div class="ql-title">다시 돌릴 수 있음</div>
+      <div class="ql-desc">버전·옵션·입력이 다 있어서<br/>똑같이 재현 가능</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📋</div>
+      <div class="ql-title">추적 가능</div>
+      <div class="ql-desc">누가 · 언제 · 어떤 버전으로<br/>실행했는지 다 보임</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🔌</div>
+      <div class="ql-title">다른 도구와 연결</div>
+      <div class="ql-desc">외부 시스템이 작업 상태를<br/>쉽게 가져갈 수 있음</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">💾</div>
+      <div class="ql-title">정리 · 보관</div>
+      <div class="ql-desc">한 폴더 단위로 백업하거나<br/>오래된 건 자동 정리</div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt4">
+    <div class="outcome-left">
+      <h4>이렇게 되면 좋아요</h4>
+      <p>모든 실행이 <em>"다시 돌릴 수 있는 한 묶음"</em>으로 저장되어, 검증·디버깅·재검토가 바로 됩니다</p>
+    </div>
+    <div class="outcome-right"></div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">그 전에 확인할 일들</div>
+    <div class="pr-body">
+      <strong>1. 결과를 얼마나 보관할까?</strong> — 큰 결과 파일은 디스크가 빨리 차요. 기간·용량 정책 필요.<br/>
+      <strong>2. 결과 요약 항목 통일</strong> — 앱마다 다른 결과를 "성공/실패·요약·경고" 같이 정리하기.<br/>
+      <strong>3. 로그가 너무 길어지면?</strong> — 중요한 내용만 따로 보기 쉽게 모아두기.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 06 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA E — Windows GUI Integration
+════════════════════════════════════════ -->
+<section class="page idea-page idea-E" id="p7">
+  <div class="idea-hero">
+    <div class="ih-num">07</div>
+    <div class="ih-mid">
+      <h2>윈도우 프로그램 — <em>3가지 합치는 방법</em></h2>
+      <p>창이 뜨는 윈도우 EXE도 포탈의 흐름에 자연스럽게 합쳐질 수 있어요</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">3가지 방법</div>
+      <div class="ih-pill">점진 도입</div>
+    </div>
+  </div>
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">윈도우 프로그램을 <em>"심부름꾼"</em>이 대신 실행하는 방법이에요</div>
+      <div class="eb-body">
+        포탈이 사는 곳은 보통 리눅스 서버라서, 윈도우 EXE를 직접 못 돌려요.
+        그래서 <strong>윈도우 PC에 "심부름꾼"을 한 명 두고</strong>, 포탈이 "이거 좀 돌려줘" 하면 심부름꾼이 대신 실행하고 결과를 가져옵니다.
+      </div>
+      <div class="eb-analogy">
+        외국 손님에게 전화로 주문할 때, 직접 말이 안 통하면 통역사를 끼우잖아요?
+        <strong>심부름꾼(Worker Agent)이 그 통역사</strong>입니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon"></div>
+    <div class="ss-text">윈도우 EXE도 <strong>"심부름꾼"</strong>이 대신 실행하고 결과를 포탈로 가져옵니다 — 사용자는 윈도우인지 리눅스인지 신경 쓰지 않아도 돼요</div>
+  </div>
+
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">지금</div>
+      <div class="ib-scene">각자 PC에 설치하고 직접 결과 챙김</div>
+      <div class="ib-result">버전 관리 어렵고<br/>결과가 흩어집니다</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">심부름꾼 방식</div>
+      <div class="ib-scene">포탈 → 심부름꾼 → EXE → 결과 자동 회수</div>
+      <div class="ib-result"><em>윈도우 프로그램도</em><br/>작업 번호로 기록돼요</div>
+    </div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">💻</div>
+      <div class="ql-title">① 사용자 PC에서</div>
+      <div class="ql-desc">포탈에서 클릭 → 내 PC의 앱이 실행<br/>(설치는 PC마다 필요)</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🖥️</div>
+      <div class="ql-title">② 윈도우 서버 원격</div>
+      <div class="ql-desc">원격 데스크톱으로 접속해서 사용<br/>(중앙 관리는 편함)</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🤖</div>
+      <div class="ql-title">③ 심부름꾼이 대신</div>
+      <div class="ql-desc">사용자 없어도 자동 실행<br/>(가장 완전한 통합)</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🧬</div>
+      <div class="ql-title">장기: 핵심 로직 분리</div>
+      <div class="ql-desc">창과 계산을 분리해서<br/>다양한 방식으로 쓸 수 있게</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 요청 (리눅스에서)</div>
+      <div class="tr-title">"이거 좀 돌려줘"</div>
+      <div class="tr-body">
+        <ul>
+          <li>어떤 앱을 쓸지 · 옵션 무엇</li>
+          <li>입력 파일 올리기</li>
+          <li>작업 번호 생성</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 심부름꾼 (윈도우에서)</div>
+      <div class="tr-title">EXE 대신 실행</div>
+      <div class="tr-body">
+        <ul>
+          <li>입력 파일 받기</li>
+          <li>EXE 실행 · 결과 생성</li>
+          <li>로그·요약 작성</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 회수 (리눅스로)</div>
+      <div class="tr-title">결과를 포탈에 업로드</div>
+      <div class="tr-body">
+        <ul>
+          <li>결과 폴더 압축 · 전송</li>
+          <li>"성공/실패" 상태 갱신</li>
+          <li>이력 기록</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt5">
+    <div class="outcome-left">
+      <h4>이렇게 되면 좋아요</h4>
+      <p>윈도우 EXE도 <em>포탈의 통합 흐름</em>에 자연스럽게 합쳐지고, 장기적으로는 핵심 계산 부분이 다양한 방식으로도 쓸 수 있게 됩니다</p>
+    </div>
+    <div class="outcome-right"></div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">그 전에 확인할 일들</div>
+    <div class="pr-body">
+      <strong>1. 사람 없이도 실행 가능?</strong> — 어떤 GUI 앱은 사람이 직접 클릭해야 작동해요. 우선 확인.<br/>
+      <strong>2. 심부름꾼 비용</strong> — 윈도우 서버 대수, 라이선스, 점검 인력 필요.<br/>
+      <strong>3. 통신 방식 선택</strong> — 어떤 방식으로 명령을 주고받을지 인프라에 맞춰 결정.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 07 / 08</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     PAGE 7 — SUMMARY / ROADMAP
+════════════════════════════════════════ -->
+<section class="page summary-page" id="p8">
+
+  <div class="easy-box">
+    <div class="eb-icon"></div>
+    <div class="eb-content">
+      <div class="eb-tag">이게 뭐예요?</div>
+      <div class="eb-title">한꺼번에 다 하지 말고 — <em>"단계별로 천천히"</em> 가자는 거예요</div>
+      <div class="eb-body">
+        모든 걸 한 번에 바꾸려 하면 다 망쳐요. <strong>먼저 GitHub에 모으고 → 카탈로그 만들고 → 작업 번호 도입 → 결과 통일 → 윈도우 합치기</strong>
+        순서로 나눠서 진행합니다. 1·2 단계만 끝나도 이미 큰 가치가 생깁니다.
+      </div>
+      <div class="eb-analogy">
+        새집으로 한 번에 다 이사 갈 수는 없잖아요? <strong>중요한 물건부터, 한 방씩 천천히</strong> 옮기는 것과 같습니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="pg-eyebrow">슬라이드 08 · 단계별 도입 + 10가지 약속</div>
+  <h2 class="pg-title">AI 자동화 포탈 <em>단계별 도입 계획</em></h2>
+  <p class="pg-desc">
+    처음부터 모든 걸 하지 않습니다. <strong>GitHub 이주 → 카탈로그 → 작업 기록 → 결과 통일 → 윈도우 합치기 → 핵심 분리</strong>
+    순서로 단계적으로 확장합니다.<br/>
+    각 단계는 다음 단계의 기초이며, <strong>0·1단계만으로도 이미 큰 도움</strong>이 됩니다.
+  </p>
+
+  <table class="sum-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>단계</th>
+        <th>하는 일</th>
+        <th>그 전에 필요한 것</th>
+        <th>시점</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="st-num n5" style="color:#16a34a;">0</td>
+        <td class="st-name">GitHub 사물함 + 기본 양식</td>
+        <td>기존 프로그램을 GitHub에 모으기 · 새 프로젝트용 양식 배포</td>
+        <td>GitHub 조직 정책 · 옮길 순서 결정</td>
+        <td><span class="badge-rank discover">토대 (가장 먼저)</span></td>
+      </tr>
+      <tr>
+        <td class="st-num n1">1</td>
+        <td class="st-name">앱 카탈로그 사이트</td>
+        <td>"어떤 앱이 있는지" 한 권의 사내 사이트</td>
+        <td>0단계 · 명함 양식 합의</td>
+        <td><span class="badge-rank start">빠르게 시작</span></td>
+      </tr>
+      <tr>
+        <td class="st-num n2">2</td>
+        <td class="st-name">실행 기록 모으기</td>
+        <td>누가 언제 무엇을 실행했나 작업 번호로 기록</td>
+        <td>1단계 완료 · 데이터 저장 설계</td>
+        <td><span class="badge-rank followup">다음 단계</span></td>
+      </tr>
+      <tr>
+        <td class="st-num n3">3</td>
+        <td class="st-name">결과 통일</td>
+        <td>모든 앱이 "요약 + 리포트 + 압축본" 같은 형태로</td>
+        <td>2단계 · 기존 앱 손보기</td>
+        <td><span class="badge-rank expand">핵심 진전</span></td>
+      </tr>
+      <tr>
+        <td class="st-num n4">4</td>
+        <td class="st-name">윈도우 합치기</td>
+        <td>윈도우 EXE를 심부름꾼으로 자동 실행</td>
+        <td>3단계 · 심부름꾼 만들기</td>
+        <td><span class="badge-rank recall">확장</span></td>
+      </tr>
+      <tr>
+        <td class="st-num n5">5</td>
+        <td class="st-name">핵심 로직 분리</td>
+        <td>창과 계산 부분을 떼어 여러 방식으로 쓸 수 있게</td>
+        <td>4단계 · 리팩토링 인력</td>
+        <td><span class="badge-rank discover">장기 진화</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 10가지 약속 (쉬운 버전) -->
+  <div class="rules-grid">
+    <div class="rule-item"><div class="rl-num">01</div><div class="rl-text">모든 앱은 <strong>"명함" 한 장</strong>을 가진다</div></div>
+    <div class="rule-item"><div class="rl-num">02</div><div class="rl-text">모든 앱은 <strong>"종류 라벨"</strong>을 가진다</div></div>
+    <div class="rule-item"><div class="rl-num">03</div><div class="rl-text">모든 앱은 <strong>"어디서 도는지"</strong> 적는다</div></div>
+    <div class="rule-item"><div class="rl-num">04</div><div class="rl-text"><strong>만든 이 · 버전 · 상태</strong>를 적는다</div></div>
+    <div class="rule-item"><div class="rl-num">05</div><div class="rl-text">실행은 <strong>"동일한 방식"</strong>으로 부른다</div></div>
+    <div class="rule-item"><div class="rl-num">06</div><div class="rl-text">모든 실행은 <strong>"작업 번호"</strong>로 관리한다</div></div>
+    <div class="rule-item"><div class="rl-num">07</div><div class="rl-text">입력 파일과 옵션은 <strong>한 폴더</strong>에 모은다</div></div>
+    <div class="rule-item"><div class="rl-num">08</div><div class="rl-text">결과는 <strong>요약·리포트·압축본</strong> 세 가지</div></div>
+    <div class="rule-item"><div class="rl-num">09</div><div class="rl-text">실행 중 일어난 일은 <strong>로그</strong>로 남긴다</div></div>
+    <div class="rule-item"><div class="rl-num">10</div><div class="rl-text"><strong>누가·언제·어느 버전</strong>으로 했는지 기록</div></div>
+  </div>
+
+  <div class="next-step">
+    <h3>핵심 한 줄 · <em>"프로그램은 그대로 두고, 부르는 방법만 통일하자"</em></h3>
+    <p>
+      여러 종류의 자동화 프로그램이 섞여 있을 때 정답은 <strong>"하나로 다시 만드는 것"</strong>이 아닙니다.<br/>
+      <strong>프로그램은 지금 모습 그대로 두고</strong>, 등록·실행·결과 회수·기록 방식만 같이 맞춥니다.<br/>
+      그 시작은 <strong>GitHub에 모으는 것</strong>이고, 새 프로젝트는 <strong>기본 양식으로 즉시 시작</strong>합니다.<br/><br/>
+      이렇게 하면, AI로 빠르게 만든 흩어진 자동화 프로그램들이
+      <strong>"누구 PC에 있는지 모를 스크립트 더미"</strong>가 아니라,
+      한 곳에서 찾아 쓰고 결과를 모을 수 있는 <strong>회사의 자산</strong>이 됩니다.
+    </p>
+  </div>
+
+  <div class="pg-num">PAGE 08 / 08</div>
+</section>
+
+</div><!-- /pages -->
+</body>
+</html>

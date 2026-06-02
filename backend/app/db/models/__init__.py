@@ -1,0 +1,20 @@
+"""SQLAlchemy ORM models. Importing this package registers all tables on Base.metadata."""
+from app.db.models.app import App  # noqa: F401
+from app.db.models.app_version import AppVersion  # noqa: F401
+from app.db.models.audit_log import AuditLog  # noqa: F401
+from app.db.models.job import Job  # noqa: F401
+from app.db.models.permission import Permission  # noqa: F401
+from app.db.models.submission import Submission  # noqa: F401
+from app.db.models.user import User  # noqa: F401
+from app.db.models.user_favorite import UserFavorite  # noqa: F401
+from app.db.models.refresh_token import RefreshToken  # noqa: F401
+from app.db.models.port_allocation import PortAllocation  # noqa: F401
+from app.db.models.secret_value import SecretValue  # noqa: F401
+from app.db.models.change_request import ChangeRequest  # noqa: F401
+from app.db.models.license_pool import LicensePool  # noqa: F401
+from app.db.models.license_holding import LicenseHolding  # noqa: F401
+from app.db.models.gpu_device import GpuDevice  # noqa: F401
+from app.db.models.gpu_holding import GpuHolding  # noqa: F401
+from app.db.models.service_instance import ServiceInstance  # noqa: F401
+from app.db.models.windows_agent import WindowsAgent  # noqa: F401
+from app.db.models.installer_package import InstallerPackage  # noqa: F401

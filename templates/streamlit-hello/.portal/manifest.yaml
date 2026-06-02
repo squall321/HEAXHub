@@ -1,0 +1,41 @@
+schema_version: 2
+id: streamlit_hello
+name: Streamlit Hello (fixture)
+version: 0.1.0
+owner: cae-automation
+status: draft
+app_type: web_app
+execution_target: linux_runner
+
+description: |
+  Minimal long-running web_app fixture used by HEAXHub E2E tests. Implemented as a
+  zero-dependency Python http.server so the test suite does not require Streamlit
+  itself. Exposes / (HTML hello page) and /healthz (200 OK).
+
+tags:
+  - template
+  - fixture
+  - webapp
+
+launch:
+  mode: service
+  command: ./.portal/run.sh
+  base_path_aware: true
+  health_check:
+    path: /healthz
+    interval_seconds: 5
+    timeout_seconds: 3
+  restart_policy:
+    policy: on_failure
+    max_attempts: 3
+
+permissions:
+  visibility: team
+
+resources:
+  cpu: 1
+  memory_gb: 1
+  gpu: false
+
+requirements:
+  os: linux

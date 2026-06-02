@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Living Memory — 사진이 그날을 안다</title>
+<style>
+:root{
+  --blue:#1e40af; --blue2:#3b82f6; --blue-dark:#1e3a8a;
+  --light:#eff6ff; --dark:#0f172a; --darker:#020617;
+  --gray:#64748b; --border:#e2e8f0;
+  --green:#16a34a; --orange:#ea580c;
+  --red:#dc2626; --purple:#7c3aed; --teal:#0d9488;
+  --cyan:#0891b2; --amber:#d97706; --pink:#db2777;
+  --indigo:#4338ca;
+  --sensor:#7c3aed;
+  --cae:#0891b2;
+  --vai:#16a34a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:'Segoe UI','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+  background:#f1f5f9;color:var(--dark);}
+
+.nav{position:fixed;top:0;left:0;right:0;z-index:200;
+  background:var(--darker);color:#fff;height:50px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 1.6rem;font-size:.8rem;box-shadow:0 2px 10px rgba(0,0,0,.3);}
+.nav-title{font-weight:800;letter-spacing:.04em;display:flex;align-items:center;gap:.8rem;}
+.nav-badge{background:rgba(217,119,6,.3);border:1px solid rgba(217,119,6,.55);
+  color:#fcd34d;padding:.25rem .75rem;border-radius:100px;font-size:.7rem;font-weight:700;}
+.nav-pages{display:flex;gap:.35rem;flex-wrap:wrap;}
+.nav-pages a{background:#1e293b;color:#94a3b8;text-decoration:none;
+  padding:.28rem .65rem;border-radius:5px;font-size:.7rem;font-weight:700;transition:all .15s;}
+.nav-pages a:hover{background:var(--amber);color:#fff;}
+
+.pages{padding-top:50px;}
+.page{min-height:calc(100vh - 50px);display:flex;flex-direction:column;
+  scroll-margin-top:50px;position:relative;}
+
+/* ── COVER ── */
+.page-cover{
+  background:linear-gradient(140deg,#020617 0%,#1e1b4b 40%,#4338ca 100%);
+  justify-content:center;padding:3.5rem 5rem;overflow:hidden;}
+.page-cover::after{content:'';position:absolute;right:-100px;top:-80px;
+  width:480px;height:480px;border-radius:50%;
+  background:radial-gradient(circle,rgba(252,211,77,.22) 0%,transparent 70%);}
+.page-cover::before{content:'';position:absolute;left:-60px;bottom:-60px;
+  width:320px;height:320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(67,56,202,.32) 0%,transparent 70%);}
+
+.cover-eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.25em;
+  text-transform:uppercase;color:#fcd34d;margin-bottom:1.1rem;display:flex;align-items:center;gap:.7rem;}
+.cover-eyebrow::before{content:'';display:block;width:28px;height:2px;background:#fcd34d;}
+
+.cover-h1{font-size:3.4rem;font-weight:900;color:#fff;line-height:1.05;
+  margin-bottom:.6rem;letter-spacing:-.02em;position:relative;z-index:2;}
+.cover-h1 em{font-style:normal;color:#fcd34d;}
+.cover-sub{font-size:1.05rem;color:rgba(255,255,255,.8);font-weight:500;
+  margin-bottom:1.8rem;line-height:1.6;max-width:780px;position:relative;z-index:2;}
+
+/* relation note (EXIF+ 위 한 층) */
+.relation-note{background:rgba(255,255,255,.06);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:1rem 1.3rem;
+  margin-bottom:1.6rem;max-width:780px;position:relative;z-index:2;
+  display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:center;}
+.rn-stack{display:flex;flex-direction:column;gap:.3rem;}
+.rn-layer{font-size:.72rem;font-weight:800;letter-spacing:.04em;padding:.3rem .7rem;border-radius:6px;
+  display:flex;align-items:center;gap:.4rem;}
+.rn-layer.bottom{background:rgba(22,163,74,.2);color:#86efac;border-left:3px solid #86efac;}
+.rn-layer.top{background:rgba(252,211,77,.18);color:#fcd34d;border-left:3px solid #fcd34d;}
+.rn-text{font-size:.82rem;color:rgba(255,255,255,.78);line-height:1.6;}
+.rn-text strong{color:#fcd34d;}
+
+.cover-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;
+  max-width:780px;position:relative;z-index:2;}
+.kpi{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;padding:.9rem 1.1rem;text-align:center;}
+.kpi .n{font-size:1.7rem;font-weight:900;color:#fff;line-height:1;}
+.kpi .n em{font-style:normal;color:#fcd34d;}
+.kpi .l{font-size:.64rem;color:rgba(255,255,255,.6);text-transform:uppercase;
+  letter-spacing:.1em;margin-top:.4rem;font-weight:700;}
+
+.cover-pg{position:absolute;bottom:1.8rem;right:2.3rem;
+  font-size:.7rem;color:rgba(255,255,255,.35);font-weight:700;letter-spacing:.1em;}
+
+/* ── CONCEPT PAGE ── */
+.concept-page{background:#fff;padding:2.8rem 4.5rem;justify-content:flex-start;}
+.concept-hero{background:linear-gradient(135deg,#020617,#1e1b4b);border-radius:14px;
+  padding:1.5rem 1.9rem;margin-bottom:1.3rem;color:#fff;
+  border-left:5px solid #fcd34d;}
+.concept-hero .ch-eyebrow{font-size:.66rem;font-weight:800;letter-spacing:.2em;
+  text-transform:uppercase;color:#fcd34d;margin-bottom:.5rem;}
+.concept-hero h2{font-size:1.7rem;font-weight:900;color:#fff;line-height:1.25;margin-bottom:.5rem;}
+.concept-hero h2 em{font-style:normal;color:#fcd34d;}
+.concept-hero p{font-size:.92rem;color:rgba(255,255,255,.82);line-height:1.65;}
+.concept-hero p strong{color:#fcd34d;}
+
+/* 3-stage flow: Capture → Augment → Recall */
+.flow-diagram{display:grid;grid-template-columns:1fr 40px 1fr 40px 1fr;align-items:stretch;
+  margin-bottom:1.3rem;gap:0;}
+.flow-stage{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:1rem 1rem;
+  display:flex;flex-direction:column;gap:.45rem;position:relative;border-top:3px solid;}
+.flow-stage.s1{border-top-color:var(--indigo);}
+.flow-stage.s2{border-top-color:var(--amber);background:linear-gradient(180deg,#fffbeb,#fff);}
+.flow-stage.s3{border-top-color:var(--pink);}
+.flow-stage .fs-when{font-size:.6rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gray);}
+.flow-stage .fs-title{font-size:.95rem;font-weight:900;line-height:1.25;}
+.flow-stage.s1 .fs-title{color:var(--indigo);}
+.flow-stage.s2 .fs-title{color:var(--amber);}
+.flow-stage.s3 .fs-title{color:var(--pink);}
+.flow-stage .fs-body{font-size:.72rem;color:#475569;line-height:1.55;}
+.flow-stage .fs-body code{background:#f1f5f9;color:#0f172a;padding:.1em .4em;border-radius:3px;
+  font-family:'Consolas',monospace;font-size:.92em;}
+.flow-arrow{display:flex;align-items:center;justify-content:center;
+  font-size:1.6rem;font-weight:900;color:#fcd34d;}
+
+/* Sample memory mock (그날의 narrative 예시) */
+.memory-mock{background:linear-gradient(135deg,#1e1b4b,#4338ca);border-radius:12px;
+  padding:1.2rem 1.4rem;margin-bottom:1.3rem;color:#fff;
+  border:1px solid rgba(252,211,77,.3);}
+.mm-label{font-size:.62rem;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+  color:#fcd34d;margin-bottom:.5rem;}
+.mm-stage{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;align-items:start;}
+.mm-meta{font-family:'Consolas','Menlo',monospace;font-size:.72rem;line-height:1.7;color:#c7d2fe;}
+.mm-meta .k{color:#86efac;} .mm-meta .v{color:#fcd34d;} .mm-meta .c{color:#94a3b8;font-style:italic;}
+.mm-narr{background:rgba(255,255,255,.05);border-left:3px solid #fcd34d;border-radius:0 8px 8px 0;
+  padding:.85rem 1rem;}
+.mm-narr .mn-quote{font-size:.78rem;color:rgba(255,255,255,.7);font-style:italic;margin-bottom:.5rem;}
+.mm-narr .mn-caption{font-size:.88rem;font-weight:700;color:#fff;line-height:1.6;}
+.mm-narr .mn-caption em{font-style:normal;color:#fcd34d;background:linear-gradient(180deg,transparent 55%,rgba(252,211,77,.25) 55%);padding:0 .15rem;}
+
+/* 5 sub-task teasers */
+.teaser-row{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem;margin-bottom:1.2rem;}
+.teaser{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:.8rem .75rem;
+  border-top:3px solid;position:relative;}
+.teaser.tA{border-top-color:var(--cyan);}
+.teaser.tB{border-top-color:var(--purple);}
+.teaser.tC{border-top-color:var(--amber);}
+.teaser.tD{border-top-color:var(--pink);}
+.teaser.tE{border-top-color:var(--green);}
+.teaser .ts-num{position:absolute;top:.4rem;right:.6rem;font-size:.68rem;font-weight:900;
+  color:#cbd5e1;font-family:'Consolas',monospace;}
+.teaser .ts-icon{font-size:1.2rem;margin-bottom:.25rem;}
+.teaser .ts-title{font-size:.78rem;font-weight:800;color:var(--dark);line-height:1.3;margin-bottom:.2rem;}
+.teaser .ts-desc{font-size:.65rem;color:var(--gray);line-height:1.45;}
+
+/* 4 source layers strip */
+.source-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem;}
+.source-card{background:#0f172a;color:#fff;border-radius:10px;padding:.85rem 1rem;border-left:3px solid;}
+.source-card.s1{border-left-color:#86efac;}
+.source-card.s2{border-left-color:#67e8f9;}
+.source-card.s3{border-left-color:#c4b5fd;}
+.source-card.s4{border-left-color:#fcd34d;}
+.source-card .src-name{font-size:.74rem;font-weight:900;color:#fff;margin-bottom:.25rem;display:flex;align-items:center;gap:.4rem;}
+.source-card .src-desc{font-size:.66rem;color:rgba(255,255,255,.7);line-height:1.5;}
+
+/* ── IDEA PAGE ── */
+.idea-page{background:#fff;padding:3rem 4.5rem;justify-content:flex-start;}
+.idea-page:nth-child(odd){background:#f8fafc;}
+
+.idea-hero{display:grid;grid-template-columns:auto 1fr auto;gap:1.5rem;align-items:center;
+  background:linear-gradient(135deg,#020617,#1e1b4b);border-radius:14px;
+  padding:1.3rem 1.7rem;margin-bottom:1.4rem;color:#fff;
+  border-left:5px solid var(--idea-color, #fcd34d);}
+.idea-hero .ih-num{font-size:3rem;font-weight:900;line-height:1;color:var(--idea-color,#fcd34d);
+  font-family:'Consolas',monospace;}
+.idea-hero .ih-mid h2{font-size:1.4rem;font-weight:900;color:#fff;line-height:1.2;margin-bottom:.3rem;}
+.idea-hero .ih-mid h2 em{font-style:normal;color:#fcd34d;}
+.idea-hero .ih-mid p{font-size:.82rem;color:rgba(255,255,255,.75);line-height:1.55;font-style:italic;}
+.idea-hero .ih-tag{display:flex;flex-direction:column;gap:.3rem;flex-shrink:0;}
+.ih-pill{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;
+  padding:.25rem .7rem;border-radius:100px;font-size:.65rem;font-weight:700;
+  letter-spacing:.04em;text-align:center;white-space:nowrap;}
+.ih-pill.primary{background:rgba(252,211,77,.2);border-color:rgba(252,211,77,.45);color:#fcd34d;}
+
+.idea-A{--idea-color:#0891b2;}
+.idea-B{--idea-color:#7c3aed;}
+.idea-C{--idea-color:#d97706;}
+.idea-D{--idea-color:#db2777;}
+.idea-E{--idea-color:#16a34a;}
+
+/* scenario strip */
+.scenario-strip{background:linear-gradient(90deg,#0f172a,#1e1b4b);border-radius:10px;
+  padding:.7rem 1.1rem;margin-bottom:1.1rem;display:flex;align-items:center;gap:.85rem;
+  border-left:4px solid var(--idea-color,#fcd34d);}
+.scenario-strip .ss-icon{font-size:1.4rem;flex-shrink:0;}
+.scenario-strip .ss-text{color:#fff;font-size:.84rem;font-weight:600;line-height:1.5;}
+.scenario-strip .ss-text strong{color:#fcd34d;font-weight:800;}
+
+/* Before/After */
+.impact-band{display:grid;grid-template-columns:1fr 56px 1fr;gap:0;
+  margin-bottom:1.1rem;border-radius:14px;overflow:hidden;
+  box-shadow:0 4px 16px rgba(0,0,0,.08);}
+.ib-before,.ib-after{padding:1rem 1.2rem;display:flex;flex-direction:column;gap:.5rem;}
+.ib-before{background:linear-gradient(135deg,#f8fafc,#f1f5f9);border:1.5px solid #cbd5e1;}
+.ib-after{background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fcd34d;}
+.ib-tag{font-size:.58rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:.4rem;width:fit-content;
+  padding:.18rem .6rem;border-radius:100px;}
+.ib-before .ib-tag{background:#e2e8f0;color:#475569;}
+.ib-after .ib-tag{background:rgba(217,119,6,.18);color:#92400e;}
+.ib-scene{font-size:.74rem;color:#64748b;line-height:1.5;font-style:italic;}
+.ib-result{font-size:.96rem;font-weight:900;line-height:1.4;}
+.ib-before .ib-result{color:#475569;}
+.ib-after .ib-result{color:#78350f;}
+.ib-after .ib-result em{font-style:normal;color:var(--idea-color,#92400e);
+  background:linear-gradient(180deg,transparent 55%,rgba(252,211,77,.5) 55%);padding:0 .15rem;}
+.ib-divider{display:flex;align-items:center;justify-content:center;
+  background:var(--idea-color,#fcd34d);color:#fff;font-weight:900;font-size:1.3rem;position:relative;}
+.ib-divider::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.25);}
+.ib-divider span{position:relative;z-index:2;}
+
+/* Qualitative effect cards */
+.qual-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.65rem;margin-bottom:1.1rem;}
+.qual{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+  padding:.85rem .8rem;text-align:center;position:relative;overflow:hidden;
+  border-top:3px solid var(--idea-color,#fcd34d);}
+.qual .ql-icon{font-size:1.3rem;margin-bottom:.3rem;}
+.qual .ql-title{font-size:.78rem;font-weight:800;color:var(--dark);line-height:1.3;margin-bottom:.25rem;}
+.qual .ql-desc{font-size:.66rem;color:var(--gray);line-height:1.45;}
+
+/* 입력 / 처리 / 출력 트랙 */
+.track-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem;margin-bottom:1.1rem;}
+.track{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:.9rem 1rem;border-top:3px solid;}
+.track.in{border-top-color:#0891b2;}
+.track.proc{border-top-color:#7c3aed;}
+.track.out{border-top-color:#16a34a;}
+.tr-head{font-size:.62rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;margin-bottom:.45rem;}
+.track.in .tr-head{color:#0891b2;}
+.track.proc .tr-head{color:#7c3aed;}
+.track.out .tr-head{color:#16a34a;}
+.tr-title{font-size:.86rem;font-weight:900;color:var(--dark);line-height:1.25;margin-bottom:.4rem;}
+.tr-body{font-size:.72rem;color:#475569;line-height:1.55;}
+.tr-body ul{list-style:none;padding:0;}
+.tr-body ul li{position:relative;padding-left:.85rem;margin-bottom:.2rem;}
+.tr-body ul li::before{content:'▸';position:absolute;left:0;font-weight:900;}
+.track.in ul li::before{color:#0891b2;}
+.track.proc ul li::before{color:#7c3aed;}
+.track.out ul li::before{color:#16a34a;}
+
+/* outcome row */
+.outcome-row{display:grid;grid-template-columns:1fr auto;gap:1.2rem;align-items:center;
+  background:linear-gradient(135deg,#1e1b4b,#4338ca);border-radius:12px;
+  padding:1.05rem 1.4rem;color:#fff;}
+.outcome-row.alt1{background:linear-gradient(135deg,#155e75,#0891b2);}
+.outcome-row.alt2{background:linear-gradient(135deg,#581c87,#7c3aed);}
+.outcome-row.alt3{background:linear-gradient(135deg,#78350f,#d97706);}
+.outcome-row.alt4{background:linear-gradient(135deg,#831843,#db2777);}
+.outcome-row.alt5{background:linear-gradient(135deg,#14532d,#16a34a);}
+.outcome-left h4{font-size:.66rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(255,255,255,.65);margin-bottom:.35rem;}
+.outcome-left p{font-size:.98rem;font-weight:800;color:#fff;line-height:1.45;}
+.outcome-left p em{font-style:normal;color:#fcd34d;}
+.outcome-right{flex-shrink:0;font-size:2.4rem;}
+
+/* prereq panel */
+.prereq{background:#1e293b;border-radius:10px;padding:.85rem 1.1rem;margin-top:.9rem;color:#e2e8f0;}
+.prereq .pr-title{font-size:.62rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+  color:#fcd34d;margin-bottom:.4rem;}
+.prereq .pr-body{font-size:.72rem;line-height:1.6;color:#cbd5e1;}
+.prereq .pr-body strong{color:#fff;}
+
+/* opt-in 강조 패널 */
+.optin-note{background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fcd34d;
+  border-radius:10px;padding:.75rem 1.1rem;margin-bottom:1.1rem;display:flex;align-items:center;gap:.7rem;}
+.optin-note .on-icon{font-size:1.2rem;flex-shrink:0;}
+.optin-note .on-text{font-size:.78rem;color:#78350f;font-weight:700;line-height:1.55;}
+.optin-note .on-text strong{color:#451a03;}
+
+.pg-num{position:absolute;bottom:1.5rem;right:2.3rem;
+  font-size:.7rem;color:#cbd5e1;font-weight:700;letter-spacing:.1em;}
+
+/* Summary */
+.summary-page{background:#fff;padding:3rem 4.5rem;}
+.summary-page .pg-eyebrow{font-size:.7rem;font-weight:800;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--amber);margin-bottom:.5rem;}
+.summary-page .pg-title{font-size:2.1rem;font-weight:900;line-height:1.1;margin-bottom:.4rem;color:var(--dark);}
+.summary-page .pg-title em{font-style:normal;color:var(--amber);}
+.summary-page .pg-desc{font-size:.88rem;color:var(--gray);margin-bottom:1.4rem;max-width:860px;line-height:1.65;}
+
+.sum-table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;
+  overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06);margin-bottom:1.2rem;}
+.sum-table th{background:#0f172a;color:#e2e8f0;padding:.55rem .8rem;font-size:.66rem;
+  font-weight:800;text-transform:uppercase;letter-spacing:.06em;text-align:left;}
+.sum-table td{padding:.6rem .8rem;border-bottom:1px solid #f1f5f9;font-size:.76rem;
+  color:#334155;vertical-align:middle;}
+.sum-table tr:last-child td{border-bottom:none;}
+.sum-table tr:hover td{background:#fefce8;}
+.sum-table .st-num{font-family:'Consolas',monospace;font-weight:900;font-size:.9rem;width:38px;text-align:center;}
+.sum-table .st-num.nA{color:#0891b2;}
+.sum-table .st-num.nB{color:#7c3aed;}
+.sum-table .st-num.nC{color:#d97706;}
+.sum-table .st-num.nD{color:#db2777;}
+.sum-table .st-num.nE{color:#16a34a;}
+.sum-table .st-name{font-weight:800;color:var(--dark);}
+.sum-table .badge-rank{display:inline-block;padding:.15rem .55rem;border-radius:100px;
+  font-size:.64rem;font-weight:800;letter-spacing:.04em;}
+.sum-table .badge-rank.start{background:#fef3c7;color:#a16207;border:1px solid #fcd34d;}
+.sum-table .badge-rank.followup{background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;}
+.sum-table .badge-rank.expand{background:#fce7f3;color:#9d174d;border:1px solid #f9a8d4;}
+.sum-table .badge-rank.recall{background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;}
+.sum-table .badge-rank.discover{background:#dcfce7;color:#14532d;border:1px solid #86efac;}
+
+.next-step{background:linear-gradient(135deg,#020617,#1e1b4b);border-radius:14px;
+  padding:1.5rem 2rem;color:#fff;border-left:4px solid #fcd34d;}
+.next-step h3{font-size:1.1rem;font-weight:900;color:#fff;margin-bottom:.5rem;}
+.next-step h3 em{font-style:normal;color:#fcd34d;}
+.next-step p{font-size:.82rem;color:rgba(255,255,255,.78);line-height:1.7;}
+.next-step p strong{color:#fcd34d;}
+
+@media(max-width:900px){
+  .page-cover{padding:2.5rem 1.8rem;}
+  .cover-h1{font-size:2.2rem;}
+  .relation-note{grid-template-columns:1fr;}
+  .cover-kpi{grid-template-columns:repeat(2,1fr);}
+  .concept-page,.idea-page,.summary-page{padding:2rem 1.8rem;}
+  .flow-diagram{grid-template-columns:1fr;}
+  .flow-arrow{transform:rotate(90deg);height:30px;}
+  .mm-stage{grid-template-columns:1fr;}
+  .teaser-row{grid-template-columns:repeat(2,1fr);}
+  .source-strip{grid-template-columns:1fr;}
+  .idea-hero{grid-template-columns:1fr;gap:.8rem;}
+  .impact-band{grid-template-columns:1fr;}
+  .ib-divider{height:44px;}
+  .qual-row{grid-template-columns:repeat(2,1fr);}
+  .track-grid{grid-template-columns:1fr;}
+  .outcome-row{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-title">
+    Living Memory · 사진이 그날을 안다
+    <span class="nav-badge">EXIF+ 위의 Context Layer</span>
+  </div>
+  <div class="nav-pages">
+    <a href="#p0">00 Intro</a>
+    <a href="#p1">01 Concept</a>
+    <a href="#p2">02 Context Layer</a>
+    <a href="#p3">03 Voice Memo</a>
+    <a href="#p4">04 Augment Engine</a>
+    <a href="#p5">05 Memory Trigger</a>
+    <a href="#p6">06 Mood Map</a>
+    <a href="#p7">07 정리</a>
+  </div>
+</nav>
+
+<div class="pages">
+
+<!-- ════════════════════════════════════════
+     PAGE 0 — COVER
+════════════════════════════════════════ -->
+<section class="page page-cover" id="p0">
+  <div class="cover-eyebrow">MX 개발실 · 갤러리 추억 증강 과제 · 2026</div>
+
+  <div class="cover-h1">
+    Living Memory<br/>
+    <em>사진이 그날을 안다</em>
+  </div>
+  <div class="cover-sub">
+    날씨 · 음악 · 활동 · 일정 같은 그날의 맥락을 사진에 함께 담고, 짧은 음성 한 마디로 그날의 기분을 남긴 뒤,
+    AI가 이 모든 단서를 자연어 narrative로 가공해 6개월 · 1년 뒤에도 그날을 생생히 떠올릴 수 있게 한다.
+  </div>
+
+  <div class="relation-note">
+    <div class="rn-stack">
+      <div class="rn-layer top">🌌 Living Memory — Context Layer</div>
+      <div class="rn-layer bottom">📷 EXIF+ — Sensor Layer</div>
+    </div>
+    <div class="rn-text">
+      <strong>EXIF+</strong>가 모든 사진에 자동으로 깔리는 토대 인프라라면,<br/>
+      <strong>Living Memory</strong>는 그 위에 사용자가 <strong>선택적으로</strong> 풍부화하는 추억 증강 계층이다.<br/>
+      두 과제는 보완 관계로 함께 작동한다.
+    </div>
+  </div>
+
+  <div class="cover-kpi">
+    <div class="kpi"><div class="n">5</div><div class="l">세부 과제</div></div>
+    <div class="kpi"><div class="n">Opt-<em>in</em></div><div class="l">사용자 선택</div></div>
+    <div class="kpi"><div class="n">Voice<em>+</em></div><div class="l">음성 + 컨텍스트</div></div>
+    <div class="kpi"><div class="n">∞</div><div class="l">추억의 깊이</div></div>
+  </div>
+
+  <div class="cover-pg">PAGE 00 / 07</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     PAGE 1 — CONCEPT
+════════════════════════════════════════ -->
+<section class="page concept-page" id="p1">
+  <div class="concept-hero">
+    <div class="ch-eyebrow">SLIDE 01 · UNIFIED CONCEPT</div>
+    <h2>사진을 <em>"파일"</em>이 아니라 <em>"그날의 증인"</em>으로</h2>
+    <p>
+      갤럭시는 이미 그날의 <strong>날씨 · 일정 · 음악 · 동선 · 동행자</strong>를 안다.<br/>
+      Living Memory는 이 흩어진 단서들을 사진과 연결하고, 사용자의 짧은 음성 한 마디까지 더해
+      <strong>AI가 그날의 narrative를 다시 짜내는</strong> 추억 증강 인프라다.
+    </p>
+  </div>
+
+  <!-- 3-stage flow -->
+  <div class="flow-diagram">
+    <div class="flow-stage s1">
+      <div class="fs-when">① Capture (촬영)</div>
+      <div class="fs-title">사진 + 옵션 음성</div>
+      <div class="fs-body">셔터 직후 <code>3~5초 음성 윈도우</code>가 잠깐 열림. 한 마디 남기거나, 안 남기면 자동 닫힘 — <strong>완전 옵션</strong></div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-stage s2">
+      <div class="fs-when">② Augment (증강)</div>
+      <div class="fs-title">컨텍스트 자동 결합</div>
+      <div class="fs-body">위치·시각으로 <code>날씨</code>·<code>일출몰</code>·<code>달위상</code> 자동 보강. 캘린더·재생음악·헬스 데이터 cross-reference.</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-stage s3">
+      <div class="fs-when">③ Recall (회상)</div>
+      <div class="fs-title">AI narrative 재구성</div>
+      <div class="fs-body">사용자가 <strong>6개월·1년 뒤</strong> 사진을 다시 볼 때, LLM이 모든 단서를 종합해 그날을 자연어로 풀어냄</div>
+    </div>
+  </div>
+
+  <!-- Sample memory mock -->
+  <div class="memory-mock">
+    <div class="mm-label">▶ 예시 — 한 장의 사진이 가진 단서가 narrative가 되는 순간</div>
+    <div class="mm-stage">
+      <div class="mm-meta">
+        <span class="c">// 2025년 10월 19일 토요일</span><br/>
+        <span class="k">location</span>: <span class="v">"강원도 양양 죽도해변"</span><br/>
+        <span class="k">time</span>: <span class="v">16:23</span><br/>
+        <span class="k">weather</span>: <span class="v">14°C · 습도 78% · 북동풍 7m/s</span><br/>
+        <span class="k">sky</span>: <span class="v">"흐림 · 일몰 32분 전"</span><br/>
+        <span class="k">music_now</span>: <span class="v">"잔나비 - 사랑하긴 했었나요"</span><br/>
+        <span class="k">voice_memo</span>: <span class="v">"바람 미쳤다… 그래도 좋다"</span><br/>
+        <span class="k">voice_mood</span>: <span class="v">감탄 · 들뜸</span>
+      </div>
+      <div class="mm-narr">
+        <div class="mn-quote">🎙 "바람 미쳤다… 그래도 좋다"</div>
+        <div class="mn-caption">
+          <em>쌀쌀한 바람</em>과 함께한 죽도해변의 <em>늦가을 오후</em> —<br/>
+          잔잔한 노래를 들으며 <em>일몰을 기다리던</em> 그날.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5 sub-task teasers -->
+  <div class="teaser-row">
+    <div class="teaser tA">
+      <div class="ts-num">02</div>
+      <div class="ts-icon">🌤️</div>
+      <div class="ts-title">Context Layer</div>
+      <div class="ts-desc">날씨·캘린더·음악·<br/>활동 자동 결합</div>
+    </div>
+    <div class="teaser tB">
+      <div class="ts-num">03</div>
+      <div class="ts-icon">🎙️</div>
+      <div class="ts-title">Voice Memo</div>
+      <div class="ts-desc">셔터 직후<br/>음성 한 마디 옵션</div>
+    </div>
+    <div class="teaser tC">
+      <div class="ts-num">04</div>
+      <div class="ts-icon">✨</div>
+      <div class="ts-title">Augment Engine</div>
+      <div class="ts-desc">LLM이 단서를<br/>narrative로 재구성</div>
+    </div>
+    <div class="teaser tD">
+      <div class="ts-num">05</div>
+      <div class="ts-icon">🔔</div>
+      <div class="ts-title">Memory Trigger</div>
+      <div class="ts-desc">1년 전 오늘 ·<br/>비슷한 계절 회상</div>
+    </div>
+    <div class="teaser tE">
+      <div class="ts-num">06</div>
+      <div class="ts-icon">🗺️</div>
+      <div class="ts-title">Mood Map</div>
+      <div class="ts-desc">감정·계절·장소 기반<br/>갤러리 탐색</div>
+    </div>
+  </div>
+
+  <!-- 4 source layers -->
+  <div class="source-strip">
+    <div class="source-card s1">
+      <div class="src-name">📡 폰 내부 (EXIF+)</div>
+      <div class="src-desc">IMU · 온도 · 조도 · 마이크 · 위치</div>
+    </div>
+    <div class="source-card s2">
+      <div class="src-name">🌤️ 외부 데이터</div>
+      <div class="src-desc">날씨 · 일출몰 · 달위상 · 행사 API</div>
+    </div>
+    <div class="source-card s3">
+      <div class="src-name">📱 폰 내 다른 앱</div>
+      <div class="src-desc">캘린더 · 헬스 · 음악 · 연락처 (권한 기반)</div>
+    </div>
+    <div class="source-card s4">
+      <div class="src-name">🎙️ 사용자 자발 기록</div>
+      <div class="src-desc">음성 · 텍스트 · AI 질문 응답 (옵션)</div>
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 01 / 07</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA A — Context Layer
+════════════════════════════════════════ -->
+<section class="page idea-page idea-A" id="p2">
+  <div class="idea-hero">
+    <div class="ih-num">02</div>
+    <div class="ih-mid">
+      <h2>Context Layer — <em>외부 데이터 자동 보강</em></h2>
+      <p>위치·시각만 있으면 알 수 있는 날씨·캘린더·음악·활동을 사진에 자동으로 묶는다</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">먼저 시작</div>
+      <div class="ih-pill">기존 데이터 활용</div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon">🌤️</div>
+    <div class="ss-text">사진을 찍는 순간, <strong>"습도 78% · 북동풍 · 일몰 32분 전 · 그 시각 재생곡"</strong>이 EXIF+ 옆에 자동 첨부 — 사용자는 아무것도 하지 않음</div>
+  </div>
+
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">현재</div>
+      <div class="ib-scene">갤럭시가 이미 다 알지만 사진과 연결 안 됨</div>
+      <div class="ib-result">날씨 · 일정 · 음악 · 동선 모두<br/>각자의 앱에만 존재</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">Living Memory</div>
+      <div class="ib-scene">사진을 키로 모든 컨텍스트 자동 cross-link</div>
+      <div class="ib-result"><em>한 장의 사진이</em><br/>그날의 모든 단서를 가짐</div>
+    </div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">🌦️</div>
+      <div class="ql-title">기상 · 환경</div>
+      <div class="ql-desc">기온·습도·풍속·체감·하늘<br/>일출몰·달위상·일조</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🗓️</div>
+      <div class="ql-title">일정 · 행사</div>
+      <div class="ql-desc">캘린더 일정·기념일<br/>지역 행사·공휴일</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🎵</div>
+      <div class="ql-title">활동 · 음악</div>
+      <div class="ql-desc">걸음 수·심박·이동수단<br/>그 시각 재생 중이던 곡</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📍</div>
+      <div class="ql-title">장소 의미</div>
+      <div class="ql-desc">평소 vs 그날 · 첫 방문<br/>같이 있던 사람 (옵션)</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 입력</div>
+      <div class="tr-title">사진의 위치 + 시각</div>
+      <div class="tr-body">
+        <ul>
+          <li>EXIF의 GPS · timestamp</li>
+          <li>실내 시 Wi-Fi · BLE beacon</li>
+          <li>사용자 권한 (앱별 opt-in)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 처리</div>
+      <div class="tr-title">외부 API · 내부 앱 자동 조회</div>
+      <div class="tr-body">
+        <ul>
+          <li>기상 API (사내/외부)</li>
+          <li>캘린더 · 헬스 · 음악 앱</li>
+          <li>장소 평균치 vs 그날 값 비교</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 출력</div>
+      <div class="tr-title">EXIF+ 옆 Context Block</div>
+      <div class="tr-body">
+        <ul>
+          <li>구조화된 metadata JSON</li>
+          <li>다른 시너지(C·D·E)의 입력</li>
+          <li>사용자 직접 조회 가능</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt1">
+    <div class="outcome-left">
+      <h4>기대 결과물</h4>
+      <p>모든 사진이 <em>그날의 객관적 맥락</em>(날씨·일정·음악·활동)을 자동으로 갖는다 — 사용자 부담 없이 기록 자체가 깊어진다</p>
+    </div>
+    <div class="outcome-right">🌤️</div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">⚠ 전제 조건 · 확인 필요 항목</div>
+    <div class="pr-body">
+      <strong>1. 기상 데이터 접근</strong> — 사내 기상 API 활용 또는 외부 라이선스.<br/>
+      <strong>2. 앱 간 권한 정책</strong> — 캘린더·헬스·음악 접근에 대한 OS 권한 모델.<br/>
+      <strong>3. 저장 위치</strong> — 외부 보강 데이터를 사진에 임베드할지, 별도 sidecar로 둘지 결정.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 02 / 07</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA B — Voice Annotation
+════════════════════════════════════════ -->
+<section class="page idea-page idea-B" id="p3">
+  <div class="idea-hero">
+    <div class="ih-num">03</div>
+    <div class="ih-mid">
+      <h2>Voice Memo — <em>셔터 직후 한 마디</em></h2>
+      <p>가장 자연스러운 인간의 추억 기록 방식인 음성으로, 그날의 기분과 단서를 잠깐 남긴다</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">병행 진행</div>
+      <div class="ih-pill">완전 옵션</div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon">🎙️</div>
+    <div class="ss-text">셔터 누른 직후 <strong>작은 마이크 아이콘이 3초간 깜빡임</strong> — "오늘 진짜 추웠어" 한 마디만 던지면 끝. 안 던지면 그냥 닫힘</div>
+  </div>
+
+  <div class="optin-note">
+    <div class="on-icon">💡</div>
+    <div class="on-text">
+      <strong>모든 사진에 강제하지 않는다.</strong> 사용자가 *"이 순간은 남기고 싶다"* 할 때만 자연스럽게 한 마디. 평소엔 존재감 없음.
+    </div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">🗣️</div>
+      <div class="ql-title">명시적 발화</div>
+      <div class="ql-desc">"민지 생일이야"<br/>"오늘 진짜 추웠어"</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">😊</div>
+      <div class="ql-title">감정 톤 (prosody)</div>
+      <div class="ql-desc">들뜸 · 차분함 · 피곤함<br/>웃음 · 한숨 · 감탄</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🌊</div>
+      <div class="ql-title">배경음 (환경)</div>
+      <div class="ql-desc">파도 · 도시 소음<br/>실내 에코 · 음악</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🗺️</div>
+      <div class="ql-title">언어 · 방언</div>
+      <div class="ql-desc">어디서 찍었는지<br/>맥락 단서</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 입력</div>
+      <div class="tr-title">셔터 직후 짧은 오디오</div>
+      <div class="tr-body">
+        <ul>
+          <li>3~5초 길이 (사용자가 길게 가능)</li>
+          <li>Motion Photo 컨테이너에 추가 트랙</li>
+          <li>옵션 — 안 말하면 자동 닫힘</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 처리</div>
+      <div class="tr-title">3축 분석 (on-device)</div>
+      <div class="tr-body">
+        <ul>
+          <li>STT → 텍스트 (Galaxy AI)</li>
+          <li>prosody → 감정 톤 라벨</li>
+          <li>배경음 → 환경 분류</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 출력</div>
+      <div class="tr-title">사진과 함께 영구 보관</div>
+      <div class="tr-body">
+        <ul>
+          <li>원본 오디오 (재생 가능)</li>
+          <li>텍스트 + 감정/환경 태그</li>
+          <li>Augment Engine 입력으로</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">현재</div>
+      <div class="ib-scene">사진과 함께 글을 남기려면 타이핑</div>
+      <div class="ib-result">추억 흐름이 끊김<br/>거의 안 함</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">Living Memory</div>
+      <div class="ib-scene">셔터 직후 한 마디 음성</div>
+      <div class="ib-result"><em>0.5초만에</em> 그날의 기분이 남는다<br/>목소리 자체가 정보</div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt2">
+    <div class="outcome-left">
+      <h4>기대 결과물</h4>
+      <p>사용자가 부담 없이 <em>"이 순간"</em>의 기분을 남길 수 있는 채널 — 6개월 뒤 목소리를 다시 들으면 그날이 즉시 떠오른다</p>
+    </div>
+    <div class="outcome-right">🎙️</div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">⚠ 전제 조건 · 확인 필요 항목</div>
+    <div class="pr-body">
+      <strong>1. UX 검증 — 거슬리지 않는 윈도우</strong>: 셔터 직후 음성 아이콘 노출 방식 사용자 테스트.<br/>
+      <strong>2. 프라이버시</strong> — 음성 데이터는 on-device 저장이 기본. 외부 전송 시 명시적 동의.<br/>
+      <strong>3. Motion Photo 컨테이너 확장</strong> — 별도 오디오 트랙 추가 호환성 검증.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 03 / 07</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA C — Augment Engine
+════════════════════════════════════════ -->
+<section class="page idea-page idea-C" id="p4">
+  <div class="idea-hero">
+    <div class="ih-num">04</div>
+    <div class="ih-mid">
+      <h2>Augment Engine — <em>단서들을 narrative로</em></h2>
+      <p>EXIF+ 센서 · 외부 컨텍스트 · 음성 메모를 종합해 LLM이 그날의 자연어 회상문을 생성한다</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">핵심 응용</div>
+      <div class="ih-pill">LLM 기반</div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon">✨</div>
+    <div class="ss-text">6개월 뒤 갤러리에서 그 사진을 보면 — <strong>"쌀쌀한 바람과 함께한 죽도해변의 늦가을 오후, 잔잔한 노래를 들으며 일몰을 기다리던 그날"</strong> 한 줄이 자연스럽게 떠 있음</div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">📝</div>
+      <div class="ql-title">사실 증강</div>
+      <div class="ql-desc">메타데이터를<br/>자연어로 풀어줌</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">💭</div>
+      <div class="ql-title">감성 증강</div>
+      <div class="ql-desc">음성 톤 + 환경 →<br/>분위기 있는 캡션</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🔗</div>
+      <div class="ql-title">연결 증강</div>
+      <div class="ql-desc">다른 사진·일정과<br/>cross-reference</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">❓</div>
+      <div class="ql-title">AI 자발 질문</div>
+      <div class="ql-desc">"오늘 어땠어요?"<br/>옵션, 사용자 응답 학습</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 입력 (모든 layer 통합)</div>
+      <div class="tr-title">사진의 모든 단서</div>
+      <div class="tr-body">
+        <ul>
+          <li>EXIF+ 센서 메타데이터</li>
+          <li>Context Layer (날씨·일정·음악)</li>
+          <li>Voice Memo (텍스트·톤·환경음)</li>
+          <li>사용자 텍스트 입력 (옵션)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 처리</div>
+      <div class="tr-title">LLM narrative 생성</div>
+      <div class="tr-body">
+        <ul>
+          <li>사용자 말투 학습 (개인화)</li>
+          <li>과장·왜곡 방지 가드레일</li>
+          <li>on-device LLM (Galaxy AI)</li>
+          <li>여러 톤 선택 (담담/시적/사실)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 출력</div>
+      <div class="tr-title">사진별 narrative</div>
+      <div class="tr-body">
+        <ul>
+          <li>1~3줄 자연어 캡션</li>
+          <li>사용자가 수정·삭제 가능</li>
+          <li>공유 시 함께 또는 분리</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="impact-band">
+    <div class="ib-before">
+      <div class="ib-tag">현재</div>
+      <div class="ib-scene">사진 = 픽셀 파일</div>
+      <div class="ib-result">"이게 언제 어디서였지?"<br/>기억이 흐려짐</div>
+    </div>
+    <div class="ib-divider"><span>▶</span></div>
+    <div class="ib-after">
+      <div class="ib-tag">Living Memory</div>
+      <div class="ib-scene">AI가 단서를 자연어로 재구성</div>
+      <div class="ib-result">사진 옆에 <em>그날의 한 줄</em><br/>시간이 지나도 떠올릴 수 있음</div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt3">
+    <div class="outcome-left">
+      <h4>기대 결과물</h4>
+      <p>모든 사진이 <em>"그날의 이야기"</em>를 한 줄로 가짐 — 사용자가 직접 적지 않아도 AI가 단서를 모아 회상문을 만든다</p>
+    </div>
+    <div class="outcome-right">✨</div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">⚠ 전제 조건 · 확인 필요 항목</div>
+    <div class="pr-body">
+      <strong>1. EXIF+ · Context Layer · Voice Memo 선행</strong> — 입력 단서가 있어야 narrative 가능.<br/>
+      <strong>2. 과장 방지</strong> — LLM이 없는 사실을 지어내지 않도록 가드레일 설계.<br/>
+      <strong>3. 사용자 수정 권한</strong> — narrative는 *제안*일 뿐, 사용자가 수정·삭제 자유.<br/>
+      <strong>4. AI 질문 톤</strong> — "오늘 어땠어요?" 같은 자발 질문이 부담스럽지 않은 UX 검증.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 04 / 07</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA D — Memory Trigger
+════════════════════════════════════════ -->
+<section class="page idea-page idea-D" id="p5">
+  <div class="idea-hero">
+    <div class="ih-num">05</div>
+    <div class="ih-mid">
+      <h2>Memory Trigger — <em>능동적 회상 유도</em></h2>
+      <p>저장된 메타데이터를 활용해 갤러리가 먼저 추억을 꺼내준다 — "1년 전 오늘", "비슷한 계절"</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">확장</div>
+      <div class="ih-pill">사용자 재방문 유도</div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon">🔔</div>
+    <div class="ss-text">쌀쌀해진 가을 어느 날, 갤러리가 살짝 꺼낸다 — <strong>"작년 이맘때 죽도해변에서 비슷한 바람을 맞고 있었네요"</strong></div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">📅</div>
+      <div class="ql-title">시간 기반</div>
+      <div class="ql-desc">1년 전 · 5년 전 오늘<br/>같은 계절·같은 절기</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🌡️</div>
+      <div class="ql-title">날씨 기반</div>
+      <div class="ql-desc">비슷한 기온·습도·하늘<br/>"이런 날 같이 있던 사람"</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📍</div>
+      <div class="ql-title">장소 기반</div>
+      <div class="ql-desc">같은 동네 재방문<br/>여행지 첫 사진</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">👥</div>
+      <div class="ql-title">사람 기반</div>
+      <div class="ql-desc">이 사람과 처음 만난 날<br/>마지막 함께 찍은 사진</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 입력</div>
+      <div class="tr-title">갤러리 전체 메타데이터 인덱스</div>
+      <div class="tr-body">
+        <ul>
+          <li>날짜 · 위치 · 날씨 · 동행자</li>
+          <li>음성 메모 · narrative</li>
+          <li>현재 시각·위치·날씨 (실시간)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 처리</div>
+      <div class="tr-title">유사도 기반 매칭</div>
+      <div class="tr-body">
+        <ul>
+          <li>현재 컨텍스트와 과거 매칭</li>
+          <li>의미 있는 회상만 필터링</li>
+          <li>스팸 방지 (빈도 제한)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 출력</div>
+      <div class="tr-title">조용한 알림 또는 위젯</div>
+      <div class="tr-body">
+        <ul>
+          <li>갤러리 홈 화면 카드</li>
+          <li>잠금화면 위젯 (옵션)</li>
+          <li>사용자가 빈도 조절 가능</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt4">
+    <div class="outcome-left">
+      <h4>기대 결과물</h4>
+      <p>갤러리가 <em>먼저 추억을 꺼내주는</em> 능동적 인터페이스가 된다 — 사용자가 찾지 않아도 그날이 다시 떠오름</p>
+    </div>
+    <div class="outcome-right">🔔</div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">⚠ 전제 조건 · 확인 필요 항목</div>
+    <div class="pr-body">
+      <strong>1. 알림 빈도 정책</strong> — 너무 자주면 거슬리고, 너무 드물면 효과 없음. 사용자 조절 가능 UX.<br/>
+      <strong>2. 슬픈 추억 필터링</strong> — 가족의 마지막 사진 등 *조심해야 할* 추억 자동 식별 필요.<br/>
+      <strong>3. 알고리즘 투명성</strong> — "왜 이 추억을 꺼냈는지" 사용자가 이해 가능해야 함.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 05 / 07</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     IDEA E — Mood Map
+════════════════════════════════════════ -->
+<section class="page idea-page idea-E" id="p6">
+  <div class="idea-hero">
+    <div class="ih-num">06</div>
+    <div class="ih-mid">
+      <h2>Mood Map — <em>감정·계절·장소 기반 탐색</em></h2>
+      <p>갤러리를 시간 순이 아닌 분위기·계절·장소로 탐색하는 새로운 인터페이스</p>
+    </div>
+    <div class="ih-tag">
+      <div class="ih-pill primary">새 인터페이스</div>
+      <div class="ih-pill">갤러리 탐색 혁신</div>
+    </div>
+  </div>
+
+  <div class="scenario-strip">
+    <div class="ss-icon">🗺️</div>
+    <div class="ss-text">"행복했던 날들"을 검색하면 음성 톤과 메타데이터로 분류된 <strong>웃음 가득한 사진들이 모임</strong> — 시간순이 아닌 감정순으로</div>
+  </div>
+
+  <div class="qual-row">
+    <div class="qual">
+      <div class="ql-icon">😊</div>
+      <div class="ql-title">감정 축</div>
+      <div class="ql-desc">행복·차분·역동·노스탤직<br/>음성 톤+메타데이터</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🍂</div>
+      <div class="ql-title">계절 · 절기</div>
+      <div class="ql-desc">봄 벚꽃 · 여름 바다<br/>가을 단풍 · 겨울 눈</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">📍</div>
+      <div class="ql-title">장소 캘린더</div>
+      <div class="ql-desc">자주 가는 곳 vs 가끔<br/>여행지 별 묶음</div>
+    </div>
+    <div class="qual">
+      <div class="ql-icon">🌧️</div>
+      <div class="ql-title">날씨 축</div>
+      <div class="ql-desc">비 오는 날 · 맑은 날<br/>새벽 · 노을 · 야경</div>
+    </div>
+  </div>
+
+  <div class="track-grid">
+    <div class="track in">
+      <div class="tr-head">▸ 입력</div>
+      <div class="tr-title">갤러리 전체 메타데이터</div>
+      <div class="tr-body">
+        <ul>
+          <li>Context Layer 날씨·계절</li>
+          <li>Voice Memo 감정 톤</li>
+          <li>narrative 키워드</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track proc">
+      <div class="tr-head">▸ 처리</div>
+      <div class="tr-title">다축 자동 클러스터링</div>
+      <div class="tr-body">
+        <ul>
+          <li>감정·계절·장소·날씨 다축</li>
+          <li>사용자 검색어 자연어 매칭</li>
+          <li>새 묶음 자동 발견</li>
+        </ul>
+      </div>
+    </div>
+    <div class="track out">
+      <div class="tr-head">▸ 출력</div>
+      <div class="tr-title">새로운 갤러리 탐색 UI</div>
+      <div class="tr-body">
+        <ul>
+          <li>분위기별 카드</li>
+          <li>계절·날씨별 컬렉션</li>
+          <li>"이런 사진들" 자동 추천</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcome-row alt5">
+    <div class="outcome-left">
+      <h4>기대 결과물</h4>
+      <p>갤러리가 <em>시간순 리스트</em>가 아닌 <em>분위기·계절·감정</em>으로 탐색되는 새 인터페이스를 갖는다</p>
+    </div>
+    <div class="outcome-right">🗺️</div>
+  </div>
+
+  <div class="prereq">
+    <div class="pr-title">⚠ 전제 조건 · 확인 필요 항목</div>
+    <div class="pr-body">
+      <strong>1. 감정 분류 정확도</strong> — 잘못된 감정 라벨이 더 부정적 사용자 경험을 줌. 신중한 학습.<br/>
+      <strong>2. 갤러리 UI 변경</strong> — 기존 시간순 인터페이스 위에 추가 layer로 통합 방식 검토.<br/>
+      <strong>3. 사용자 prior</strong> — 사용자가 자주 쓰는 검색어/분류 학습 → 개인화.
+    </div>
+  </div>
+
+  <div class="pg-num">PAGE 06 / 07</div>
+</section>
+
+
+<!-- ════════════════════════════════════════
+     PAGE 7 — SUMMARY
+════════════════════════════════════════ -->
+<section class="page summary-page" id="p7">
+  <div class="pg-eyebrow">SLIDE 07 · ROADMAP & NEXT STEP</div>
+  <h2 class="pg-title">Living Memory <em>로드맵</em></h2>
+  <p class="pg-desc">
+    다섯 세부 과제는 모두 <strong>"사진이 그날을 안다"</strong>는 하나의 비전 아래 단계적으로 작동한다.<br/>
+    EXIF+ 인프라를 토대로, Context Layer와 Voice Memo가 단서를 모으고, Augment Engine이 narrative를 만든 뒤,
+    Memory Trigger와 Mood Map이 사용자가 추억을 다시 만나는 새로운 길을 연다.
+  </p>
+
+  <table class="sum-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>세부 과제</th>
+        <th>역할</th>
+        <th>전제 조건</th>
+        <th>단계</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="st-num nA">A</td>
+        <td class="st-name">Context Layer</td>
+        <td>외부 데이터 자동 보강</td>
+        <td>기상 API · 앱 권한 정책</td>
+        <td><span class="badge-rank start">🟡 먼저 시작</span></td>
+      </tr>
+      <tr>
+        <td class="st-num nB">B</td>
+        <td class="st-name">Voice Memo</td>
+        <td>셔터 직후 음성 한 마디</td>
+        <td>UX 검증 · 프라이버시 정책</td>
+        <td><span class="badge-rank followup">🔵 A와 병행</span></td>
+      </tr>
+      <tr>
+        <td class="st-num nC">C</td>
+        <td class="st-name">Augment Engine</td>
+        <td>LLM narrative 생성</td>
+        <td>A·B 선행 · 가드레일 설계</td>
+        <td><span class="badge-rank expand">🟣 핵심 응용</span></td>
+      </tr>
+      <tr>
+        <td class="st-num nD">D</td>
+        <td class="st-name">Memory Trigger</td>
+        <td>능동적 회상 유도</td>
+        <td>A·C 선행 · 알림 정책</td>
+        <td><span class="badge-rank recall">🔴 확장</span></td>
+      </tr>
+      <tr>
+        <td class="st-num nE">E</td>
+        <td class="st-name">Mood Map</td>
+        <td>감정·계절·장소 탐색</td>
+        <td>A·B·C 선행 · 갤러리 UI 통합</td>
+        <td><span class="badge-rank discover">🟢 새 인터페이스</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="next-step">
+    <h3>🎯 Living Memory · <em>사진이 그날을 안다</em></h3>
+    <p>
+      이 과제의 본질은 <strong>"흩어져 있는 그날의 단서들을 사진 한 장에 모아, 시간이 지나도 그날을 다시 떠올릴 수 있게 한다"</strong>는 것이다.<br/>
+      Phase 1에서는 <strong>Context Layer(A)</strong>와 <strong>Voice Memo(B)</strong>로 단서를 모으고,
+      <strong>Augment Engine(C)</strong>이 narrative를 만들어 사용자에게 즉시 가치를 전달한다.<br/>
+      이후 <strong>Memory Trigger(D)</strong>와 <strong>Mood Map(E)</strong>이 갤러리를 *수동 저장소*에서 *능동 추억 인터페이스*로 진화시킨다.<br/><br/>
+      EXIF+가 사진의 <strong>물리적 자기인식</strong>을 만든다면, Living Memory는 사진의 <strong>맥락적 기억</strong>을 만든다.
+    </p>
+  </div>
+
+  <div class="pg-num">PAGE 07 / 07</div>
+</section>
+
+</div><!-- /pages -->
+</body>
+</html>

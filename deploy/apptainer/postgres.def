@@ -1,0 +1,27 @@
+Bootstrap: docker
+From: postgres:16-alpine
+
+%post
+    # postgres image 이미 모든 게 들어 있으므로 추가 작업 없음.
+    # 일부 환경에서 권한 경고를 줄이기 위해 /var/run/postgresql 권한 설정.
+    mkdir -p /var/run/postgresql
+    chmod 0775 /var/run/postgresql || true
+
+%environment
+    export PGDATA=/var/lib/postgresql/data
+    export PATH=/usr/local/bin:$PATH
+
+%labels
+    org.heaxhub.role postgres
+    org.heaxhub.version 16-alpine
+
+%help
+    HEAXHub Postgres SIF (postgres:16-alpine).
+    bind:
+      /host/var/pg:/var/lib/postgresql/data
+      /host/var/pg_run:/var/run/postgresql
+    start:
+      apptainer instance start --bind ... postgres.sif heax-pg
+      apptainer exec instance://heax-pg sh -c \
+        "setsid nohup postgres -D /var/lib/postgresql/data -p 5732 \
+           > /var/run/postgresql/pg.log 2>&1 < /dev/null &"

@@ -1,0 +1,395 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://heaxhub/schemas/manifest.schema.v2.json",
+  "title": "HEAXHub App Manifest (v2)",
+  "description": "Manifest declared per app under {workspace}/overlay/.portal/manifest.yaml. v2 extends v1 with source abstraction, service launch mode, license/GPU pools, and windows installer metadata.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "version",
+    "owner",
+    "status",
+    "app_type",
+    "execution_target",
+    "launch"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Manifest schema version"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{2,63}$",
+      "description": "Unique app id, lowercase snake_case"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$",
+      "description": "Semver"
+    },
+    "owner": {
+      "type": "string",
+      "description": "Organization or user id (e.g. cae-automation)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "beta", "stable", "deprecated", "archived"]
+    },
+    "app_type": {
+      "type": "string",
+      "enum": [
+        "cli_tool",
+        "web_app",
+        "windows_gui",
+        "remote_app",
+        "external_link",
+        "slurm_job",
+        "container_app"
+      ]
+    },
+    "execution_target": {
+      "type": "string",
+      "enum": [
+        "linux_runner",
+        "slurm",
+        "apptainer",
+        "windows_worker",
+        "external_url",
+        "local_pc"
+      ]
+    },
+    "description": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+
+    "source": {
+      "type": "object",
+      "description": "Replaces submissions.upstream_repo_url. Selects how source files are fetched.",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "git",
+            "archive_url",
+            "local_path",
+            "system_command",
+            "docker_image"
+          ]
+        },
+        "url": { "type": "string" },
+        "path": { "type": "string", "description": "local_path source root" },
+        "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "image": { "type": "string", "description": "docker image reference" },
+        "verify_command": {
+          "type": "string",
+          "description": "system_command type: shell snippet that exits 0 if the system tool is available"
+        },
+        "sync": {
+          "type": "string",
+          "enum": ["rsync", "symlink", "copy"],
+          "default": "rsync"
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["basic", "token", "none"],
+              "default": "none"
+            },
+            "secret_key": {
+              "type": "string",
+              "description": "key in secret_manager containing credentials"
+            }
+          }
+        }
+      }
+    },
+
+    "launch": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "job_runner",
+            "service",
+            "url",
+            "remote_agent",
+            "local_protocol"
+          ]
+        },
+        "command": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "open_in": {
+          "type": "string",
+          "enum": ["new_tab", "iframe"]
+        },
+        "auth_mode": {
+          "type": "string",
+          "enum": ["none", "sso", "token"]
+        },
+        "agent_pool": { "type": "string" },
+        "protocol": { "type": "string" },
+        "installer_url": { "type": "string", "format": "uri" },
+        "runtime": {
+          "type": "string",
+          "enum": ["python_venv", "apptainer", "shell", "windows_exe", "nodejs", "compose"]
+        },
+        "image": { "type": "string" },
+
+        "health_check": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["http", "tcp", "command"],
+              "default": "http"
+            },
+            "path": { "type": "string" },
+            "host": { "type": "string" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "command": { "type": "string" },
+            "interval_seconds": { "type": "integer", "minimum": 1, "default": 30 },
+            "timeout_seconds": { "type": "integer", "minimum": 1, "default": 5 },
+            "expected_status": { "type": "integer", "default": 200 }
+          }
+        },
+        "ready_timeout_seconds": { "type": "integer", "minimum": 1, "default": 60 },
+        "restart_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "policy": {
+              "type": "string",
+              "enum": ["never", "on_failure", "always"],
+              "default": "on_failure"
+            },
+            "max_attempts": { "type": "integer", "minimum": 0, "default": 3 },
+            "backoff_seconds": { "type": "integer", "minimum": 0, "default": 10 }
+          }
+        },
+        "base_path_aware": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, the service can run under /apps/{id}/ behind Caddy"
+        }
+      }
+    },
+
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$" },
+          "type": {
+            "type": "string",
+            "enum": ["file", "folder", "string", "number", "integer", "boolean", "enum"]
+          },
+          "label": { "type": "string" },
+          "description": { "type": "string" },
+          "required": { "type": "boolean", "default": false },
+          "default": {},
+          "extensions": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^\\." }
+          },
+          "options": {
+            "type": "array",
+            "items": { "type": ["string", "number"] }
+          },
+          "min": { "type": "number" },
+          "max": { "type": "number" }
+        }
+      }
+    },
+
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["file", "folder"],
+            "default": "file"
+          },
+          "path": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visibility": {
+          "type": "string",
+          "enum": ["private", "team", "department", "company"],
+          "default": "team"
+        },
+        "executable_by": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "type": "integer", "minimum": 1 },
+        "memory_gb": { "type": "number", "minimum": 0.5 },
+        "gpu": {
+          "oneOf": [
+            { "type": "boolean", "default": false },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "count": { "type": "integer", "minimum": 1, "default": 1 },
+                "min_memory_gb": { "type": "number", "minimum": 0 },
+                "cuda_min": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "build": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "python_venv",
+            "nodejs",
+            "apptainer",
+            "compose",
+            "docker_build",
+            "none",
+            "external"
+          ]
+        },
+        "python_version": { "type": "string", "pattern": "^3\\.[0-9]+$" },
+        "node_version": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+){0,2}$" },
+        "requirements_file": { "type": "string" },
+        "pyproject": { "type": "string" },
+        "package_json": { "type": "string" },
+        "apptainer_def": { "type": "string" },
+        "dockerfile": { "type": "string" },
+        "compose_file": { "type": "string" },
+        "pre_build": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "steps": {
+          "type": "array",
+          "description": "Used by build.type=compose; ordered list of sub-builds.",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "additionalProperties": true,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["python_venv", "nodejs", "shell", "apptainer", "docker_build"]
+              },
+              "cwd": { "type": "string" },
+              "install": { "type": "string" },
+              "build": { "type": "string" },
+              "requirements_file": { "type": "string" },
+              "package_json": { "type": "string" },
+              "python_version": { "type": "string" },
+              "node_version": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "env_required": {
+      "type": "array",
+      "description": "Names of required environment variables (values come from secret_manager).",
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+      "uniqueItems": true
+    },
+
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pool": { "type": "string", "description": "license_pool name (e.g. lsdyna-mpp)" },
+        "tokens": { "type": "integer", "minimum": 1, "default": 1 },
+        "blocking": { "type": "boolean", "default": true }
+      },
+      "required": ["pool"]
+    },
+
+    "windows_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "os_min": { "type": "string" },
+        "arch": { "type": "string", "enum": ["x64", "x86", "arm64"] },
+        "vcredist": { "type": "string" },
+        "dotnet": { "type": "string" }
+      }
+    },
+
+    "installer_packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["os", "version", "url"],
+        "additionalProperties": false,
+        "properties": {
+          "os": {
+            "type": "string",
+            "enum": ["windows-x64", "windows-x86", "macos-arm64", "macos-x64", "linux-x64"]
+          },
+          "version": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+          "url": { "type": "string" }
+        }
+      }
+    },
+
+    "requirements": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "os": { "type": "string", "enum": ["linux", "windows"] },
+        "gpu": { "type": "boolean" },
+        "license": { "type": "string" }
+      }
+    }
+  }
+}

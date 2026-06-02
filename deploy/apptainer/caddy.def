@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: caddy:2-alpine
+
+%post
+    mkdir -p /etc/caddy /srv/web /data
+    chmod 0775 /etc/caddy /srv/web /data || true
+
+%environment
+    export PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+%labels
+    org.heaxhub.role caddy
+    org.heaxhub.version 2-alpine
+
+%help
+    HEAXHub Caddy SIF — SPA file_server (/srv/web) + reverse_proxy /api → :4040.
+    bind:
+      caddy_bootstrap.json:/etc/caddy/bootstrap.json:ro
+      frontend/dist:/srv/web:ro
+      var/caddy:/data
+    start:
+      apptainer instance start --bind ... caddy.sif heax-caddy
+      apptainer exec instance://heax-caddy sh -c \
+        "setsid nohup caddy run --config /etc/caddy/bootstrap.json \
+           > /data/caddy.log 2>&1 < /dev/null &"

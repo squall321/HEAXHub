@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my_python_webapp"
+version = "0.1.0"
+description = "HEAXHub python-webapp template (FastAPI + uvicorn)"
+requires-python = ">=3.10"
+readme = "README.md"
+authors = [{ name = "TBD", email = "tbd@example.com" }]
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

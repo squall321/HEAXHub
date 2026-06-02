@@ -1,0 +1,10 @@
+# 이 파일은 실제 의존성으로 교체한다.
+# 예시:
+#   numpy>=1.24
+#   pandas>=2.0
+#   jinja2>=3.1
+#
+# HEAXHub는 등록 시 다음 우선순위로 의존성을 설치한다.
+#   1) upstream/requirements.txt (이 파일)
+#   2) upstream/pyproject.toml
+# 둘 다 있으면 requirements.txt가 우선.

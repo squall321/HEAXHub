@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://heaxhub/schemas/llm_response.schema.json",
+  "title": "HEAXHub Manifest Inferrer LLM Response",
+  "type": "object",
+  "required": [
+    "manifest_draft",
+    "confidence",
+    "open_questions",
+    "developer_change_request"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "manifest_draft": {
+      "type": "object",
+      "description": "Partial manifest (schema v2). Caller validates separately."
+    },
+    "confidence": {
+      "type": "object",
+      "description": "Per-field confidence keyed by dotted path (e.g. 'launch.mode').",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "question"],
+        "additionalProperties": true,
+        "properties": {
+          "field": { "type": "string" },
+          "question": { "type": "string" },
+          "candidates": {
+            "type": "array",
+            "items": {}
+          },
+          "context": { "type": "string" }
+        }
+      }
+    },
+    "developer_change_request": {
+      "type": "object",
+      "required": ["summary", "required_files"],
+      "additionalProperties": true,
+      "properties": {
+        "summary": { "type": "string" },
+        "rationale": { "type": "string" },
+        "required_files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "kind", "content"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "kind": {
+                "type": "string",
+                "enum": ["create", "modify", "append"]
+              },
+              "content": { "type": "string" },
+              "mode": { "type": "string", "pattern": "^0[0-7]{3}$" }
+            }
+          }
+        },
+        "suggested_files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "kind": {
+                "type": "string",
+                "enum": ["create", "modify", "append"]
+              },
+              "content": { "type": "string" },
+              "section": { "type": "string" },
+              "mode": { "type": "string", "pattern": "^0[0-7]{3}$" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

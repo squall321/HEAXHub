@@ -1,0 +1,23 @@
+Bootstrap: docker
+From: mailhog/mailhog:latest
+
+%post
+    # MailHog SIF: 별다른 후처리 없이 그대로 사용.
+    true
+
+%environment
+    export MH_STORAGE=memory
+    export MH_SMTP_BIND_ADDR=0.0.0.0:1025
+    export MH_API_BIND_ADDR=0.0.0.0:8025
+    export MH_UI_BIND_ADDR=0.0.0.0:8025
+
+%labels
+    org.heaxhub.role mailhog
+
+%help
+    HEAXHub MailHog SIF.
+    start:
+      apptainer instance start mailhog.sif heax-mailhog
+      apptainer exec instance://heax-mailhog sh -c \
+        "setsid nohup MailHog -smtp-bind-addr 0.0.0.0:8125 -ui-bind-addr 0.0.0.0:8126 \
+           > /tmp/mailhog.log 2>&1 < /dev/null &"

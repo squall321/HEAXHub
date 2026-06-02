@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my_python_cli"
+version = "0.1.0"
+description = "HEAXHub python-cli template"
+requires-python = ">=3.10"
+readme = "README.md"
+authors = [{ name = "TBD", email = "tbd@example.com" }]
+
+[project.scripts]
+mytool = "mytool.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

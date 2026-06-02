@@ -1,0 +1,20 @@
+Bootstrap: docker
+From: redis:7-alpine
+
+%post
+    mkdir -p /data
+    chmod 0775 /data || true
+
+%environment
+    export PATH=/usr/local/bin:$PATH
+
+%labels
+    org.heaxhub.role redis
+    org.heaxhub.version 7-alpine
+
+%help
+    HEAXHub Redis SIF (redis:7-alpine).
+    start:
+      apptainer instance start --bind /host/var/redis:/data redis.sif heax-redis
+      apptainer exec instance://heax-redis sh -c \
+        "setsid nohup redis-server --bind 0.0.0.0 --port 6479 --dir /data --daemonize yes < /dev/null &"

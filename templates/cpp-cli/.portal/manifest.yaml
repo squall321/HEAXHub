@@ -1,0 +1,65 @@
+schema_version: 1
+id: my_cpp_cli
+name: My C++ CLI Tool
+version: 0.1.0
+owner: cae-automation
+status: draft
+app_type: cli_tool
+execution_target: apptainer
+
+description: |
+  HEAXHub cpp-cli 템플릿. Apptainer (gcc:13) 안에서 빌드되고, 실행도
+  apptainer exec 으로 격리된다.
+
+tags:
+  - template
+  - cpp
+  - container
+
+launch:
+  mode: job_runner
+  command: ./run.sh input output params.json
+  runtime: apptainer
+  # image_ref: 어떤 SIF 안에서 run.sh 를 실행할지 결정.
+  #
+  #   A) 이 앱 전용 SIF 를 매 빌드마다 새로 굽는 경우 → build.type=apptainer 와
+  #      함께 사용하고 image_ref 는 생략하면 됩니다 (AppVersion.sif_path 자동 사용).
+  #
+  #   B) 사내에서 이미 빌드해둔 공용 SIF (예: LS-DYNA) 를 그대로 쓰는 경우 →
+  #      아래처럼 SIF registry 의 logical_name 으로 가리킵니다.
+  #      등록 키는 config/sif_registry.yaml 참고.
+  image_ref:
+    type: registry
+    name: lsdyna_smp_s
+
+inputs:
+  - name: data_dir
+    type: folder
+    label: 입력 디렉터리
+    required: false
+  - name: extra_args
+    type: string
+    label: 추가 인자 (공백 구분)
+    description: 컨테이너 안 mytool 에 그대로 전달
+    default: ""
+
+outputs:
+  - name: result
+    type: file
+    path: output/result.json
+
+permissions:
+  visibility: team
+
+resources:
+  cpu: 2
+  memory_gb: 2
+  gpu: false
+  timeout_seconds: 1800
+
+build:
+  type: apptainer
+  apptainer_def: .portal/Apptainer.def
+
+requirements:
+  os: linux

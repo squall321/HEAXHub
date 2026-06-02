@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node
+node_modules/
+dist/
+.vite/
+.turbo/
+.next/
+*.tsbuildinfo
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Runtime data
+app_workspaces/*
+!app_workspaces/.gitkeep
+job_storage/*
+!job_storage/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+backend/dist/
+frontend/dist/
+
+# HEAXHub specific — keep secrets and large artifacts out
+.env
+backend/.env
+var/
+dist-bundle/
+deploy/apptainer/.tools/
+deploy/apptainer/cache/
+deploy/apptainer/*.sif
+infra/packages/deb/*.deb
+infra/packages/npm/*.tgz
+infra/packages/pip/*.whl
+infra/packages/*.tar.*
+*.log
+
+# Build artifacts
+frontend/dist/
+backend/.venv/
+agents/windows/bin/
+agents/windows/obj/
+
+# Tool caches
+.koo-llm-sessions/
+.bkit/
+.playwright-mcp/
+
+# Workspaces (per-app clones)
+app_workspaces/
+job_storage/

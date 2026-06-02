@@ -1,0 +1,52 @@
+schema_version: 1
+id: my_windows_gui
+name: My Windows GUI Tool
+version: 0.1.0
+owner: cae-automation
+status: draft
+app_type: windows_gui
+execution_target: windows_worker
+
+description: |
+  HEAXHub windows-gui 템플릿. 실제 실행은 Windows Agent (agent_pool) 에서 일어난다.
+  운영 모드는 NOTES.md 참고 — 본 매니페스트는 모드 1 (remote_agent) 기준이다.
+
+tags:
+  - template
+  - windows
+  - gui
+
+launch:
+  mode: remote_agent
+  agent_pool: windows-cae-tools
+  runtime: windows_exe
+  command: ./run.sh input output params.json
+
+inputs:
+  - name: project_file
+    type: file
+    label: 입력 프로젝트 파일
+    required: true
+    extensions: [".prj", ".dat"]
+
+outputs:
+  - name: result
+    type: file
+    path: output/result.json
+
+permissions:
+  visibility: team
+
+resources:
+  cpu: 4
+  memory_gb: 8
+  gpu: false
+  timeout_seconds: 3600
+
+build:
+  type: external
+  # 실제 빌드는 윈도우 측에서 수행. 포탈은 메타데이터만 보관한다.
+
+requirements:
+  os: windows
+  license: "TBD"

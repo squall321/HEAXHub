@@ -1,0 +1,80 @@
+{
+  "admin": {
+    "listen": "127.0.0.1:2019"
+  },
+  "logging": {
+    "logs": {
+      "default": {
+        "level": "INFO"
+      }
+    }
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "listen": [":4180"],
+          "routes": [
+            {
+              "@id": "api-proxy",
+              "match": [{"path": ["/api/*", "/docs", "/docs/*", "/openapi.json", "/health"]}],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [{"dial": "127.0.0.1:4040"}]
+                }
+              ]
+            },
+            {
+              "@id": "ws-proxy",
+              "match": [{"path": ["/ws/*"]}],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [{"dial": "127.0.0.1:4040"}]
+                }
+              ]
+            },
+            {
+              "@id": "spa-static",
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "vars",
+                          "root": "/srv/web"
+                        }
+                      ]
+                    },
+                    {
+                      "match": [
+                        {"file": {"try_files": ["{http.request.uri.path}", "/index.html"]}}
+                      ],
+                      "handle": [
+                        {
+                          "handler": "rewrite",
+                          "uri": "{http.matchers.file.relative}"
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "file_server",
+                          "index_names": ["index.html"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

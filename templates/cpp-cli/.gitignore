@@ -1,0 +1,20 @@
+build/
+cmake-build-*/
+out/
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+
+# Apptainer
+*.sif
+*.img
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Output
+output/
+*.log

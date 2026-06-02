@@ -1,0 +1,153 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend:
+    name: Backend (Py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: heaxhub
+          POSTGRES_PASSWORD: heaxhub
+          POSTGRES_DB: heaxhub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U heaxhub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://heaxhub:heaxhub@localhost:5432/heaxhub
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-test-secret-do-not-use-in-prod
+      APP_ENV: development
+      ALLOWED_EMAIL_DOMAINS: example.com,company.com
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "backend[dev]"
+
+      - name: Lint (ruff check)
+        run: ruff check backend/app backend/scripts
+
+      - name: Format check (ruff format --check)
+        run: ruff format --check backend/app
+
+      - name: Type check (mypy)
+        run: mypy backend/app
+        continue-on-error: true
+
+      - name: Run Alembic migrations
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Run pytest with coverage
+        working-directory: backend
+        run: |
+          pip install pytest-cov
+          pytest app/tests -v --cov=app --cov-report=term --cov-report=xml
+
+      # Codecov upload — disabled by default for closed-env builds.
+      # Uncomment when CODECOV_TOKEN is provisioned.
+      # - name: Upload coverage to Codecov
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     files: backend/coverage.xml
+      #     fail_ci_if_error: false
+
+  integration-tests:
+    name: Integration tests (Py3.12)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: heaxhub
+          POSTGRES_PASSWORD: heaxhub
+          POSTGRES_DB: heaxhub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U heaxhub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://heaxhub:heaxhub@localhost:5432/heaxhub
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-test-secret-do-not-use-in-prod
+      APP_ENV: development
+      ALLOWED_EMAIL_DOMAINS: example.com,company.com
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "backend[dev]"
+
+      - name: Run Alembic migrations
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Run integration tests
+        working-directory: backend
+        continue-on-error: true
+        run: pytest -m integration -v --tb=short

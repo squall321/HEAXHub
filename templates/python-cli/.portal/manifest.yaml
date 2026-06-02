@@ -1,0 +1,70 @@
+schema_version: 1
+id: my_python_cli
+name: My Python CLI Tool
+version: 0.1.0
+owner: cae-automation
+status: draft
+app_type: cli_tool
+execution_target: linux_runner
+
+description: |
+  HEAXHub python-cli 템플릿. 실제 도구에 맞춰 description, inputs, outputs을
+  교체한 뒤 사용한다.
+
+tags:
+  - template
+  - python
+
+launch:
+  mode: job_runner
+  command: ./run.sh input output params.json
+  runtime: python_venv
+
+inputs:
+  - name: data_dir
+    type: folder
+    label: 입력 디렉터리
+    description: 처리할 파일들이 들어 있는 폴더
+    required: true
+  - name: sample_count
+    type: integer
+    label: 샘플 수
+    description: 처리할 샘플 개수 (0 = 전체)
+    default: 0
+    min: 0
+    max: 100000
+  - name: enable_report
+    type: boolean
+    label: 리포트 생성 여부
+    default: true
+
+outputs:
+  - name: result
+    type: file
+    path: output/result.json
+    description: 실행 요약 (status, summary, warnings, errors)
+  - name: report
+    type: file
+    path: output/report.html
+    description: 사용자용 HTML 리포트
+
+permissions:
+  visibility: team
+  executable_by:
+    - user
+    - admin
+
+resources:
+  cpu: 2
+  memory_gb: 4
+  gpu: false
+  timeout_seconds: 1800
+
+build:
+  type: python_venv
+  python_version: "3.11"
+  requirements_file: requirements.txt
+
+requirements:
+  os: linux
+  gpu: false

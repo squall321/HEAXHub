@@ -1,0 +1,6 @@
+python:
+  "3.10": /usr/bin/python3.10
+  "3.11": /usr/bin/python3.11
+  "3.12": /usr/bin/python3.12
+node:
+  "20": /usr/bin/node

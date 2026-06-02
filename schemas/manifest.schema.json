@@ -1,0 +1,209 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://heaxhub/schemas/manifest.schema.json",
+  "title": "HEAXHub App Manifest",
+  "description": "Manifest declared per app under {workspace}/overlay/.portal/manifest.yaml",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "version",
+    "owner",
+    "status",
+    "app_type",
+    "execution_target",
+    "launch"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Manifest schema version"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{2,63}$",
+      "description": "Unique app id, lowercase snake_case"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$",
+      "description": "Semver"
+    },
+    "owner": {
+      "type": "string",
+      "description": "Organization or user id (e.g. cae-automation)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "beta", "stable", "deprecated", "archived"]
+    },
+    "app_type": {
+      "type": "string",
+      "enum": [
+        "cli_tool",
+        "web_app",
+        "windows_gui",
+        "remote_app",
+        "external_link",
+        "slurm_job",
+        "container_app"
+      ]
+    },
+    "execution_target": {
+      "type": "string",
+      "enum": [
+        "linux_runner",
+        "slurm",
+        "apptainer",
+        "windows_worker",
+        "external_url",
+        "local_pc"
+      ]
+    },
+    "description": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "launch": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "job_runner",
+            "url",
+            "remote_agent",
+            "local_protocol"
+          ]
+        },
+        "command": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "open_in": {
+          "type": "string",
+          "enum": ["new_tab", "iframe"]
+        },
+        "auth_mode": {
+          "type": "string",
+          "enum": ["none", "sso", "token"]
+        },
+        "agent_pool": { "type": "string" },
+        "protocol": { "type": "string" },
+        "installer_url": { "type": "string", "format": "uri" },
+        "runtime": {
+          "type": "string",
+          "enum": ["python_venv", "apptainer", "shell", "windows_exe"]
+        },
+        "image": { "type": "string" }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$" },
+          "type": {
+            "type": "string",
+            "enum": ["file", "folder", "string", "number", "integer", "boolean", "enum"]
+          },
+          "label": { "type": "string" },
+          "description": { "type": "string" },
+          "required": { "type": "boolean", "default": false },
+          "default": {},
+          "extensions": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^\\." }
+          },
+          "options": {
+            "type": "array",
+            "items": { "type": ["string", "number"] }
+          },
+          "min": { "type": "number" },
+          "max": { "type": "number" }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["file", "folder"],
+            "default": "file"
+          },
+          "path": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visibility": {
+          "type": "string",
+          "enum": ["private", "team", "department", "company"],
+          "default": "team"
+        },
+        "executable_by": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "type": "integer", "minimum": 1 },
+        "memory_gb": { "type": "number", "minimum": 0.5 },
+        "gpu": { "type": "boolean", "default": false },
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "build": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["python_venv", "apptainer", "none", "external"]
+        },
+        "python_version": { "type": "string", "pattern": "^3\\.[0-9]+$" },
+        "requirements_file": { "type": "string" },
+        "pyproject": { "type": "string" },
+        "apptainer_def": { "type": "string" },
+        "dockerfile": { "type": "string" },
+        "pre_build": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "os": { "type": "string", "enum": ["linux", "windows"] },
+        "gpu": { "type": "boolean" },
+        "license": { "type": "string" }
+      }
+    }
+  }
+}

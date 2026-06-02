@@ -1,0 +1,35 @@
+Bootstrap: docker
+From: gcc:13
+
+%labels
+    Maintainer cae-automation
+    Description "HEAXHub cpp-cli template — built on gcc:13"
+
+%post
+    set -eu
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        cmake ninja-build ca-certificates
+    rm -rf /var/lib/apt/lists/*
+
+    mkdir -p /opt/src
+    cp -r /mnt/upstream/. /opt/src/ 2>/dev/null || true
+
+%files
+    ../CMakeLists.txt    /opt/src/CMakeLists.txt
+    ../src/              /opt/src/src/
+
+%post
+    set -eu
+    cmake -S /opt/src -B /opt/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build /opt/build -j
+    cmake --install /opt/build --prefix /usr/local
+
+%environment
+    export LC_ALL=C.UTF-8
+
+%runscript
+    exec mytool "$@"
+
+%test
+    mytool --help || true

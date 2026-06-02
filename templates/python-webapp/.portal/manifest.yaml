@@ -1,0 +1,46 @@
+schema_version: 1
+id: my_python_webapp
+name: My Python Web App
+version: 0.1.0
+owner: cae-automation
+status: draft
+app_type: web_app
+execution_target: linux_runner
+
+description: |
+  HEAXHub python-webapp 템플릿. FastAPI + uvicorn 으로 동작하는 상시 운영 서비스이다.
+  포탈은 run.sh가 기록한 result.json.outputs.url 을 사용자에게 안내한다.
+
+tags:
+  - template
+  - python
+  - webapp
+
+launch:
+  mode: url
+  open_in: new_tab
+  auth_mode: none
+  runtime: python_venv
+  command: ./run.sh input output params.json
+
+outputs:
+  - name: url
+    type: file
+    path: output/result.json
+    description: result.json.outputs.url 에 접속 가능한 URL 이 기록된다.
+
+permissions:
+  visibility: team
+
+resources:
+  cpu: 1
+  memory_gb: 1
+  gpu: false
+
+build:
+  type: python_venv
+  python_version: "3.11"
+  pyproject: pyproject.toml
+
+requirements:
+  os: linux

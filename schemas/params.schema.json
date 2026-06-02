@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://heaxhub/schemas/params.schema.json",
+  "title": "HEAXHub Job Params",
+  "description": "Generic params.json wrapper for a single job run. Per-app inputs validated against manifest.inputs at runtime.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "app_id": { "type": "string" },
+    "app_version": { "type": "string" },
+    "job_id": { "type": "string" },
+    "submitted_at": { "type": "string", "format": "date-time" },
+    "submitted_by": {
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "display_name": { "type": "string" }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Free-form key/value matching manifest.inputs names"
+    }
+  }
+}

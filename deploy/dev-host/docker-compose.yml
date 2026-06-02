@@ -1,0 +1,48 @@
+# Dev-only convenience for host-mode infra. Production runs Apptainer
+# instances — see deploy/apptainer/. Ports here intentionally mirror
+# the Apptainer stack (5732/6479/8125/8126) so a developer can switch
+# between docker and apptainer without editing .env.
+name: heaxhub
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heaxhub
+      POSTGRES_PASSWORD: heaxhub
+      POSTGRES_DB: heaxhub
+    ports:
+      - "5732:5432"
+    volumes:
+      - heaxhub_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heaxhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--port", "6379"]
+    ports:
+      - "6479:6379"
+    volumes:
+      - heaxhub_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "8125:1025"
+      - "8126:8025"
+
+volumes:
+  heaxhub_pg:
+  heaxhub_redis:

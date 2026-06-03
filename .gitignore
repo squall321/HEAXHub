@@ -77,3 +77,4 @@ agents/windows/obj/
 # Workspaces (per-app clones)
 app_workspaces/
 job_storage/
+backend/celerybeat-schedule

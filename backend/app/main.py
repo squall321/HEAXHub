@@ -13,7 +13,8 @@ from app.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logger import get_logger, setup_logging
 from app.core.rate_limit import RateLimitMiddleware
-from app.services import integration_workspaces
+from app.db.session import SessionLocal
+from app.services import integration_workspaces, integrations_scanner
 from app.services import secret_manager as _sm
 
 logger = get_logger(__name__)
@@ -76,6 +77,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 )
     except Exception:  # noqa: BLE001
         logger.exception("ensure_all_cloned failed at startup")
+
+    # Discover first-party integrations/ → App + AppVersion rows. Same
+    # best-effort posture as ensure_all_cloned: failures must not block boot.
+    try:
+        with SessionLocal() as scan_db:
+            scan_results = integrations_scanner.scan_integrations(scan_db)
+        if scan_results:
+            summary: dict[str, int] = {}
+            for r in scan_results:
+                summary[r.action] = summary.get(r.action, 0) + 1
+            logger.info("integrations scan summary: %s", summary)
+            for r in scan_results:
+                if r.action == "skipped":
+                    logger.warning(
+                        "integrations scan skipped %s: %s", r.slug, r.reason
+                    )
+    except Exception:  # noqa: BLE001
+        logger.exception("scan_integrations failed at startup")
 
     yield
     logger.info("HEAXHub backend shutting down")

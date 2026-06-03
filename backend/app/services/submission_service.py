@@ -38,8 +38,48 @@ def _check_git_url(url: str) -> None:
 # --- CRUD --------------------------------------------------------------------
 
 
+def _check_archive_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValidationError(
+            f"archive_url source requires http(s) URL; got scheme '{parsed.scheme}'"
+        )
+    if not parsed.hostname:
+        raise ValidationError("archive_url has no hostname")
+
+
+def _validate_source_config(source_config: dict | None, fallback_url: str | None) -> None:
+    """Validate source descriptor; reject P1-only source types.
+
+    When source_config is absent or has ``type == 'git'``, fall back to the
+    upstream_repo_url git host check. Otherwise dispatch by source type.
+    """
+    if not isinstance(source_config, dict) or not source_config:
+        # Legacy path: validate upstream_repo_url as a git URL.
+        if not fallback_url:
+            raise ValidationError("upstream_repo_url is required when source_config is absent")
+        _check_git_url(fallback_url)
+        return
+
+    stype = source_config.get("type")
+    if stype == "git":
+        url = source_config.get("url") or fallback_url
+        if not url:
+            raise ValidationError("git source_config requires 'url'")
+        _check_git_url(str(url))
+    elif stype == "archive_url":
+        url = source_config.get("url")
+        if not url:
+            raise ValidationError("archive_url source_config requires 'url'")
+        _check_archive_url(str(url))
+    elif stype in {"local_path", "system_command"}:
+        raise ValidationError(f"source type '{stype}' is not yet supported (P1)")
+    else:
+        raise ValidationError(f"Unsupported source type: {stype!r}")
+
+
 def create_submission(db: Session, *, user: User, payload: SubmissionCreate) -> Submission:
-    _check_git_url(str(payload.upstream_repo_url))
+    _validate_source_config(payload.source_config, payload.upstream_repo_url)
 
     existing_app = db.get(App, payload.proposed_app_id)
     if existing_app is not None:
@@ -62,15 +102,33 @@ def create_submission(db: Session, *, user: User, payload: SubmissionCreate) -> 
     if dup is not None:
         raise ConflictError("An active submission for this app_id already exists")
 
+    # When source_config provides a git url, prefer it for the persisted
+    # upstream_repo_url so downstream sync_tasks/clone_upstream stays consistent
+    # with the descriptor the submitter actually entered.
+    effective_url = payload.upstream_repo_url or ""
+    if isinstance(payload.source_config, dict):
+        cfg_url = payload.source_config.get("url")
+        if cfg_url:
+            effective_url = str(cfg_url)
+
     sub = Submission(
         submitter_user_id=user.id,
         proposed_app_id=payload.proposed_app_id,
         name=payload.name,
         description=payload.description,
-        upstream_repo_url=str(payload.upstream_repo_url),
-        proposed_app_type=payload.proposed_app_type,
-        proposed_execution_target=payload.proposed_execution_target,
+        upstream_repo_url=effective_url,
+        proposed_app_type=(
+            payload.proposed_app_type.value
+            if payload.proposed_app_type is not None
+            else None
+        ),
+        proposed_execution_target=(
+            payload.proposed_execution_target.value
+            if payload.proposed_execution_target is not None
+            else None
+        ),
         proposed_manifest=payload.proposed_manifest,
+        source_config=payload.source_config,
         status=SubmissionStatus.PENDING,
     )
     db.add(sub)

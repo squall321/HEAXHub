@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "heax-demo-cli"
+version = "0.1.0"
+description = "HEAXHub Python CLI 스택 데모 — CSV 행 카운터."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "heaxhub-demo" }]
+keywords = ["heaxhub", "demo", "cli", "csv"]
+dependencies = []
+
+[project.scripts]
+heax-demo-cli = "heax_demo_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/heax_demo_cli"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/heax_demo_cli",
+  ".portal",
+  "README.md",
+  "pyproject.toml",
+]

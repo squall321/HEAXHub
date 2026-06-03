@@ -16,7 +16,7 @@ from app.db.models.app import App, AppStatus, AppType, AppVisibility, ExecutionT
 from app.db.models.app_version import AppVersion, BuildStatus
 from app.db.models.submission import Submission, SubmissionStatus
 from app.db.models.user import User, UserRole
-from app.services import workspace_manager
+from app.services import audit_service, workspace_manager
 
 logger = get_logger(__name__)
 
@@ -141,3 +141,51 @@ def publish_app(
     db.commit()
     db.refresh(app)
     return app
+
+
+def publish_submission(
+    db: Session, *, reviewer: User, submission_id: uuid.UUID
+) -> Submission:
+    """Flip a BUILT submission to PUBLISHED and promote its App to STABLE.
+
+    The reviewer triggers this from the admin UI once the build pipeline has
+    finished and the test-run looks good. publish_app handles App / AppVersion
+    side; this function additionally:
+      - sets Submission.status = PUBLISHED
+      - sets Submission.published_at = now
+      - writes audit log
+    """
+    sub = db.get(Submission, submission_id)
+    if sub is None:
+        raise NotFoundError("Submission not found")
+    if sub.status != SubmissionStatus.BUILT:
+        raise ConflictError(
+            f"Submission status is '{sub.status.value}', expected 'built' to publish."
+        )
+    app = db.get(App, sub.proposed_app_id)
+    if app is None:
+        raise NotFoundError(f"App {sub.proposed_app_id} not found")
+    if app.current_version_id is None:
+        raise ConflictError("App has no AppVersion to publish")
+
+    publish_app(
+        db, app_id=app.id, version_id=app.current_version_id, actor=reviewer
+    )
+
+    sub.status = SubmissionStatus.PUBLISHED
+    sub.published_at = datetime.now(timezone.utc)
+    sub.reviewer_user_id = reviewer.id
+    sub.reviewed_at = datetime.now(timezone.utc)
+
+    audit_service.safe_log(
+        db,
+        actor_user_id=reviewer.id,
+        action="submission.published",
+        target_type="submission",
+        target_id=str(sub.id),
+        meta={"app_id": sub.proposed_app_id},
+    )
+
+    db.commit()
+    db.refresh(sub)
+    return sub

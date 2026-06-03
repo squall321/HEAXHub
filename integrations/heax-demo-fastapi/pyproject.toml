@@ -1,0 +1,16 @@
+[project]
+name = "heax-demo-fastapi"
+version = "0.1.0"
+description = "HEAXHub FastAPI 스택 데모. 간단 메모 CRUD API + Swagger UI."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

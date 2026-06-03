@@ -22,6 +22,7 @@ celery_app = Celery(
         "app.workers.gpu_tasks",
         "app.workers.ops_tasks",
         "app.workers.slurm_tasks",
+        "app.workers.integration_tasks",
     ],
 )
 
@@ -57,6 +58,10 @@ celery_app.conf.update(
         "slurm-poll-jobs": {
             "task": "slurm_tasks.poll_slurm_jobs",
             "schedule": 30.0,  # 30 seconds
+        },
+        "scan-integrations-every-5min": {
+            "task": "integration_tasks.scan_integrations_periodic",
+            "schedule": 300.0,  # 5 minutes
         },
     },
 )

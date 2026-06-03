@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -42,6 +42,7 @@ class Submission(Base):
     proposed_app_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     proposed_execution_target: Mapped[str | None] = mapped_column(String(50), nullable=True)
     proposed_manifest: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    source_config: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[SubmissionStatus] = mapped_column(
         Enum(SubmissionStatus, name="submission_status", values_callable=lambda x: [e.value for e in x]),
         nullable=False,

@@ -1,0 +1,110 @@
+# HEAXHub Supported Stacks
+#
+# Defines the small fixed set of stacks HEAXHub knows how to build & run
+# automatically. Every integration (in integrations/ or via INTEGRATION_REPO_URLS)
+# must declare one of these stacks via .portal/manifest.yaml::build.stack.
+#
+# Build / run resolver: backend/app/services/stack_resolver.py reads this file
+# at startup and uses it to dispatch to the right builder / runner.
+
+stacks:
+
+  # ── 1. Python CLI / Job ──────────────────────────────────────────────
+  # 입력 파라미터 + 입력 파일 → 스크립트 실행 → 출력 파일.
+  # 매니페스트 inputs[] 로부터 자동 폼 생성.
+  python_cli:
+    label: "Python CLI / Batch Job"
+    app_type: cli_tool
+    execution_target: linux_runner
+    launch_mode: job_runner
+    builder: python_venv
+    runtime: python_venv
+    python_version: "3.11"
+    install: pip install -e .
+    entrypoint: ./.portal/run.sh
+    use_cases:
+      - CAE 전처리/후처리 스크립트
+      - 데이터 변환 / 보고서 생성
+    examples: [heax-demo-cli]
+
+  # ── 2. Streamlit Service ─────────────────────────────────────────────
+  # 상시 데몬 (service mode). Caddy 가 /apps/{id}/ 하위로 리버스 프록시.
+  streamlit:
+    label: "Streamlit Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: python_venv
+    runtime: python_venv
+    python_version: "3.11"
+    install: pip install -e .
+    entrypoint: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.baseUrlPath $ROOT_PATH
+    health_path: /_stcore/health
+    use_cases:
+      - 데이터 대시보드 / 시각화
+      - 즉석 분석 UI
+    examples: [heax-demo-streamlit]
+
+  # ── 3. FastAPI Service ───────────────────────────────────────────────
+  # uvicorn 기반 상시 웹앱. /api 또는 풀 SPA 형태 둘 다 가능.
+  fastapi:
+    label: "FastAPI / uvicorn Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: python_venv
+    runtime: python_venv
+    python_version: "3.11"
+    install: pip install -e .
+    entrypoint: uvicorn app.main:app --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH
+    health_path: /health
+    use_cases:
+      - 백엔드 마이크로서비스
+      - REST API + 간단한 HTML
+    examples: [heax-demo-fastapi]
+
+  # ── 4. Next.js / React SPA Service ───────────────────────────────────
+  # 빌드 산출물(.next/) 을 node 가 서빙. 또는 정적 export.
+  nextjs:
+    label: "Next.js / React SPA Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: nodejs
+    runtime: nodejs
+    node_version: "20"
+    install: pnpm install --frozen-lockfile
+    build: pnpm build
+    entrypoint: pnpm start -- --port $PORT --hostname 0.0.0.0
+    health_path: /
+    base_path_env: NEXT_PUBLIC_BASE_PATH
+    use_cases:
+      - 프론트엔드 중심 UI
+      - SSR / SSG 혼합
+    examples: [heax-demo-nextjs]
+
+  # ── 5. Windows Local Installer ───────────────────────────────────────
+  # 사용자가 .exe 를 다운로드해 로컬 PC 에서 실행. HEAXHub 는 매니페스트 +
+  # 인스톨러 호스팅 + 프로토콜 핸들러(heaxhub://) 만 제공.
+  # NOTE: 첫 릴리즈에서 데모는 만들지 않음 (사용자 결정).
+  windows_local:
+    label: "Windows Local Installer"
+    app_type: windows_gui
+    execution_target: local_pc
+    launch_mode: installer
+    builder: external
+    runtime: windows_agent
+    installer_storage_root_env: INSTALLER_STORAGE_ROOT
+    use_cases:
+      - 윈도우 전용 GUI 도구 (CAD/CAE)
+      - 로컬 라이센스 종속 도구
+    examples: []   # 첫 릴리즈에는 데모 없음. 추후 추가.
+
+# 표준 .portal/ 구조 (모든 스택 공통):
+#
+# <repo_root>/
+#   .portal/
+#     manifest.yaml      # 필수. 스택 + 메타데이터.
+#     run.sh             # 선택. job_runner 모드 entrypoint.
+#     params.schema.json # 선택. inputs 추가 검증.
+#   <스택 표준 파일들>    # 예: app.py (streamlit), package.json (nextjs)

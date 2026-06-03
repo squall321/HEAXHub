@@ -13,9 +13,10 @@ from app.db.models.app import App
 from app.db.models.app_version import AppVersion, BuildStatus
 from app.db.models.submission import Submission, SubmissionStatus
 from app.db.session import SessionLocal
-from app.services import app_lifecycle, workspace_manager
+from app.services import app_lifecycle, overlay_synthesizer, workspace_manager
 from app.services.audit_service import log as audit_log
 from app.services.source_fetcher import fetch_source
+from app.services.static_analyzer import analyze as analyze_workspace
 from app.workers.build_tasks import (
     build_apptainer_sif,
     build_nodejs,
@@ -70,14 +71,30 @@ def clone_upstream(submission_id: str) -> dict[str, object]:
                 db.commit()
         return {"ok": False, "error": str(exc)}
 
-    # Look for an upstream manifest. If present, copy to overlay.
-    upstream_manifest = upstream_dir / ".portal" / "manifest.yaml"
+    # Synthesize overlay .portal/ (manifest + run.sh). Either copies upstream's
+    # own .portal/ verbatim or generates a sensible default from static facts.
+    # Mutates sub.status to MANIFEST_REQUIRED when no signal was usable; we
+    # commit that further below alongside other DB updates.
+    facts = analyze_workspace(workspace)
+    with SessionLocal() as _db:
+        _sub = _db.get(Submission, sid)
+        _synth = overlay_synthesizer.synthesize_overlay(workspace, _sub, facts)
+        if _sub is not None and _sub.status == SubmissionStatus.MANIFEST_REQUIRED:
+            _db.commit()
+
     overlay_manifest = workspace / "overlay" / ".portal" / "manifest.yaml"
-    manifest_data: dict[str, object] | None = None
-    if upstream_manifest.exists():
-        manifest_data = yaml.safe_load(upstream_manifest.read_text(encoding="utf-8"))
-        overlay_manifest.write_text(
-            upstream_manifest.read_text(encoding="utf-8"), encoding="utf-8"
+    manifest_data: dict[str, object] | None = (
+        _synth.manifest
+        if _synth.synthesized
+        else (
+            yaml.safe_load(overlay_manifest.read_text(encoding="utf-8"))
+            if overlay_manifest.exists()
+            else None
+        )
+    )
+    if _synth.synthesized:
+        logger.info(
+            "overlay synthesized for submission=%s flavor=%s", sid, _synth.flavor
         )
 
     # Write upstream.lock

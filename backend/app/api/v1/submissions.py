@@ -79,6 +79,24 @@ def review_submission(
     return SubmissionOut.model_validate(sub)
 
 
+@router.post("/{submission_id}/publish", response_model=SubmissionOut)
+def publish_submission(
+    submission_id: uuid.UUID,
+    db: DbSession,
+    reviewer: AdminUser,
+) -> SubmissionOut:
+    """Flip a BUILT submission to PUBLISHED and promote its App to STABLE.
+
+    Admin-only. Requires Submission.status == BUILT (i.e. the build pipeline
+    succeeded). After this call the App becomes visible in the catalog and
+    runnable by other users with view/execute permission.
+    """
+    sub = app_lifecycle.publish_submission(
+        db, reviewer=reviewer, submission_id=submission_id
+    )
+    return SubmissionOut.model_validate(sub)
+
+
 @router.post("/{submission_id}/test-run", response_model=SubmissionOut)
 def test_run_submission(
     submission_id: uuid.UUID,

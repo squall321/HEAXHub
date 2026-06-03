@@ -1,0 +1,64 @@
+schema_version: 2
+id: heax_demo_cli
+name: Demo · CSV Row Counter (Python CLI)
+version: 0.1.0
+owner: heaxhub-demo
+status: stable
+app_type: cli_tool
+execution_target: linux_runner
+
+description: |
+  HEAXHub Python CLI 스택 데모. 사용자가 업로드한 CSV 파일의 행 수를 세고
+  result.json에 결과를 기록한다. 입력 검증, 출력 파일 회수, params 폼 자동
+  생성, 잡 로그 스트리밍 — 4가지 표준 흐름이 모두 동작하는지 확인하는 픽스처.
+
+tags:
+  - demo
+  - python
+  - cli
+  - csv
+
+build:
+  stack: python_cli
+
+launch:
+  mode: job_runner
+  command: ./.portal/run.sh
+  runtime: python_venv
+
+inputs:
+  - name: csv_file
+    type: file
+    label: 입력 CSV 파일
+    description: 첫 줄을 헤더로 가정하고 데이터 행 수를 셉니다.
+    required: true
+    accept: [".csv", ".txt"]
+  - name: skip_header
+    type: boolean
+    label: 헤더 스킵
+    description: 첫 줄을 헤더로 간주하고 카운트에서 제외할지
+    default: true
+  - name: max_rows
+    type: integer
+    label: 최대 검사 행 수
+    description: 0이면 전체 (메모리 안전)
+    default: 0
+    min: 0
+    max: 10000000
+
+outputs:
+  - name: result_json
+    type: file
+    path: output/result.json
+    description: row_count, file_size_bytes, elapsed_ms 를 담은 결과 JSON
+
+permissions:
+  visibility: team
+
+resources:
+  cpu: 1
+  memory_gb: 1
+  gpu: false
+
+requirements:
+  os: linux

@@ -1,0 +1,116 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%post
+    set -eux
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    # ── base OS packages ──────────────────────────────────────────────
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        wget \
+        gnupg \
+        git \
+        tar \
+        xz-utils \
+        build-essential \
+        pkg-config \
+        libssl-dev \
+        openjdk-17-jdk-headless
+    rm -rf /var/lib/apt/lists/*
+
+    # ── .NET 8 SDK (direct tarball install to /opt/dotnet) ────────────
+    # Avoids relying on packages.microsoft.com which is flaky for ubuntu 22.04
+    # behind some corporate proxies.
+    DOTNET_VERSION=8.0.404
+    DOTNET_URL="https://builds.dotnet.microsoft.com/dotnet/Sdk/${DOTNET_VERSION}/dotnet-sdk-${DOTNET_VERSION}-linux-x64.tar.gz"
+    mkdir -p /opt/dotnet
+    curl -fsSL "${DOTNET_URL}" -o /tmp/dotnet.tar.gz
+    tar -xzf /tmp/dotnet.tar.gz -C /opt/dotnet
+    rm -f /tmp/dotnet.tar.gz
+    /opt/dotnet/dotnet --info
+
+    # ── Maven 3.9 ─────────────────────────────────────────────────────
+    MAVEN_VERSION=3.9.9
+    MAVEN_URL="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+    curl -fsSL "${MAVEN_URL}" -o /tmp/maven.tar.gz
+    tar -xzf /tmp/maven.tar.gz -C /opt
+    ln -sfn "/opt/apache-maven-${MAVEN_VERSION}" /opt/maven
+    rm -f /tmp/maven.tar.gz
+    /opt/maven/bin/mvn -v
+
+    # ── Rust stable via rustup (default toolchain, minimal profile) ───
+    export RUSTUP_HOME=/root/.rustup
+    export CARGO_HOME=/root/.cargo
+    curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh
+    sh /tmp/rustup-init.sh -y --default-toolchain stable --profile minimal --no-modify-path
+    rm -f /tmp/rustup-init.sh
+    /root/.cargo/bin/rustc --version
+    /root/.cargo/bin/cargo --version
+
+    # ── sanity: JAVA_HOME for headless openjdk-17 ─────────────────────
+    JAVA_HOME_PATH="$(dirname "$(dirname "$(readlink -f "$(which javac)")")")"
+    echo "JAVA_HOME resolved to: ${JAVA_HOME_PATH}"
+
+%environment
+    # .NET
+    export DOTNET_ROOT=/opt/dotnet
+    export DOTNET_CLI_TELEMETRY_OPTOUT=1
+    export DOTNET_NOLOGO=1
+
+    # Java 17 (openjdk-17-jdk-headless lands here on ubuntu 22.04 amd64)
+    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+    # Maven
+    export M2_HOME=/opt/maven
+    export MAVEN_HOME=/opt/maven
+
+    # Rust / Cargo
+    export RUSTUP_HOME=/root/.rustup
+    export CARGO_HOME=/root/.cargo
+
+    # PATH: dotnet, maven, cargo, java/javac, then system
+    export PATH=/opt/dotnet:/opt/maven/bin:/root/.cargo/bin:${JAVA_HOME}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+%labels
+    org.heaxhub.role        toolchain
+    org.heaxhub.toolchain   polyglot
+    org.heaxhub.dotnet      8.0
+    org.heaxhub.java        17
+    org.heaxhub.maven       3.9
+    org.heaxhub.rust        stable
+
+%help
+    HEAXHub polyglot toolchain SIF (Ubuntu 22.04 + .NET 8 + Java 17 + Maven 3.9 + Rust stable).
+    Built SIF is large (~1.5 GB) — see toolchain_polyglot.README.md for the size warning.
+
+    Stacks served by this SIF (see backend/app/services/toolchain_resolver.py):
+      dotnet_aspnet     → dotnet publish -c Release …
+      java_springboot   → ./mvnw -B -DskipTests package    (or mvn -B -DskipTests package)
+      rust_actix        → cargo build --release
+
+    Usage patterns (each example is what integration_builder._wrap_for_toolchain emits):
+
+      1) .NET 8 publish:
+         apptainer exec --cleanenv \
+             --bind /path/to/workspace:/workspace \
+             heaxhub_toolchain_polyglot.sif \
+             bash -lc 'cd /workspace && dotnet publish -c Release -o ./publish'
+
+      2) Java Spring Boot (Maven):
+         apptainer exec --cleanenv \
+             --bind /path/to/workspace:/workspace \
+             heaxhub_toolchain_polyglot.sif \
+             bash -lc 'cd /workspace && ./mvnw -B -DskipTests package'
+
+      3) Rust release build:
+         apptainer exec --cleanenv \
+             --bind /path/to/workspace:/workspace \
+             heaxhub_toolchain_polyglot.sif \
+             bash -lc 'cd /workspace && cargo build --release'
+
+    Proxy forwarding (when host worker needs an outbound proxy):
+      APPTAINERENV_HTTPS_PROXY=$HTTPS_PROXY apptainer exec --cleanenv … above …

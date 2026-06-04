@@ -1,0 +1,58 @@
+Bootstrap: docker
+From: golang:1.22-bookworm
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        make
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+    # Sanity: golang:1.22-bookworm already provides /usr/local/go/bin/go
+    go version
+
+    # Workspace mount point
+    mkdir -p /workspace
+    chmod 0775 /workspace || true
+
+%environment
+    export PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    export GOPATH=/tmp/go
+    export GOCACHE=/tmp/go-cache
+    export GOFLAGS="-mod=mod"
+    export CGO_ENABLED=0
+
+%labels
+    org.heaxhub.role toolchain
+    org.heaxhub.toolchain go122
+    org.heaxhub.go.version 1.22
+    org.heaxhub.base golang:1.22-bookworm
+
+%help
+    HEAXHub Go 1.22 toolchain SIF.
+
+    Contents:
+      - go 1.22 (from golang:1.22-bookworm base)
+      - git
+      - ca-certificates
+      - make
+
+    bind:
+      --bind $WORKSPACE:/workspace
+
+    usage:
+      apptainer exec heaxhub_toolchain_go122.sif bash -lc \
+        'cd /workspace && go build -o {slug} .'
+
+    notes:
+      - Used by integration_builder for stack 'go_service'.
+      - Resolver: backend/app/services/toolchain_resolver.py probes
+        $HEAXHUB_TOOLCHAIN_SIF_DIR (default: deploy/apptainer/) for
+        heaxhub_toolchain_go122.sif, then falls back to
+        $HOME/serviceApptainers/heaxhub_toolchain_go122.sif.
+      - --cleanenv is applied by the builder; proxy env is forwarded
+        via APPTAINERENV_HTTPS_PROXY when set.

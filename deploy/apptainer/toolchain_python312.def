@@ -1,0 +1,69 @@
+Bootstrap: docker
+From: python:3.12-slim-bookworm
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Forward build-time proxies if set (BuildKit-style ARGs are not honored by
+    # apptainer; operators export http_proxy/https_proxy in the build shell).
+    if [ -n "${HTTPS_PROXY:-}" ]; then export https_proxy="$HTTPS_PROXY"; fi
+    if [ -n "${HTTP_PROXY:-}"  ]; then export http_proxy="$HTTP_PROXY";   fi
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+    # Pre-warm pip / setuptools / wheel and the venv module so workspace
+    # `python -m venv .venv && pip install -e .` runs without network for tooling.
+    python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+    python -m pip install --no-cache-dir --upgrade "uv>=0.4"
+    python -m ensurepip --upgrade || true
+
+    # Sanity check the installed toolchain.
+    python --version
+    pip --version
+    uv --version
+    git --version
+
+    # Shared workspace mount point used by integration_builder bind semantics.
+    mkdir -p /workspace
+    chmod 0775 /workspace || true
+
+%environment
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    export PIP_NO_CACHE_DIR=1
+    export PATH=/usr/local/bin:/usr/bin:/bin
+
+%labels
+    org.heaxhub.role toolchain
+    org.heaxhub.toolchain python312
+    org.heaxhub.base python:3.12-slim-bookworm
+
+%help
+    HEAXHub Python 3.12 toolchain SIF.
+
+    Contents:
+      - Python 3.12 (from python:3.12-slim-bookworm)
+      - pip / setuptools / wheel (pre-upgraded)
+      - venv module (pre-warmed via ensurepip)
+      - uv (Astral) >= 0.4 for fast installs
+      - build-essential (gcc, g++, make) for pyproject C extensions
+      - git, ca-certificates, curl
+
+    Used by integration_builder._build_python via _wrap_for_toolchain().
+
+    bind:
+      --bind $WORKSPACE:/workspace
+    usage:
+      apptainer exec heaxhub_toolchain_python312.sif bash -lc \
+        'cd /workspace && python -m venv .venv && .venv/bin/pip install -e .'

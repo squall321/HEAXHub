@@ -21,6 +21,8 @@
 #   --skip-frontend    프론트엔드 빌드 생략 (이미 dist/ 가 있을 때)
 #   --skip-agent       .NET 에이전트 빌드 생략
 #   --skip-wheels      pip download 생략
+#   --with-toolchains  deploy/apptainer/heaxhub_toolchain_*.sif 도 번들에 포함
+#                      (기본 미포함 — 4개 합쳐 ~2 GB 라서 명시적으로 켜야 함)
 #   --output-dir <d>   최종 tar.gz 저장 위치 (기본: ./dist-bundle)
 #
 # 사용 예:
@@ -42,6 +44,7 @@ DRY_RUN=0
 SKIP_FRONTEND=0
 SKIP_AGENT=0
 SKIP_WHEELS=0
+WITH_TOOLCHAINS=0
 OUTPUT_DIR="${ROOT}/dist-bundle"
 VERSION=""
 
@@ -52,6 +55,7 @@ while [[ $# -gt 0 ]]; do
     --skip-frontend)  SKIP_FRONTEND=1; shift ;;
     --skip-agent)     SKIP_AGENT=1; shift ;;
     --skip-wheels)    SKIP_WHEELS=1; shift ;;
+    --with-toolchains) WITH_TOOLCHAINS=1; shift ;;
     --version)        VERSION="$2"; shift 2 ;;
     --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
     -h|--help)
@@ -181,6 +185,35 @@ for sif in "${SIF_LIST[@]}"; do
 done
 log "SIFs linked   : ${SIF_COUNT}/${#SIF_LIST[@]}"
 [[ ${#SIF_MISSING[@]} -gt 0 ]] && warn "missing list: ${SIF_MISSING[*]}"
+
+# ─── 3b) toolchain SIFs (opt-in via --with-toolchains) ──────────────────────
+TOOLCHAIN_SRC="${ROOT}/deploy/apptainer"
+TOOLCHAIN_LIST=(
+  heaxhub_toolchain_nodejs20.sif
+  heaxhub_toolchain_python312.sif
+  heaxhub_toolchain_go122.sif
+  heaxhub_toolchain_polyglot.sif
+)
+TOOLCHAIN_COUNT=0
+TOOLCHAIN_MISSING=()
+if [[ "$WITH_TOOLCHAINS" -eq 1 ]]; then
+  log "including toolchain SIFs from ${TOOLCHAIN_SRC}"
+  for sif in "${TOOLCHAIN_LIST[@]}"; do
+    src="${TOOLCHAIN_SRC}/${sif}"
+    dst="${STAGE}/sifs/${sif}"
+    if [[ -f "$src" ]]; then
+      run "ln -sf '${src}' '${dst}'"
+      TOOLCHAIN_COUNT=$((TOOLCHAIN_COUNT+1))
+    else
+      TOOLCHAIN_MISSING+=("$sif")
+      warn "missing toolchain SIF: ${src} (먼저 bash deploy/apptainer/build-toolchains.sh)"
+    fi
+  done
+  log "toolchains    : ${TOOLCHAIN_COUNT}/${#TOOLCHAIN_LIST[@]}"
+  [[ ${#TOOLCHAIN_MISSING[@]} -gt 0 ]] && warn "missing toolchains: ${TOOLCHAIN_MISSING[*]}"
+else
+  log "skip toolchain SIFs (use --with-toolchains to include ~2 GB of heaxhub_toolchain_*.sif)"
+fi
 
 # ─── 4) HeaxAgent (dotnet publish) ─────────────────────────────────────────
 AGENT_LINUX_OUT="${STAGE}/agents/linux-x64"
@@ -343,6 +376,7 @@ echo " version         : ${VERSION}"
 echo " bundle dir      : ${STAGE}"
 echo " wheels count    : ${WHEEL_COUNT}"
 echo " sifs count      : ${SIF_COUNT} (of ${#SIF_LIST[@]})"
+echo " toolchains      : ${TOOLCHAIN_COUNT} (of ${#TOOLCHAIN_LIST[@]}, --with-toolchains=${WITH_TOOLCHAINS})"
 echo " agent linux-x64 : ${AGENT_LINUX_BIN:-<skipped>}"
 echo " agent win-x64   : ${AGENT_WIN_BIN:-<skipped>}"
 echo " frontend dist   : ${FRONTEND_SIZE}"

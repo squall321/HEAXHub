@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -119,6 +119,19 @@ class Settings(BaseSettings):
     # app.services.sif_registry. Relative paths resolved against the project
     # root (where the backend process is launched).
     sif_registry_path: Path = Path("config/sif_registry.yaml")
+    # Per-stack toolchain SIFs (heaxhub_toolchain_<key>.sif) used by the
+    # integration builder to dispatch pip / pnpm / go / dotnet / mvn / cargo
+    # inside a hermetic Apptainer image instead of the host PATH. When empty,
+    # the resolver falls back to SIF_DIR (legacy operator override) and then
+    # to ~/serviceApptainers/ for dev workstations.
+    toolchain_sif_dir: str = Field(
+        default="",
+        validation_alias=AliasChoices("HEAXHUB_TOOLCHAIN_SIF_DIR", "toolchain_sif_dir"),
+        description=(
+            "Override directory for heaxhub_toolchain_*.sif. Empty falls back "
+            "to SIF_DIR / ~/serviceApptainers."
+        ),
+    )
 
     # --- License provider (FlexLM/mock) ---
     license_provider: Literal["flexlm", "mock"] = "mock"

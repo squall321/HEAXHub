@@ -29,6 +29,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -40,6 +41,7 @@ import yaml
 
 from app.core.logger import get_logger
 from app.services.stack_resolver import StackSpec, load_stacks
+from app.services.toolchain_dispatch import resolve_sif
 
 logger = get_logger(__name__)
 
@@ -268,18 +270,26 @@ def _build_python(
             )
         shutil.rmtree(venv)
 
+    # Probe for a toolchain SIF (heaxhub_toolchain_python312.sif). When
+    # present, pip runs *inside* the SIF; when absent, we fall back to host
+    # PATH so dev workstations without the SIF still work.
+    sif = resolve_sif(spec.name)
+
     logger.info("creating venv with %s for %s", interp, workspace.name)
+    # Venv creation itself uses the host interpreter so the resulting
+    # .venv/bin/python is a stable host binary — embedding the SIF's
+    # python would break the venv as soon as the SIF is moved/removed.
     _run([interp, "-m", "venv", str(venv)], cwd=workspace, log_path=log_path)
     interp_marker.write_text(interp)
 
     pip = str(venv / "bin" / "pip")
     _run_with_retry(
         [pip, "install", "--quiet", "--upgrade", "pip"],
-        cwd=workspace, log_path=log_path,
+        cwd=workspace, log_path=log_path, sif=sif,
     )
     _run_with_retry(
         [pip, "install", "--quiet", "-e", "."],
-        cwd=workspace, log_path=log_path,
+        cwd=workspace, log_path=log_path, sif=sif,
     )
 
     _write_sentinel_hash(workspace / _SENTINEL, current_hash)
@@ -393,14 +403,16 @@ def _build_nodejs(
             else [pnpm, "install"]
         )
 
+    sif = resolve_sif(spec.name)
+
     logger.info("running %s in %s", install_cmd, workspace.name)
-    _run_with_retry(install_cmd, cwd=workspace, log_path=log_path)
+    _run_with_retry(install_cmd, cwd=workspace, log_path=log_path, sif=sif)
 
     scripts = json.loads(pkg_json.read_text(encoding="utf-8")).get("scripts", {})
     if "build" in scripts:
         build_cmd = [pnpm, "build"] if use_pnpm else [pnpm, "run", "build"]
         logger.info("running %s in %s", build_cmd, workspace.name)
-        _run(build_cmd, cwd=workspace, log_path=log_path)
+        _run(build_cmd, cwd=workspace, log_path=log_path, sif=sif)
 
     _write_sentinel_hash(sentinel, current_hash)
     return True
@@ -429,8 +441,10 @@ def _build_go(
         logger.info("go build skipped (up-to-date): %s", workspace)
         return False
 
-    go_bin = shutil.which("go")
-    if go_bin is None:
+    # Probe for a go122 toolchain SIF first; when present, the host doesn't
+    # need `go` on PATH.
+    sif = resolve_sif(spec.name)
+    if sif is None and shutil.which("go") is None:
         raise FileNotFoundError(
             "go not on PATH — install Go 1.22+ to build go_service stacks"
         )
@@ -447,7 +461,10 @@ def _build_go(
     if (build_section.get("features") or {}).get("cgo"):
         env_extras["CGO_ENABLED"] = "1"
     logger.info("running go build for %s", workspace.name)
-    _run_shell(build_cmd_str, cwd=workspace, log_path=log_path, env_extras=env_extras)
+    _run_shell(
+        build_cmd_str, cwd=workspace, log_path=log_path,
+        env_extras=env_extras, sif=sif,
+    )
 
     _write_sentinel_hash(sentinel, current_hash)
     return True
@@ -556,8 +573,10 @@ def _build_dotnet(
         logger.info("dotnet build skipped (up-to-date): %s", workspace)
         return False
 
-    dotnet_bin = shutil.which("dotnet")
-    if dotnet_bin is None:
+    # Resolve a toolchain SIF first; when present, the polyglot image already
+    # carries dotnet-sdk-8 so we can skip the host PATH check.
+    sif = resolve_sif(spec.name)
+    if sif is None and shutil.which("dotnet") is None:
         raise _BuildError(
             "dotnet not on PATH — operator must install .NET 8 SDK on the host "
             "(e.g. `apt-get install -y dotnet-sdk-8.0` on Ubuntu, or follow "
@@ -571,7 +590,7 @@ def _build_dotnet(
         or "dotnet publish -c Release -o publish"
     )
     logger.info("running dotnet publish for %s", workspace.name)
-    _run_shell(install_cmd, cwd=workspace, log_path=log_path)
+    _run_shell(install_cmd, cwd=workspace, log_path=log_path, sif=sif)
 
     _write_sentinel_hash(sentinel, current_hash)
     return True
@@ -623,10 +642,14 @@ def _build_java_maven(
         logger.info("maven build skipped (up-to-date): %s", workspace)
         return False
 
-    # Verify the JDK is reachable. We deliberately don't parse `java -version`
-    # — too fragile across vendors. Operators with the wrong JDK will see
-    # Maven's own error on the actual compile step.
-    if shutil.which("java") is None:
+    # When a polyglot toolchain SIF is available, JDK + Maven both live inside
+    # the image so the host doesn't need them. Probe for SIF first; only fall
+    # back to the host PATH check when no SIF is present.
+    sif_probe = resolve_sif(spec.name)
+    if sif_probe is None and shutil.which("java") is None:
+        # We deliberately don't parse `java -version` — too fragile across
+        # vendors. Operators with the wrong JDK will see Maven's own error
+        # on the actual compile step.
         raise _BuildError(
             "java not on PATH — operator must install JDK 17 (Temurin recommended) "
             "on the host. HEAXHub does not auto-install JDKs."
@@ -646,7 +669,7 @@ def _build_java_maven(
             or "./mvnw -B -DskipTests package"
         )
     else:
-        if shutil.which("mvn") is None:
+        if sif_probe is None and shutil.which("mvn") is None:
             raise _BuildError(
                 "neither ./mvnw nor system mvn found — commit the Maven wrapper "
                 "(./mvnw + .mvn/) or install Maven on the host (apt-get install "
@@ -654,8 +677,9 @@ def _build_java_maven(
             )
         install_cmd = "mvn -B -DskipTests package"
 
+    sif = sif_probe
     logger.info("running maven build for %s", workspace.name)
-    _run_shell(install_cmd, cwd=workspace, log_path=log_path)
+    _run_shell(install_cmd, cwd=workspace, log_path=log_path, sif=sif)
 
     _write_sentinel_hash(sentinel, current_hash)
     return True
@@ -703,8 +727,9 @@ def _build_rust_cargo(
         logger.info("cargo build skipped (up-to-date): %s", workspace)
         return False
 
-    cargo = shutil.which("cargo")
-    if cargo is None:
+    # Polyglot SIF carries cargo/rustup — skip the host PATH check when set.
+    sif = resolve_sif(spec.name)
+    if sif is None and shutil.which("cargo") is None:
         raise _BuildError(
             "cargo not on PATH — operator must install the Rust toolchain "
             "(rustup recommended: https://rustup.rs) on the host. HEAXHub "
@@ -717,7 +742,7 @@ def _build_rust_cargo(
         or "cargo build --release"
     )
     logger.info("running cargo build for %s", workspace.name)
-    _run_shell(install_cmd, cwd=workspace, log_path=log_path)
+    _run_shell(install_cmd, cwd=workspace, log_path=log_path, sif=sif)
 
     _write_sentinel_hash(sentinel, current_hash)
     return True
@@ -952,21 +977,45 @@ def _run_shell(
     cwd: Path,
     log_path: Path,
     env_extras: dict[str, str] | None = None,
+    sif: Path | None = None,
 ) -> None:
     """Run a shell command string. Like ``_run`` but goes through /bin/sh -c.
 
     Used when the operator's build command contains shell-style quoting
     (e.g. ``-ldflags='-s -w'``) that would be mangled by an argv list.
+
+    When ``sif`` is provided, dispatches via ``apptainer exec ... bash -lc``
+    inside the toolchain image with the workspace bound at ``/workspace``.
+    ``env_extras`` are forwarded as ``APPTAINERENV_<KEY>`` so they survive
+    ``--cleanenv``, matching how the apptainer runner propagates proxy vars.
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     if env_extras:
         env.update(env_extras)
+    if sif is None:
+        argv = ["/bin/sh", "-c", cmd_str]
+        original = argv
+    else:
+        # --cleanenv strips host env inside the container; re-inject env_extras
+        # via APPTAINERENV_<KEY> so e.g. CGO_ENABLED=1 actually reaches `go`.
+        if env_extras:
+            for k, v in env_extras.items():
+                env[f"APPTAINERENV_{k}"] = v
+        inner = f"cd /workspace && {cmd_str}"
+        argv = [
+            "apptainer", "exec", "--cleanenv",
+            "--bind", f"{cwd}:/workspace",
+            str(sif),
+            "bash", "-lc", inner,
+        ]
+        original = ["/bin/sh", "-c", cmd_str]
+        logger.info("running in toolchain SIF %s: %s", sif.name, cmd_str)
     with log_path.open("ab") as logf:
-        logf.write(f"\n$ {cmd_str}\n".encode())
+        logf.write(f"\n$ {' '.join(argv)}\n".encode())
         logf.flush()
         proc = subprocess.run(  # noqa: S603
-            ["/bin/sh", "-c", cmd_str],
+            argv,
             cwd=str(cwd),
             check=False,
             timeout=_BUILD_TIMEOUT,
@@ -979,7 +1028,7 @@ def _run_shell(
             logf.write(proc.stderr)
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(
-            proc.returncode, ["/bin/sh", "-c", cmd_str], proc.stdout, proc.stderr
+            proc.returncode, original, proc.stdout, proc.stderr
         )
 
 
@@ -988,19 +1037,57 @@ def _run_shell(
 # ---------------------------------------------------------------------------
 
 
-def _run(cmd: list[str], *, cwd: Path, log_path: Path) -> None:
+def _wrap_for_toolchain(
+    cmd: list[str], *, cwd: Path, sif: Path | None
+) -> list[str]:
+    """Return ``cmd`` unchanged, or wrapped in ``apptainer exec`` if ``sif`` set.
+
+    The wrapped form binds the workspace to ``/workspace`` inside the
+    container, runs through ``bash -lc`` (so login-profile PATH adjustments —
+    e.g. pnpm shims dropped in by corepack — survive), and changes into
+    ``/workspace`` before invoking the original command. ``--cleanenv`` is
+    deliberate: we do NOT want host ``PYTHONPATH`` / ``NODE_PATH`` leaking
+    into the build, which is the whole point of dispatching to a SIF.
+    """
+    if sif is None:
+        return cmd
+    inner = "cd /workspace && " + " ".join(shlex.quote(c) for c in cmd)
+    return [
+        "apptainer", "exec", "--cleanenv",
+        "--bind", f"{cwd}:/workspace",
+        str(sif),
+        "bash", "-lc", inner,
+    ]
+
+
+def _run(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    log_path: Path,
+    sif: Path | None = None,
+) -> None:
     """Run a command, raising on non-zero exit, with our timeout cap.
 
     Stdout+stderr are appended to ``log_path`` so operators can tail it. We
     also keep the bytes around in the raised CalledProcessError so callers
     can include a tail in the BuildResult.error string.
+
+    When ``sif`` is provided, the command is wrapped in ``apptainer exec`` so
+    pip/pnpm/etc. run inside the toolchain image. The original argv is still
+    used for the CalledProcessError so the operator-visible error mentions
+    the tool they asked for, not the apptainer wrapper.
     """
+    original_cmd = cmd
+    effective_cmd = _wrap_for_toolchain(cmd, cwd=cwd, sif=sif)
+    if sif is not None:
+        logger.info("running in toolchain SIF %s: %s", sif.name, " ".join(original_cmd))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as logf:
-        logf.write(f"\n$ {' '.join(cmd)}\n".encode())
+        logf.write(f"\n$ {' '.join(effective_cmd)}\n".encode())
         logf.flush()
         proc = subprocess.run(  # noqa: S603
-            cmd,
+            effective_cmd,
             cwd=str(cwd),
             check=False,
             timeout=_BUILD_TIMEOUT,
@@ -1012,11 +1099,17 @@ def _run(cmd: list[str], *, cwd: Path, log_path: Path) -> None:
             logf.write(proc.stderr)
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(
-            proc.returncode, cmd, proc.stdout, proc.stderr
+            proc.returncode, original_cmd, proc.stdout, proc.stderr
         )
 
 
-def _run_with_retry(cmd: list[str], *, cwd: Path, log_path: Path) -> None:
+def _run_with_retry(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    log_path: Path,
+    sif: Path | None = None,
+) -> None:
     """Retry transient pip/pnpm install failures with backoff.
 
     Most install flakes here are upstream registry timeouts; one retry is
@@ -1029,7 +1122,7 @@ def _run_with_retry(cmd: list[str], *, cwd: Path, log_path: Path) -> None:
             logger.info("retrying %s after %ds (attempt %d)", cmd[0], delay, attempt)
             time.sleep(delay)
         try:
-            _run(cmd, cwd=cwd, log_path=log_path)
+            _run(cmd, cwd=cwd, log_path=log_path, sif=sif)
             return
         except subprocess.CalledProcessError as exc:
             last = exc

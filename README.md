@@ -54,6 +54,22 @@ deploy/apptainer/stop.sh       # 전체 종료
 - 통합 진입점 (Caddy): <http://localhost:4180>
 - 메일 확인용 MailHog UI: <http://localhost:8126> (SMTP는 :8125)
 
+### Quick start (offline)
+
+오프라인 호스트에 처음 올리는 시퀀스:
+
+```bash
+sudo bash scripts/bootstrap-host.sh                 # 호스트 패키지 + apptainer
+bash deploy/apptainer/build-toolchains.sh           # 4종 toolchain SIF (온라인 staging 머신에서)
+bash deploy/apptainer/install_all.sh                # 서비스 SIF + 인스턴스 기동
+```
+
+`build-toolchains.sh` 는 외부 도커 이미지를 받아 SIF 로 변환하므로 인터넷이
+필요하다. 결과물(`deploy/apptainer/heaxhub_toolchain_*.sif`)을 그대로 오프라인
+타깃에 복사하거나, 번들에 같이 담으려면
+`bash scripts/prepare_offline_bundle.sh --with-toolchains` 를 사용한다.
+상세는 [`infra/packages/toolchains/README.md`](./infra/packages/toolchains/README.md).
+
 ## 디렉터리 구조
 
 상세는 [PROJECT_PLAN.md §3](./PROJECT_PLAN.md) 참고.

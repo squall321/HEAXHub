@@ -1,0 +1,66 @@
+Bootstrap: docker
+From: node:20-bookworm-slim
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Forward proxy if present at build time (apptainer build --env not always available)
+    if [ -n "${HTTPS_PROXY:-}" ]; then export https_proxy="$HTTPS_PROXY"; fi
+    if [ -n "${HTTP_PROXY:-}" ];  then export http_proxy="$HTTP_PROXY";  fi
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        git \
+        ca-certificates \
+        curl
+    rm -rf /var/lib/apt/lists/*
+    update-ca-certificates || true
+
+    # corepack ships with node:20; enable and pin pnpm to a known-good 9.x
+    corepack enable
+    corepack prepare pnpm@9.15.0 --activate
+
+    # Workspace bind target: world-writable so any uid (worker, operator) can build
+    mkdir -p /workspace
+    chmod 0777 /workspace
+
+    # Sanity check — fail the build early if any tool is missing
+    node --version
+    npm --version
+    pnpm --version
+    git --version
+
+%environment
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    # Keep pnpm store inside the bound workspace by default so caches survive across runs
+    export PNPM_HOME=/workspace/.pnpm
+    export NODE_ENV=production
+
+%labels
+    org.heaxhub.role toolchain
+    org.heaxhub.toolchain nodejs20
+    org.heaxhub.node 20-bookworm-slim
+    org.heaxhub.pnpm 9.15.0
+
+%help
+    HEAXHub toolchain SIF — Node.js 20 (bookworm-slim) + pnpm 9.15.0 + git.
+
+    Contents:
+      - node 20.x, npm (from node:20-bookworm-slim)
+      - pnpm 9.15.0 (pinned via corepack)
+      - git, ca-certificates, curl
+
+    Bind:
+      --bind $WORKSPACE:/workspace
+
+    Typical usage (matches integration_builder dispatch):
+      apptainer exec --cleanenv \
+        --bind "$WORKSPACE:/workspace" \
+        heaxhub_toolchain_nodejs20.sif \
+        bash -lc 'cd /workspace && pnpm install --frozen-lockfile && pnpm build'
+
+    Proxy forwarding (worker sets APPTAINERENV_HTTPS_PROXY automatically):
+      APPTAINERENV_HTTPS_PROXY="$HTTPS_PROXY" apptainer exec --cleanenv ...

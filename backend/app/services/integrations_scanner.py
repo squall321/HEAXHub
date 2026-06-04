@@ -70,6 +70,49 @@ class ScanResult:
     reason: str | None = None  # populated on "skipped"
 
 
+@dataclass(slots=True)
+class SourceSpec:
+    """Parsed ``source:`` block from ``.portal/manifest.yaml``.
+
+    Mirrors the subset of ``source_fetcher`` fields HEAXHub uses to fetch
+    upstream code per-integration. When ``manifest.source`` is absent the
+    workspace is the in-tree ``integrations/<slug>/`` directory and no
+    SourceSpec is produced.
+    """
+
+    type: str = "git"
+    url: str = ""
+    ref: str = "main"
+    subpath: str = ""
+
+    @classmethod
+    def from_manifest(cls, manifest: dict[str, Any]) -> "SourceSpec | None":
+        """Return a ``SourceSpec`` when the manifest carries a ``source`` block.
+
+        Returns ``None`` if absent (legacy in-tree mode) or if the block is
+        not a mapping. Other malformed values raise ``ValueError`` so the
+        operator gets a loud, actionable error instead of a silently broken
+        workspace.
+        """
+        if not isinstance(manifest, dict):
+            return None
+        block = manifest.get("source")
+        if block is None:
+            return None
+        if not isinstance(block, dict):
+            raise ValueError("manifest.source must be a mapping")
+
+        stype = str(block.get("type") or "git").strip() or "git"
+        url = str(block.get("url") or "").strip()
+        ref = str(block.get("ref") or "main").strip() or "main"
+        subpath = str(block.get("subpath") or "").strip()
+
+        if stype == "git" and not url:
+            raise ValueError("manifest.source.url is required for type=git")
+
+        return cls(type=stype, url=url, ref=ref, subpath=subpath)
+
+
 # ---------------------------------------------------------------------------
 # Manifest + admin helpers
 # ---------------------------------------------------------------------------

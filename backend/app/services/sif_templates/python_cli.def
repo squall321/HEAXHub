@@ -1,0 +1,21 @@
+Bootstrap: docker
+From: python:3.12-slim
+
+%files
+    {{UPSTREAM_DIR}} /app
+
+%post
+    cd /app && pip install --no-cache-dir -e .
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed Python CLI / job-runner SIF.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

@@ -1,0 +1,36 @@
+Bootstrap: docker
+From: debian:stable-slim
+Stage: final
+
+%post
+    set -eux
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
+%environment
+    export PATH=/app:/usr/local/bin:$PATH
+
+%files from build
+    /app/bin /app/bin
+
+%runscript
+    cd /app
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed Go service SIF (multi-stage; binary copied from build stage).
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}
+
+Bootstrap: docker
+From: golang:1.22
+Stage: build
+
+%files
+    {{UPSTREAM_DIR}} /src
+
+%post
+    set -eux
+    cd /src
+    mkdir -p /app/bin
+    CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /app/bin/server ./cmd/server

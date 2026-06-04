@@ -92,3 +92,12 @@ integrations/heax-demo-go/bin/
 integrations/heax-demo-cpp/bin/
 integrations/heax-demo-cpp/output/
 integrations/heax-demo-r/output/
+
+# Pinned apptainer (project-local, not committed; built per-machine)
+deploy/apptainer/.tools/
+deploy/apptainer/cache/
+
+# Per-demo SIF pipeline managed artifacts
+var/local-demo-repos/
+var/integration_workspaces/
+var/sifs/

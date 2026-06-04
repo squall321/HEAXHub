@@ -58,7 +58,7 @@ resolve_apptainer() {
   # .tools/apptainer-*/usr/bin/apptainer 중 가장 최신 버전 디렉터리
   if [[ -d "$TOOLS_DIR" ]]; then
     local newest
-    newest=$(find "$TOOLS_DIR" -maxdepth 3 -type f -name apptainer -path "*/usr/bin/apptainer" 2>/dev/null \
+    newest=$(find "$TOOLS_DIR" -maxdepth 4 -type f -name apptainer -path "*/usr/bin/apptainer" 2>/dev/null \
               | sort -V | tail -1)
     if [[ -n "$newest" && -x "$newest" ]]; then
       _HEAX_APPT="$newest"

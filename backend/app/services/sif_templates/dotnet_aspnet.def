@@ -1,0 +1,24 @@
+Bootstrap: docker
+From: mcr.microsoft.com/dotnet/sdk:8.0
+
+%files
+    {{UPSTREAM_DIR}} /src
+
+%post
+    set -eux
+    cd /src && dotnet publish -c Release -o /app/publish
+
+%environment
+    export ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080}
+    export DOTNET_RUNNING_IN_CONTAINER=true
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    cd /app
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed .NET 8 ASP.NET Core SIF.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

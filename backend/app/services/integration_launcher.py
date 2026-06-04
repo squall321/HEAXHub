@@ -41,7 +41,7 @@ import httpx
 import yaml
 
 from app.core.logger import get_logger
-from app.services import port_allocator, proxy_manager
+from app.services import apt_runner, port_allocator, proxy_manager
 from app.services.stack_resolver import StackSpec, load_stacks
 
 logger = get_logger(__name__)
@@ -59,7 +59,10 @@ _HEALTH_WAIT_SECONDS = 20
 # Bump this when the state file shape changes incompatibly. Older state files
 # (different or absent version) are ignored, NOT crashed on, so an upgrade
 # in-place just costs one extra spawn cycle.
-_STATE_SCHEMA_VERSION = 1
+#
+# v2 added optional ``sif_path`` + ``instance_name`` fields so the stop path
+# can route to ``apt_runner.instance_stop`` instead of SIGTERM-ing a host pid.
+_STATE_SCHEMA_VERSION = 2
 
 # Stacks whose framework bakes the base path into routing and therefore must
 # RECEIVE the full incoming path (no Caddy prefix strip). For everything else
@@ -91,13 +94,31 @@ class LaunchResult:
 
 
 def launch(
-    workspace: Path, *, manifest: dict[str, Any], db
+    workspace: Path,
+    *,
+    manifest: dict[str, Any],
+    db,
+    slug: str | None = None,
+    source: dict[str, Any] | None = None,
+    sif_path: Path | None = None,
 ) -> LaunchResult:
     """Ensure a healthy service is running for this integration.
 
     The ``db`` argument is the SQLAlchemy session used for port allocation.
+
+    When ``sif_path`` is set and points to an existing SIF file, the launcher
+    dispatches via ``apt_runner`` (apptainer instance) instead of spawning the
+    server straight on the host. ``slug`` lets the caller override the default
+    (workspace dirname) which is useful when the workspace was synthesised
+    from a fetched source tree. ``source`` is the manifest's ``source:`` block
+    if present — currently unused inside ``launch`` but kept on the signature
+    so callers can pass it without breaking when we start binding it inside
+    the container.
     """
-    slug = workspace.name
+    # ``source`` is captured for forward-compat; touch it to silence linters
+    # without changing behaviour.
+    _ = source
+    slug = slug or workspace.name
     canonical = manifest.get("id") or slug.replace("-", "_")
     launch_section = manifest.get("launch") or {}
     mode = launch_section.get("mode")
@@ -196,6 +217,25 @@ def launch(
         return LaunchResult(
             slug=slug, action="already_running",
             port=int(state["port"]), base_path=base_path, pid=int(state["pid"]),
+        )
+
+    # ── SIF dispatch (preferred when a SIF was built for this slug) ───
+    # When a SIF exists, we start (or reuse) an apptainer instance and exec
+    # the canonical argv inside it. The host process we supervise is the
+    # ``apptainer exec`` Popen — its lifecycle mirrors the in-container
+    # server, so the existing pid + cmdline guarding still applies.
+    if sif_path is not None and sif_path.exists():
+        return _launch_via_sif(
+            workspace=workspace,
+            slug=slug,
+            canonical=canonical,
+            spec=spec,
+            manifest=manifest,
+            stack_name=stack_name,
+            base_path=base_path,
+            health_path=health_path,
+            sif_path=sif_path,
+            db=db,
         )
 
     # ── allocate port ─────────────────────────────────────────────────
@@ -309,6 +349,264 @@ def launch(
     )
 
 
+def _launch_via_sif(
+    *,
+    workspace: Path,
+    slug: str,
+    canonical: str,
+    spec: StackSpec,
+    manifest: dict[str, Any],
+    stack_name: str,
+    base_path: str,
+    health_path: str,
+    sif_path: Path,
+    db,
+) -> LaunchResult:
+    """SIF-backed dispatch — start instance, exec the canonical argv inside it.
+
+    Side-effects mirror the host-mode launch:
+      * allocate a port via ``port_allocator``,
+      * write a state file (schema v2 with ``instance_name`` + ``sif_path``),
+      * register the Caddy route.
+    """
+    instance_name = _instance_name_for(canonical)
+    log_file = LOG_DIR / f"integration_{canonical}.log"
+
+    # ── reuse already-running instance + state ────────────────────────
+    try:
+        running_instances = set(apt_runner.instance_list())
+    except Exception:  # pragma: no cover - defensive
+        running_instances = set()
+
+    state = _read_state(canonical)
+    if (
+        state
+        and state.get("instance_name") == instance_name
+        and instance_name in running_instances
+        and _is_alive(state.get("pid"))
+        and _is_healthy(state.get("port"), health_path, root=base_path)
+    ):
+        strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
+        needs_caddy = not bool(state.get("caddy_registered"))
+        if needs_caddy:
+            ok = _safe_register_caddy(
+                canonical, int(state["port"]), base_path, strip_prefix,
+            )
+            if ok:
+                state["caddy_registered"] = True
+                _write_state(canonical, state)
+        else:
+            _safe_register_caddy(
+                canonical, int(state["port"]), base_path, strip_prefix,
+            )
+        return LaunchResult(
+            slug=slug, action="already_running",
+            port=int(state["port"]), base_path=base_path, pid=int(state["pid"]),
+        )
+
+    # ── allocate port ─────────────────────────────────────────────────
+    try:
+        port = port_allocator.allocate_port(db, app_id=canonical, scope="app")
+    except Exception as exc:
+        return LaunchResult(
+            slug=slug, action="failed", port=None, base_path=base_path,
+            error=f"port allocation failed: {exc}",
+        )
+
+    # ── compose container-side argv ───────────────────────────────────
+    try:
+        container_argv = _sif_argv_for(spec, manifest, stack_name, port=port, base_path=base_path)
+    except Exception as exc:
+        _safe_release_port(db, port)
+        return LaunchResult(
+            slug=slug, action="failed", port=None, base_path=base_path,
+            error=f"argv build failed: {exc}",
+        )
+
+    # ── ensure the instance is running ────────────────────────────────
+    binds: list[tuple[str, str]] = [(str(workspace), "/workspace")]
+    env_in_container = {
+        "PORT": str(port),
+        "ROOT_PATH": base_path,
+        "BASE_URL_PATH": base_path,
+        "NEXT_PUBLIC_BASE_PATH": base_path,
+        "SCRIPT_NAME": base_path,
+        "BASE_PATH": base_path,
+        "HEAX_BASE_PATH": base_path,
+        "DASH_URL_BASE_PATHNAME": base_path + "/",
+    }
+    if instance_name not in running_instances:
+        try:
+            apt_runner.instance_start(
+                sif=sif_path,
+                name=instance_name,
+                binds=binds,
+                cleanenv=True,
+                env=env_in_container,
+            )
+        except subprocess.CalledProcessError as exc:
+            _safe_release_port(db, port)
+            return LaunchResult(
+                slug=slug, action="failed", port=port, base_path=base_path,
+                error=f"apptainer instance start failed: {exc}",
+            )
+        except FileNotFoundError as exc:
+            _safe_release_port(db, port)
+            return LaunchResult(
+                slug=slug, action="failed", port=port, base_path=base_path,
+                error=str(exc),
+            )
+
+    # ── exec the foreground server inside the instance ───────────────
+    try:
+        log_fh = log_file.open("ab")
+    except OSError as exc:
+        _safe_release_port(db, port)
+        return LaunchResult(
+            slug=slug, action="failed", port=port, base_path=base_path,
+            error=f"could not open log {log_file}: {exc}",
+        )
+    try:
+        proc = apt_runner.instance_exec(
+            instance_name,
+            container_argv,
+            env=env_in_container,
+            cleanenv=True,
+            cwd=str(workspace),
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except Exception as exc:
+        log_fh.close()
+        _safe_release_port(db, port)
+        return LaunchResult(
+            slug=slug, action="failed", port=port, base_path=base_path,
+            error=f"apptainer exec failed: {exc}",
+        )
+
+    # ── wait for health ──────────────────────────────────────────────
+    healthy = False
+    for _ in range(_HEALTH_WAIT_SECONDS):
+        time.sleep(1)
+        if proc.poll() is not None:
+            return LaunchResult(
+                slug=slug, action="failed", port=port, base_path=base_path,
+                pid=proc.pid,
+                error=f"process exited early code={proc.returncode}; tail of {log_file}",
+            )
+        if _is_healthy(port, health_path, root=base_path):
+            healthy = True
+            break
+    if not healthy:
+        logger.warning("%s (SIF) did not pass health within %ds; registering route anyway",
+                       canonical, _HEALTH_WAIT_SECONDS)
+
+    strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
+    caddy_ok = _safe_register_caddy(canonical, port, base_path, strip_prefix)
+
+    _write_state(canonical, {
+        "schema_version": _STATE_SCHEMA_VERSION,
+        "slug": canonical,
+        "pid": proc.pid,
+        "port": port,
+        "base_path": base_path,
+        "health_path": health_path,
+        "stack": stack_name,
+        "argv": [str(sif_path), *container_argv],  # for the PID-reuse guard
+        "instance_name": instance_name,
+        "sif_path": str(sif_path),
+        "caddy_registered": caddy_ok,
+        "started_at": time.time(),
+    })
+
+    return LaunchResult(
+        slug=slug, action="started", port=port, base_path=base_path, pid=proc.pid,
+    )
+
+
+def _instance_name_for(canonical: str) -> str:
+    """Build the apptainer instance name from the canonical app id.
+
+    Apptainer instance names must match ``[A-Za-z0-9_-]+`` and stay short
+    enough to fit comfortably in PID-file names — we conservatively allow
+    underscores/hyphens and rewrite anything else.
+    """
+    safe = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in canonical)
+    return f"heax_app_{safe}"
+
+
+def _sif_argv_for(
+    spec: StackSpec,
+    manifest: dict[str, Any],
+    stack_name: str,
+    *,
+    port: int,
+    base_path: str,
+) -> list[str]:
+    """Container-side argv for the foreground server.
+
+    Inside the SIF the runtimes are installed system-wide, so we use plain
+    binary names (gunicorn / uvicorn / streamlit / node) and let the
+    container's PATH resolve them. The cwd is the bind-mounted workspace.
+    """
+    _ = spec  # currently unused but accepted for parity with _argv_for
+    if stack_name == "streamlit":
+        return [
+            "streamlit", "run", "app.py",
+            "--server.port", str(port),
+            "--server.address", "0.0.0.0",
+            "--server.baseUrlPath", base_path,
+            "--server.headless", "true",
+        ]
+    if stack_name == "fastapi":
+        return [
+            "uvicorn", "app.main:app",
+            "--host", "0.0.0.0",
+            "--port", str(port),
+            "--root-path", base_path,
+        ]
+    if stack_name == "flask":
+        callable_ = (
+            (manifest.get("launch") or {}).get("entrypoint_override")
+            or "app:app"
+        )
+        return [
+            "gunicorn",
+            "--bind", f"0.0.0.0:{port}",
+            "--workers", "2",
+            "--access-logfile", "-",
+            str(callable_),
+        ]
+    if stack_name == "dash_plotly":
+        return ["python", "app.py"]
+    if stack_name == "shiny_for_python":
+        return [
+            "shiny", "run",
+            "--host", "0.0.0.0",
+            "--port", str(port),
+            "--root-path", base_path,
+            "app.py",
+        ]
+    if stack_name in ("nextjs", "node_service"):
+        return ["node_modules/.bin/next", "start", "--port", str(port), "--hostname", "0.0.0.0"]
+    if stack_name == "nodejs_express":
+        return ["node", "dist/server.js"]
+    if stack_name == "go_service":
+        return ["./server"]
+    if stack_name == "dotnet_aspnet":
+        override = (manifest.get("launch") or {}).get("assembly") or "app.dll"
+        return ["dotnet", f"/app/{override}", "--urls", f"http://0.0.0.0:{port}"]
+    if stack_name == "java_springboot":
+        return ["java", "-jar", "/app/app.jar", f"--server.port={port}"]
+    if stack_name == "rust_actix":
+        return ["/server"]
+    # Generic fallback: honour manifest.launch.command.
+    cmd = (manifest.get("launch") or {}).get("command") or "./.portal/run.sh"
+    return ["/bin/sh", "-c", str(cmd)]
+
+
 def _launch_static(
     workspace: Path,
     canonical: str,
@@ -378,10 +676,25 @@ def _launch_static(
 
 
 def stop(canonical: str, *, db) -> bool:
-    """Stop a running integration. True if a process was killed."""
+    """Stop a running integration. True if a process was killed.
+
+    When the state records an apptainer ``instance_name`` we route the stop
+    through ``apt_runner.instance_stop`` — that terminates every process
+    inside the container in one shot, so we don't also need to SIGTERM the
+    host-side ``apptainer exec`` pid (it will exit on its own when the
+    instance goes away).
+    """
     state = _read_state(canonical)
     killed = False
-    if state and _is_alive(state.get("pid")):
+    instance_name = state.get("instance_name") if state else None
+    if state and instance_name:
+        try:
+            apt_runner.instance_stop(instance_name, check=False)
+            killed = True
+        except Exception as exc:
+            logger.warning("apptainer instance stop failed for %s (%s): %s",
+                           canonical, instance_name, exc)
+    elif state and _is_alive(state.get("pid")):
         expected_argv = state.get("argv") or []
         if _pid_matches_argv(int(state["pid"]), expected_argv):
             try:

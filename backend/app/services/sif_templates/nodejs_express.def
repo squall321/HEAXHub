@@ -1,0 +1,26 @@
+Bootstrap: docker
+From: node:20-slim
+
+%files
+    {{UPSTREAM_DIR}} /app
+
+%post
+    set -eux
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+    corepack enable
+    cd /app && pnpm install --frozen-lockfile
+    cd /app && pnpm build --if-present
+
+%environment
+    export NODE_ENV=production
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    cd /app
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed Node.js Express / Fastify SIF.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

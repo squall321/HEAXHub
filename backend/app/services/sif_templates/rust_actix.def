@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: rust:1-slim
+
+%files
+    {{UPSTREAM_DIR}} /src
+
+%post
+    set -eux
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+    cd /src && cargo build --release
+    mkdir -p /app
+    cp /src/target/release/server /app/server
+
+%environment
+    export PATH=/app:/usr/local/bin:$PATH
+
+%runscript
+    cd /app
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed Rust Actix-web SIF.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

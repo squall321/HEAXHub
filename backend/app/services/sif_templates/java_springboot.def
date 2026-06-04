@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: eclipse-temurin:17-jdk-jammy
+
+%files
+    {{UPSTREAM_DIR}} /src
+
+%post
+    set -eux
+    apt-get update && apt-get install -y --no-install-recommends maven && rm -rf /var/lib/apt/lists/*
+    cd /src && mvn -B -DskipTests package
+    mkdir -p /app
+    cp /src/target/*.jar /app/app.jar
+
+%environment
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    cd /app
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed Java 17 Spring Boot SIF.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

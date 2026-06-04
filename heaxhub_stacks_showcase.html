@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HEAXHub · Stack Showcase</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
+<style>
+:root{
+  --navy:#0f172a; --navy-2:#111a36; --navy-3:#172048;
+  --indigo:#4338ca; --indigo-2:#6366f1;
+  --amber:#fcd34d; --amber-2:#fbbf24;
+  --slate:#e2e8f0; --slate-2:#cbd5e1; --slate-3:#94a3b8;
+  --line:#1e2a55; --line-2:#2a3a72;
+  --green:#34d399; --red:#f87171;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--navy);color:var(--slate);
+  font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.55}
+a{color:var(--amber);text-decoration:none}
+a:hover{text-decoration:underline}
+code,pre,.mono{font-family:"JetBrains Mono","SF Mono","Fira Code",ui-monospace,Menlo,Consolas,monospace}
+.wrap{max-width:1240px;margin:0 auto;padding:32px 24px 80px}
+
+/* ── Header ────────────────────────────────────────── */
+header.brand{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.logo{width:56px;height:56px;border-radius:14px;
+  background:linear-gradient(135deg,var(--indigo) 0%,var(--indigo-2) 60%,var(--amber) 130%);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:22px;color:#0b1226;letter-spacing:-1px;
+  box-shadow:0 8px 28px rgba(67,56,202,.35), inset 0 0 0 2px rgba(252,211,77,.25)}
+.brand-text .kicker{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--slate-3)}
+.brand-text h1{margin:2px 0 0;font-size:28px;letter-spacing:-.5px;color:#fff}
+.brand-text h1 .accent{color:var(--amber)}
+
+/* ── Live stats ──────────────────────────────────── */
+.stats{margin-top:22px;display:flex;flex-wrap:wrap;gap:10px}
+.badge{padding:7px 12px;border:1px solid var(--line-2);border-radius:999px;
+  background:rgba(255,255,255,.02);font-size:13px;color:var(--slate-2)}
+.badge b{color:#fff}
+.badge.ok{border-color:rgba(52,211,153,.4);color:#bbf7d0}
+.badge.ok b{color:var(--green)}
+.badge.amber{border-color:rgba(252,211,77,.4);color:var(--amber)}
+
+.lead{margin-top:22px;color:var(--slate-2);max-width:880px;font-size:15px}
+.lead .hl{color:var(--amber)}
+
+/* ── Tabs ──────────────────────────────────────── */
+.tabs{margin:34px 0 18px;display:flex;flex-wrap:wrap;gap:8px;
+  border-bottom:1px solid var(--line)}
+.tab{padding:10px 14px;border:1px solid transparent;border-bottom:none;
+  background:transparent;color:var(--slate-3);cursor:pointer;font-size:14px;
+  font-family:inherit;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:8px}
+.tab .cnt{background:rgba(255,255,255,.06);color:var(--slate-2);
+  border-radius:999px;font-size:11px;padding:1px 8px}
+.tab:hover{color:var(--slate)}
+.tab.active{color:#fff;background:var(--navy-2);border-color:var(--line);
+  border-bottom:1px solid var(--navy-2);margin-bottom:-1px}
+.tab.active .cnt{background:var(--amber);color:#1b1300}
+
+/* ── Category section ─────────────────────────── */
+.cat{display:none}
+.cat.active{display:block}
+.cat-head{margin:8px 0 18px}
+.cat-head h2{margin:0;font-size:22px;color:#fff;letter-spacing:-.3px}
+.cat-head .desc{color:var(--slate-3);font-size:14px;margin-top:4px}
+
+.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(380px,1fr))}
+
+/* ── Card ────────────────────────────────────── */
+.card{background:var(--navy-2);border:1px solid var(--line);border-radius:14px;
+  padding:18px 18px 16px;transition:transform .15s ease,border-color .15s ease,
+  box-shadow .15s ease;display:flex;flex-direction:column;gap:12px}
+.card:hover{transform:translateY(-2px);border-color:var(--line-2);
+  box-shadow:0 12px 32px rgba(0,0,0,.35)}
+
+.card-top{display:flex;align-items:center;gap:12px}
+.mono-ic{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;
+  justify-content:center;font-weight:800;font-size:15px;letter-spacing:-.5px;
+  color:#0b1226;flex-shrink:0}
+.ic-py{background:linear-gradient(135deg,#3b82f6,#fcd34d)}
+.ic-js{background:linear-gradient(135deg,#facc15,#f59e0b)}
+.ic-ts{background:linear-gradient(135deg,#3178c6,#60a5fa)}
+.ic-go{background:linear-gradient(135deg,#00add8,#5ce1e6)}
+.ic-cpp{background:linear-gradient(135deg,#f97316,#fcd34d)}
+.ic-r{background:linear-gradient(135deg,#2563eb,#a78bfa)}
+.ic-html{background:linear-gradient(135deg,#ef4444,#fb923c)}
+.ic-doc{background:linear-gradient(135deg,#06b6d4,#a5f3fc)}
+.ic-ext{background:linear-gradient(135deg,#a78bfa,#fcd34d)}
+
+.card-title{margin:0;color:#fff;font-size:16px;letter-spacing:-.2px}
+.card-sub{font-size:12px;color:var(--slate-3);margin-top:2px}
+.card-tag{font-size:13px;color:var(--slate-2);margin:0}
+
+.box{background:rgba(255,255,255,.03);border:1px solid var(--line);
+  border-radius:9px;padding:10px 12px}
+.box .label{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--amber);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.box .label::before{content:"";display:inline-block;width:5px;height:5px;
+  border-radius:50%;background:var(--amber)}
+.box p{margin:0;font-size:13px;color:var(--slate-2)}
+.box code{font-size:12px;color:var(--amber);background:rgba(252,211,77,.08);
+  padding:1px 6px;border-radius:4px;border:1px solid rgba(252,211,77,.15)}
+
+.flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  font-size:11px;font-family:"JetBrains Mono",monospace}
+.flow .step{padding:5px 8px;background:rgba(99,102,241,.12);
+  border:1px solid rgba(99,102,241,.3);border-radius:6px;color:#c7d2fe}
+.flow .arr{color:var(--slate-3)}
+.flow .step.amber{background:rgba(252,211,77,.12);border-color:rgba(252,211,77,.35);
+  color:var(--amber)}
+.flow .step.green{background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.35);
+  color:#a7f3d0}
+
+.url-row{font-size:12px;color:var(--slate-3);display:flex;align-items:center;
+  gap:6px;flex-wrap:wrap}
+.url-row code{font-size:12px;color:var(--amber);background:rgba(252,211,77,.06);
+  padding:2px 7px;border-radius:5px;border:1px solid rgba(252,211,77,.18)}
+
+/* ── Submit / next-step section ───────────────── */
+.next{margin-top:48px;padding:28px;border-radius:16px;
+  background:linear-gradient(135deg,rgba(67,56,202,.18) 0%,rgba(252,211,77,.06) 100%);
+  border:1px solid var(--line-2)}
+.next h2{margin:0 0 6px;color:#fff;font-size:22px}
+.next p{margin:0 0 18px;color:var(--slate-2);font-size:14px;max-width:780px}
+.next .steps{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.next .stepcard{background:var(--navy-2);border:1px solid var(--line);
+  border-radius:10px;padding:14px}
+.next .stepcard .n{display:inline-block;width:22px;height:22px;border-radius:50%;
+  background:var(--amber);color:#1b1300;font-weight:800;font-size:12px;
+  text-align:center;line-height:22px;margin-right:8px}
+.next .stepcard b{color:#fff}
+.next .stepcard p{margin:6px 0 0;font-size:12.5px;color:var(--slate-3)}
+
+footer{margin-top:48px;color:var(--slate-3);font-size:12px;text-align:center}
+
+@media(max-width:640px){
+  .grid{grid-template-columns:1fr}
+  .brand-text h1{font-size:22px}
+  .wrap{padding:22px 16px 56px}
+  .tab{font-size:13px;padding:9px 11px}
+}
+
+/* ── Card clickable affordance ────────────────── */
+.card{cursor:pointer;position:relative}
+.card::after{content:"detail →";position:absolute;top:14px;right:14px;
+  font-size:10px;color:var(--slate-3);letter-spacing:1px;text-transform:uppercase;
+  opacity:.5;transition:opacity .15s ease,color .15s ease}
+.card:hover::after{opacity:1;color:var(--amber)}
+.card:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+
+/* ── Modal: backdrop + slide-in right panel ───── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.7);
+  opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:90;
+  backdrop-filter:blur(2px)}
+.modal-backdrop.open{opacity:1;pointer-events:auto}
+
+.modal-panel{position:fixed;top:0;right:0;height:100vh;width:480px;
+  max-width:100vw;background:var(--navy-2);border-left:1px solid var(--line-2);
+  box-shadow:-24px 0 48px rgba(0,0,0,.5);
+  transform:translateX(100%);transition:transform .25s ease;
+  z-index:100;display:flex;flex-direction:column;overflow:hidden}
+.modal-panel.open{transform:translateX(0)}
+
+.modal-head{flex-shrink:0;padding:20px 22px 16px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(67,56,202,.12) 0%,transparent 100%);
+  display:flex;align-items:flex-start;gap:14px;position:relative}
+.modal-head .mono-ic{width:56px;height:56px;border-radius:13px;font-size:18px}
+.modal-head .ht{flex:1;min-width:0}
+.modal-head h3{margin:0;color:#fff;font-size:18px;letter-spacing:-.3px}
+.modal-head .meta{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;font-size:11px}
+.modal-head .meta .chip{padding:3px 8px;border:1px solid var(--line-2);
+  border-radius:999px;color:var(--slate-2);background:rgba(255,255,255,.02)}
+.modal-head .meta .chip.cat{background:rgba(252,211,77,.1);
+  border-color:rgba(252,211,77,.35);color:var(--amber)}
+.modal-head .meta .chip.code{font-family:"JetBrains Mono",monospace;
+  background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.35);color:#c7d2fe}
+.modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;
+  border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);
+  color:var(--slate-2);font-size:18px;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;line-height:1;padding:0}
+.modal-close:hover{background:rgba(252,211,77,.1);color:var(--amber);
+  border-color:rgba(252,211,77,.35)}
+.modal-close:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+.modal-body{flex:1;overflow-y:auto;padding:18px 22px 28px;
+  scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+.modal-body::-webkit-scrollbar{width:8px}
+.modal-body::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px}
+
+.m-sec{margin-bottom:16px;background:rgba(255,255,255,.025);
+  border:1px solid var(--line);border-radius:10px;padding:13px 14px 14px}
+.m-sec h4{margin:0 0 8px;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--amber);display:flex;align-items:center;gap:8px}
+.m-sec h4::before{content:"";display:inline-block;width:5px;height:5px;
+  border-radius:50%;background:var(--amber)}
+.m-sec p{margin:0 0 6px;font-size:13.5px;color:var(--slate-2);line-height:1.6}
+.m-sec p:last-child{margin-bottom:0}
+.m-sec ul{margin:0;padding-left:18px;color:var(--slate-2);font-size:13px;line-height:1.7}
+.m-sec ul li{margin-bottom:3px}
+.m-sec ul li b{color:#fff;font-weight:600}
+.m-sec code{font-family:"JetBrains Mono",monospace;font-size:12px;
+  color:var(--amber);background:rgba(252,211,77,.08);
+  padding:1px 6px;border-radius:4px;border:1px solid rgba(252,211,77,.15)}
+
+.m-pre{margin:6px 0 0;background:#0a1024;border:1px solid var(--line-2);
+  border-radius:8px;padding:11px 12px;font-family:"JetBrains Mono",monospace;
+  font-size:11.5px;color:#fcd34d;white-space:pre;overflow-x:auto;line-height:1.55}
+.m-pre .c{color:var(--slate-3)}
+.m-pre .k{color:#c7d2fe}
+.m-pre .s{color:#a7f3d0}
+
+.m-flow{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.m-flow .row{display:flex;gap:8px;align-items:flex-start;font-size:12.5px}
+.m-flow .row .n{flex-shrink:0;width:20px;height:20px;border-radius:50%;
+  background:var(--amber);color:#1b1300;font-weight:800;font-size:11px;
+  text-align:center;line-height:20px}
+.m-flow .row .t{color:var(--slate-2)}
+.m-flow .row .t b{color:#fff;font-weight:600}
+.m-flow .row .t code{font-size:11.5px}
+
+.m-links{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.m-links a{display:flex;align-items:center;gap:8px;font-size:12.5px;
+  color:var(--amber);padding:6px 9px;background:rgba(252,211,77,.06);
+  border:1px solid rgba(252,211,77,.18);border-radius:6px;
+  text-decoration:none;transition:background .15s ease}
+.m-links a:hover{background:rgba(252,211,77,.15);text-decoration:none}
+.m-links a::before{content:"→";color:var(--slate-3)}
+.m-links a .host{margin-left:auto;color:var(--slate-3);font-size:11px}
+
+@media(max-width:640px){
+  .modal-panel{width:100vw;border-left:none}
+  .modal-head .mono-ic{width:48px;height:48px;font-size:16px}
+}
+
+@media (prefers-reduced-motion: reduce){
+  .modal-backdrop,.modal-panel{transition:none}
+  .card{transition:none}
+  .card:hover{transform:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ============ HEADER ============ -->
+<header class="brand">
+  <div class="logo">HX</div>
+  <div class="brand-text">
+    <div class="kicker">Hardware Engineering AI Transformation Hub</div>
+    <h1>HEAXHub <span class="accent">Stack Showcase</span></h1>
+  </div>
+</header>
+
+<div class="stats">
+  <span class="badge ok">Local bootstrap <b>9/9 healthy</b></span>
+  <span class="badge"><b>21</b> stacks defined</span>
+  <span class="badge amber"><b>14</b> demo integrations live</span>
+  <span class="badge"><b>9</b> SIF templates packaged</span>
+  <span class="badge"><b>2026-06-04</b> · v0.7.0</span>
+</div>
+
+<p class="lead">
+  HEAXHub 는 사내 엔지니어링 자동화 도구들을 <span class="hl">하나의 카탈로그</span>로 묶고,
+  Apptainer SIF 기반으로 격리 실행한다. 모든 통합 앱은
+  <code>.portal/manifest.yaml</code> 한 장 + 지정된 스택 컨벤션만 지키면 등록되며,
+  <code>stack_resolver</code> → SIF 빌더 → 런처가 자동으로 연결한다.
+  아래는 현재 라이브 데모로 검증된 <b>14개 스택</b>의 빌드/실행 흐름.
+</p>
+
+<!-- ============ TABS ============ -->
+<div class="tabs" role="tablist">
+  <button class="tab active" data-cat="web">웹 서비스 / Web Services <span class="cnt">4</span></button>
+  <button class="tab" data-cat="dash">데이터 대시보드 / Dashboards <span class="cnt">2</span></button>
+  <button class="tab" data-cat="job">잡 · 배치 / Batch Jobs <span class="cnt">3</span></button>
+  <button class="tab" data-cat="static">정적 호스팅 / Static <span class="cnt">2</span></button>
+  <button class="tab" data-cat="ext">외부 통합 / External <span class="cnt">3</span></button>
+  <button class="tab" data-cat="desktop">데스크톱 / Desktop <span class="cnt">0</span></button>
+</div>
+
+<!-- ============ WEB SERVICES ============ -->
+<section class="cat active" data-cat="web">
+  <div class="cat-head">
+    <h2>웹 서비스 / Web Services</h2>
+    <div class="desc">상시 데몬 모드. Caddy 가 <code>/apps/{id}/*</code> 를 컨테이너 포트로 reverse proxy 한다.</div>
+  </div>
+  <div class="grid">
+
+    <!-- fastapi -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('fastapi')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('fastapi')}">
+      <div class="card-top">
+        <div class="mono-ic ic-py">Py</div>
+        <div>
+          <h3 class="card-title">FastAPI / uvicorn Service</h3>
+          <div class="card-sub">stack · <code class="mono">fastapi</code> · python_venv · service</div>
+        </div>
+      </div>
+      <p class="card-tag">uvicorn 기반 ASGI. Swagger UI 와 root_path 보정이 기본.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-fastapi</b> · 메모 CRUD API + Swagger UI. <code>--root-path $ROOT_PATH</code> 로 sub-path 마운트.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">pip install -e .</span><span class="arr">→</span>
+        <span class="step amber">SIF build</span><span class="arr">→</span>
+        <span class="step green">uvicorn app.main:app</span>
+      </div>
+      <div class="url-row">runtime · <code>python:3.12-slim</code> · health <code>/health</code></div>
+    </div>
+
+    <!-- flask -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('flask')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('flask')}">
+      <div class="card-top">
+        <div class="mono-ic ic-py">Py</div>
+        <div>
+          <h3 class="card-title">Flask / Gunicorn Service</h3>
+          <div class="card-sub">stack · <code class="mono">flask</code> · python_venv · service</div>
+        </div>
+      </div>
+      <p class="card-tag">WSGI. Jinja 템플릿 + 폼 + 세션 카운터까지 한 모듈.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-flask</b> · base/index 템플릿 + flash 메시지 + <code>/api/info</code>. <code>SCRIPT_NAME</code> 로 sub-path 인지.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">pip install -e .</span><span class="arr">→</span>
+        <span class="step amber">SIF build</span><span class="arr">→</span>
+        <span class="step green">gunicorn app.main:app</span>
+      </div>
+      <div class="url-row">runtime · <code>python:3.12-slim</code> · health <code>/health</code></div>
+    </div>
+
+    <!-- nextjs -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('nextjs')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('nextjs')}">
+      <div class="card-top">
+        <div class="mono-ic ic-ts">Ts</div>
+        <div>
+          <h3 class="card-title">Next.js / React SPA</h3>
+          <div class="card-sub">stack · <code class="mono">nextjs</code> · nodejs · service</div>
+        </div>
+      </div>
+      <p class="card-tag">pnpm build → node 가 .next 산출물 서빙. basePath 인지 SPA.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-nextjs</b> · <code>NEXT_PUBLIC_BASE_PATH</code> 주입을 화면에서 표시. 카운터 클라이언트 컴포넌트.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">pnpm install</span><span class="arr">→</span>
+        <span class="step">pnpm build</span><span class="arr">→</span>
+        <span class="step amber">SIF build</span><span class="arr">→</span>
+        <span class="step green">pnpm start</span>
+      </div>
+      <div class="url-row">runtime · <code>node:20-slim</code> · health <code>/</code></div>
+    </div>
+
+    <!-- go -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('go_service')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('go_service')}">
+      <div class="card-top">
+        <div class="mono-ic ic-go">Go</div>
+        <div>
+          <h3 class="card-title">Go Service</h3>
+          <div class="card-sub">stack · <code class="mono">go_service</code> · native binary · service</div>
+        </div>
+      </div>
+      <p class="card-tag">정적 링크 단일 바이너리. stdlib 만 사용. multi-stage SIF.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-go</b> · <code>http.ServeMux</code> 다중 라우트 + 뮤텍스 카운터 + graceful shutdown + <code>HEAX_BASE_PATH</code> 와이어링.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">go build -trimpath</span><span class="arr">→</span>
+        <span class="step amber">SIF (multi-stage)</span><span class="arr">→</span>
+        <span class="step green">./heax-demo-go</span>
+      </div>
+      <div class="url-row">build <code>golang:1.22</code> · final <code>debian:stable-slim</code> · health <code>/health</code></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ DASHBOARDS ============ -->
+<section class="cat" data-cat="dash">
+  <div class="cat-head">
+    <h2>데이터 대시보드 / Dashboards</h2>
+    <div class="desc">분석/시각화에 특화된 Python 대시보드 프레임워크.</div>
+  </div>
+  <div class="grid">
+
+    <!-- streamlit -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('streamlit')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('streamlit')}">
+      <div class="card-top">
+        <div class="mono-ic ic-py">St</div>
+        <div>
+          <h3 class="card-title">Streamlit Service</h3>
+          <div class="card-sub">stack · <code class="mono">streamlit</code> · python_venv · service</div>
+        </div>
+      </div>
+      <p class="card-tag">노트북처럼 짜는 즉석 분석 UI. CAE 후처리에 적합.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-streamlit</b> · NumPy 정규분포 샘플 → 통계 요약 + 히스토그램 + 원본 head. <code>--server.baseUrlPath=$ROOT_PATH</code>.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">pip install -e .</span><span class="arr">→</span>
+        <span class="step amber">SIF build</span><span class="arr">→</span>
+        <span class="step green">streamlit run app.py</span>
+      </div>
+      <div class="url-row">runtime · <code>python:3.12-slim</code> · health <code>/_stcore/health</code></div>
+    </div>
+
+    <!-- dash -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('dash_plotly')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('dash_plotly')}">
+      <div class="card-top">
+        <div class="mono-ic ic-py">D</div>
+        <div>
+          <h3 class="card-title">Plotly Dash Dashboard</h3>
+          <div class="card-sub">stack · <code class="mono">dash_plotly</code> · python_venv · service</div>
+        </div>
+      </div>
+      <p class="card-tag">Flask wrapper + <code>@callback</code> reactive. 다중 페이지 / 인터랙티브.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-dash</b> · 분포/샘플수/색상 컨트롤 → 히스토그램·산점도·요약 테이블 동시 갱신. <code>requests_pathname_prefix</code> 자동 주입.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">pip install -e .</span><span class="arr">→</span>
+        <span class="step amber">SIF build</span><span class="arr">→</span>
+        <span class="step green">gunicorn app:server</span>
+      </div>
+      <div class="url-row">runtime · <code>python:3.12-slim</code> · health <code>/</code></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ JOB / BATCH ============ -->
+<section class="cat" data-cat="job">
+  <div class="cat-head">
+    <h2>잡 · 배치 / Batch Jobs</h2>
+    <div class="desc">job_runner 모드. <code>.portal/run.sh</code> 가 <code>--input-dir</code> / <code>--output-dir</code> / <code>--params</code> 를 받아 실행.</div>
+  </div>
+  <div class="grid">
+
+    <!-- python_cli -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('python_cli')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('python_cli')}">
+      <div class="card-top">
+        <div class="mono-ic ic-py">Py</div>
+        <div>
+          <h3 class="card-title">Python CLI / Batch Job</h3>
+          <div class="card-sub">stack · <code class="mono">python_cli</code> · python_venv · job_runner</div>
+        </div>
+      </div>
+      <p class="card-tag">파라미터 + 입력 파일 → 스크립트 → 출력 파일. inputs[] 에서 폼 자동 생성.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-cli</b> · 업로드된 CSV 행 수 카운트 + <code>output/result.json</code> 회수. 입력 검증 / 폼 / 로그 스트림 / 산출물 — 4가지 표준 흐름 동시 검증.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest+inputs[]</span><span class="arr">→</span>
+        <span class="step">pip install -e .</span><span class="arr">→</span>
+        <span class="step amber">SIF build</span><span class="arr">→</span>
+        <span class="step green">./.portal/run.sh</span>
+      </div>
+      <div class="url-row">runtime · <code>python:3.12-slim</code> · 비대화형</div>
+    </div>
+
+    <!-- cpp -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('cpp_executable')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('cpp_executable')}">
+      <div class="card-top">
+        <div class="mono-ic ic-cpp">C++</div>
+        <div>
+          <h3 class="card-title">C/C++ Executable</h3>
+          <div class="card-sub">stack · <code class="mono">cpp_executable</code> · native binary · job_runner</div>
+        </div>
+      </div>
+      <p class="card-tag">CMake/Make 로 빌드한 단일 실행 파일. 수치 해석 솔버에 적합.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-cpp</b> · <code>main.cpp</code> + <code>Makefile</code>, <code>argv[1]</code> 의 count 값을 받아 <code>output/result.json</code> 으로 <code>{"ran":"cpp","count":N}</code> 기록.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">make / cmake</span><span class="arr">→</span>
+        <span class="step amber">native binary</span><span class="arr">→</span>
+        <span class="step green">./bin/heax-demo-cpp</span>
+      </div>
+      <div class="url-row">toolchain · <code>gcc-13</code> · binary <code>bin/heax-demo-cpp</code></div>
+    </div>
+
+    <!-- r -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('r_script')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('r_script')}">
+      <div class="card-top">
+        <div class="mono-ic ic-r">R</div>
+        <div>
+          <h3 class="card-title">R Script Runner</h3>
+          <div class="card-sub">stack · <code class="mono">r_script</code> · r_runtime · job_runner</div>
+        </div>
+      </div>
+      <p class="card-tag">renv 격리 + Rscript 호출. 통계/회귀/ggplot 리포트.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-r</b> · <code>run.R</code> 에서 <code>rnorm(n)</code> 생성 후 길이·평균·표준편차를 <code>output/result.txt</code> 로 기록. <code>n</code> 파라미터 입력 검증.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">renv::restore()</span><span class="arr">→</span>
+        <span class="step amber">R 4.4</span><span class="arr">→</span>
+        <span class="step green">Rscript run.R</span>
+      </div>
+      <div class="url-row">runtime · <code>R 4.4</code> · 비대화형</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ STATIC ============ -->
+<section class="cat" data-cat="static">
+  <div class="cat-head">
+    <h2>정적 호스팅 / Static</h2>
+    <div class="desc">빌드 / 프로세스 없음. Caddy <code>file_server</code> 가 정적 파일을 그대로 서빙.</div>
+  </div>
+  <div class="grid">
+
+    <!-- static html -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('static_html')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('static_html')}">
+      <div class="card-top">
+        <div class="mono-ic ic-html">&lt;/&gt;</div>
+        <div>
+          <h3 class="card-title">Static HTML / Pre-built Site</h3>
+          <div class="card-sub">stack · <code class="mono">static_html</code> · caddy_static · static</div>
+        </div>
+      </div>
+      <p class="card-tag">HTML/CSS/JS 만. Vite/CRA 사전 빌드 산출물도 그대로 등록.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-static-html</b> · <code>index.html</code> + Pretendard + 인라인 SVG <code>logo.svg</code>. Caddy 가 그대로 서빙.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">copy public/</span><span class="arr">→</span>
+        <span class="step green">caddy file_server</span>
+      </div>
+      <div class="url-row">build · <code>noop</code> · index <code>index.html</code> · root <code>.</code></div>
+    </div>
+
+    <!-- mkdocs static -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('mkdocs_static')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('mkdocs_static')}">
+      <div class="card-top">
+        <div class="mono-ic ic-doc">Md</div>
+        <div>
+          <h3 class="card-title">MkDocs Pre-built Docs</h3>
+          <div class="card-sub">stack · <code class="mono">mkdocs_static</code> · caddy_static · static</div>
+        </div>
+      </div>
+      <p class="card-tag">외부에서 빌드한 <code>site/</code> 디렉토리를 그대로 서빙.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-mkdocs-static</b> · <code>mkdocs.yml</code> 소스 + <code>mkdocs build</code> 결과 <code>site/</code> (index/guide/api/css) 포함, HEAXHub 는 빌드 안 함.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">copy site/</span><span class="arr">→</span>
+        <span class="step green">caddy file_server</span>
+      </div>
+      <div class="url-row">build · <code>noop</code> · root <code>site</code></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ EXTERNAL ============ -->
+<section class="cat" data-cat="ext">
+  <div class="cat-head">
+    <h2>외부 통합 / External</h2>
+    <div class="desc">빌더 · 런타임 모두 <code>noop</code>. HEAXHub 카탈로그에 항목만 등록하고 트래픽을 외부로 보낸다.</div>
+  </div>
+  <div class="grid">
+
+    <!-- external link -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('external_link')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('external_link')}">
+      <div class="card-top">
+        <div class="mono-ic ic-ext">→</div>
+        <div>
+          <h3 class="card-title">External Link (new tab)</h3>
+          <div class="card-sub">stack · <code class="mono">external_link</code> · noop · url</div>
+        </div>
+      </div>
+      <p class="card-tag">카드의 Open 클릭 시 새 탭에서 외부 URL 이 열린다.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-external-link</b> · launch <code>https://github.com/squall321/HEAXHub</code>, <code>open_in: new_tab</code>.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">noop build</span><span class="arr">→</span>
+        <span class="step green">window.open(url)</span>
+      </div>
+      <div class="url-row">launch · <code>https://github.com/squall321/HEAXHub</code></div>
+    </div>
+
+    <!-- external iframe -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('external_iframe')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('external_iframe')}">
+      <div class="card-top">
+        <div class="mono-ic ic-ext">▣</div>
+        <div>
+          <h3 class="card-title">External URL (iframe embed)</h3>
+          <div class="card-sub">stack · <code class="mono">external_iframe</code> · noop · iframe</div>
+        </div>
+      </div>
+      <p class="card-tag">HEAXHub 레이아웃 안에 외부 URL 을 iframe 으로 임베드.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-external-iframe</b> · launch <code>https://example.com</code>. 대상의 <code>X-Frame-Options</code> / CSP <code>frame-ancestors</code> 허용 필요.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">noop build</span><span class="arr">→</span>
+        <span class="step green">&lt;iframe src=...&gt;</span>
+      </div>
+      <div class="url-row">sandbox · <code>allow-scripts allow-forms allow-same-origin</code></div>
+    </div>
+
+    <!-- external proxy -->
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('external_proxy')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('external_proxy')}">
+      <div class="card-top">
+        <div class="mono-ic ic-ext">⇄</div>
+        <div>
+          <h3 class="card-title">External Reverse Proxy</h3>
+          <div class="card-sub">stack · <code class="mono">external_proxy</code> · noop · proxy</div>
+        </div>
+      </div>
+      <p class="card-tag">Caddy <code>reverse_proxy</code> 라우트만 등록. <code>/apps/{id}/*</code> → upstream.</p>
+      <div class="box">
+        <div class="label">데모로 증명된 것</div>
+        <p><b>heax-demo-external-proxy</b> · upstream <code>http://localhost:8126</code> (MailHog UI). <code>strip_prefix: true</code>.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">caddy route</span><span class="arr">→</span>
+        <span class="step green">reverse_proxy upstream</span>
+      </div>
+      <div class="url-row">upstream · <code>http://localhost:8126</code></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ DESKTOP ============ -->
+<section class="cat" data-cat="desktop">
+  <div class="cat-head">
+    <h2>데스크톱 / Desktop</h2>
+    <div class="desc">로컬 PC 실행. 첫 릴리즈(v0.7.0) 데모 없음 — 인스톨러 호스팅 + <code>heaxhub://</code> 프로토콜 핸들러로 연결될 예정.</div>
+  </div>
+  <div class="grid">
+
+    <div class="card" tabindex="0" role="button" onclick="openStackModal('windows_local')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStackModal('windows_local')}">
+      <div class="card-top">
+        <div class="mono-ic ic-html">Win</div>
+        <div>
+          <h3 class="card-title">Windows Local Installer</h3>
+          <div class="card-sub">stack · <code class="mono">windows_local</code> · windows_agent · installer</div>
+        </div>
+      </div>
+      <p class="card-tag">CAD/CAE 등 윈도우 GUI 도구. HEAXHub 는 .exe 호스팅 + 프로토콜만.</p>
+      <div class="box">
+        <div class="label">상태</div>
+        <p>v0.7.0 데모 없음. 매니페스트 + 인스톨러 스토리지 + <code>heaxhub://</code> 프로토콜 핸들러 설계 완료.</p>
+      </div>
+      <div class="flow">
+        <span class="step">manifest</span><span class="arr">→</span>
+        <span class="step">.exe upload</span><span class="arr">→</span>
+        <span class="step amber">heaxhub:// handler</span><span class="arr">→</span>
+        <span class="step green">로컬 실행</span>
+      </div>
+      <div class="url-row">launch_mode · <code>installer</code> · 호스트 <code>local_pc</code></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ NEXT STEPS ============ -->
+<section class="next">
+  <h2>다음 단계 · 외부 자동화 프로그램 등록</h2>
+  <p>
+    엔지니어가 만든 자동화 스크립트 / 사내 서비스를 HEAXHub 에 등록하는 표준 흐름.
+    14개 데모가 보여준 패턴 중 하나를 골라, <code>.portal/manifest.yaml</code> 한 장만 추가하면 끝난다.
+  </p>
+  <div class="steps">
+    <div class="stepcard">
+      <span class="n">1</span><b>스택 선택</b>
+      <p>해당 도구가 web service / dashboard / batch job / static / external 중 어디인지 결정.
+        <code>stacks.yaml</code> 의 21개 중 하나를 고른다.</p>
+    </div>
+    <div class="stepcard">
+      <span class="n">2</span><b>manifest 작성</b>
+      <p><code>.portal/manifest.yaml</code> 에 <code>id</code>, <code>name</code>, <code>build.stack</code>,
+        <code>launch.command</code> 만 적는다. job_runner 면 <code>inputs[]</code> 로 폼 자동 생성.</p>
+    </div>
+    <div class="stepcard">
+      <span class="n">3</span><b>저장소 연결</b>
+      <p><code>INTEGRATION_REPO_URLS</code> 또는 <code>integrations/</code> 마운트로 등록.
+        <code>integrations_scanner</code> 가 주기적으로 매니페스트를 수집한다.</p>
+    </div>
+    <div class="stepcard">
+      <span class="n">4</span><b>자동 빌드 · 실행</b>
+      <p><code>stack_resolver</code> → SIF 빌더 → 런처가 자동 디스패치. Caddy 가 sub-path 마운트.
+        제출자는 카탈로그에서 카드만 클릭.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  HEAXHub · v0.7.0 · 2026-06-04 · single-file showcase
+</footer>
+
+</div>
+
+<!-- ============ MODAL ============ -->
+<div class="modal-backdrop" id="modalBackdrop" aria-hidden="true"></div>
+<aside class="modal-panel" id="modalPanel" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-hidden="true" tabindex="-1">
+  <div class="modal-head">
+    <div class="mono-ic" id="modalIcon">?</div>
+    <div class="ht">
+      <h3 id="modalTitle">스택 상세</h3>
+      <div class="meta" id="modalMeta"></div>
+    </div>
+    <button class="modal-close" id="modalClose" aria-label="닫기 / Close" type="button">×</button>
+  </div>
+  <div class="modal-body" id="modalBody"></div>
+</aside>
+
+<script>
+/* ── Tabs ────────────────────────────────────────── */
+(function(){
+  var tabs=document.querySelectorAll('.tab');
+  var cats=document.querySelectorAll('.cat');
+  tabs.forEach(function(t){
+    t.addEventListener('click',function(){
+      var key=t.getAttribute('data-cat');
+      tabs.forEach(function(x){x.classList.toggle('active',x===t)});
+      cats.forEach(function(c){c.classList.toggle('active',c.getAttribute('data-cat')===key)});
+      window.scrollTo({top:document.querySelector('.tabs').offsetTop-12,behavior:'smooth'});
+    });
+  });
+})();
+
+/* ── Stack detail data ───────────────────────────── */
+var STACK_DATA = {
+  fastapi: {
+    name: "FastAPI / uvicorn Service",
+    icon: "Py", iconClass: "ic-py",
+    category: "웹 서비스 / Web Services", stackCode: "fastapi",
+    overview: "FastAPI 는 Python 의 타입 힌트를 그대로 검증·문서화에 활용하는 ASGI 웹 프레임워크다. Sebastián Ramírez (tiangolo) 가 2018년 공개했고, Starlette + Pydantic 위에서 동작한다. 비동기 처리와 OpenAPI 자동 생성이 핵심.",
+    components: [
+      "<b>Python 3.12</b> 인터프리터 (slim 베이스)",
+      "<b>FastAPI</b> 본체 — 라우팅 · 의존성 주입 · 타입 검증",
+      "<b>uvicorn</b> — ASGI 서버, <code>--root-path</code> 로 sub-path 인지",
+      "<b>Pydantic v2</b> — 요청/응답 모델 검증 + 직렬화",
+      "선택: <code>httpx</code>, <code>sqlalchemy[asyncio]</code> 등"
+    ],
+    useCases: [
+      "비동기 마이크로서비스 / I/O 바운드 API 백엔드",
+      "OpenAPI 자동 문서화가 필요한 사내 도구 (Swagger UI 무료)",
+      "타 시스템 SDK 자동 생성용 표준 REST 인터페이스",
+      "ML 모델 추론 서버 (PyTorch / scikit-learn 래핑)"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-fastapi\n<span class="k">name</span>: <span class="s">"FastAPI Memo API"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: fastapi\n<span class="k">launch</span>:\n  <span class="k">mode</span>: service\n  <span class="k">command</span>: <span class="s">"uvicorn app.main:app --root-path $ROOT_PATH"</span>\n  <span class="k">health</span>: /health',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-fastapi</code>"],
+      ["2", "<b>pip install -e .</b> — 의존성 설치"],
+      ["3", "<b>SIF build</b> — <code>python:3.12-slim</code> 베이스로 Apptainer 이미지 생성"],
+      ["4", "<b>인스턴스 기동</b> — <code>apptainer instance start app.sif heax-demo-fastapi</code>"]
+    ],
+    caveats: [
+      "ASGI 전용. WSGI 전용 미들웨어/라이브러리 (예: 일부 구버전 Django 플러그인) 는 호환 안 됨.",
+      "Sub-path 마운트 시 <code>--root-path</code> 와 <code>app = FastAPI(root_path=...)</code> 중 하나만 — 둘 다 주면 prefix 가 중복됨."
+    ],
+    links: [
+      ["fastapi.tiangolo.com", "https://fastapi.tiangolo.com/"],
+      ["uvicorn.org", "https://www.uvicorn.org/"],
+      ["docs.pydantic.dev", "https://docs.pydantic.dev/"]
+    ]
+  },
+  flask: {
+    name: "Flask / Gunicorn Service",
+    icon: "Py", iconClass: "ic-py",
+    category: "웹 서비스 / Web Services", stackCode: "flask",
+    overview: "Flask 는 Armin Ronacher 가 2010년 공개한 마이크로 WSGI 프레임워크다. 코어는 라우팅과 요청 객체뿐이며, 데이터베이스·인증 등은 확장으로 붙인다. 학습 곡선이 낮아 사내 도구의 표준 백엔드로 널리 쓰인다.",
+    components: [
+      "<b>Python 3.12</b> 인터프리터",
+      "<b>Flask</b> — 라우팅 + Jinja2 템플릿 + 세션",
+      "<b>Gunicorn</b> — 멀티 워커 WSGI 서버",
+      "<b>Jinja2</b> — HTML 템플릿 엔진",
+      "선택: <code>Flask-SQLAlchemy</code>, <code>Flask-Login</code>"
+    ],
+    useCases: [
+      "서버 사이드 렌더링 사내 관리자 페이지 / CRUD 화면",
+      "기존 Python 스크립트에 얇은 HTML UI 한 겹 올리기",
+      "RESTful 마이크로서비스 (동기 워크로드)",
+      "Jupyter 결과를 HTML 폼·표 위주로 사내 공유"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-flask\n<span class="k">name</span>: <span class="s">"Flask Counter"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: flask\n<span class="k">launch</span>:\n  <span class="k">mode</span>: service\n  <span class="k">command</span>: <span class="s">"gunicorn -b 0.0.0.0:$PORT app.main:app"</span>\n  <span class="k">env</span>:\n    <span class="k">SCRIPT_NAME</span>: $ROOT_PATH',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-flask</code>"],
+      ["2", "<b>pip install -e .</b> — Flask · Gunicorn 설치"],
+      ["3", "<b>SIF build</b> — <code>python:3.12-slim</code>"],
+      ["4", "<b>gunicorn</b> 실행 + <code>SCRIPT_NAME</code> 으로 sub-path 처리"]
+    ],
+    caveats: [
+      "동기 WSGI. 대량 비동기 I/O 가 필요하면 FastAPI 권장.",
+      "Sub-path 인지를 <code>url_for()</code> 에 반영하려면 <code>SCRIPT_NAME</code> 환경변수가 필수."
+    ],
+    links: [
+      ["flask.palletsprojects.com", "https://flask.palletsprojects.com/"],
+      ["docs.gunicorn.org", "https://docs.gunicorn.org/"],
+      ["jinja.palletsprojects.com", "https://jinja.palletsprojects.com/"]
+    ]
+  },
+  nextjs: {
+    name: "Next.js / React SPA",
+    icon: "Ts", iconClass: "ic-ts",
+    category: "웹 서비스 / Web Services", stackCode: "nextjs",
+    overview: "Next.js 는 Vercel 이 메인테이닝하는 React 풀스택 프레임워크다. App Router (RSC) · 파일 기반 라우팅 · 이미지/폰트 최적화가 기본 제공된다. SSR/SSG/ISR/CSR 을 동일 코드베이스에서 선택할 수 있다.",
+    components: [
+      "<b>Node.js 20</b> 런타임 (slim)",
+      "<b>pnpm</b> — 빠른 패키지 매니저 (HEAXHub 표준)",
+      "<b>Next.js 14+</b> — App Router 기반 React 프레임워크",
+      "<b>React 18</b> — 서버/클라이언트 컴포넌트",
+      "선택: TypeScript, Tailwind CSS, shadcn/ui"
+    ],
+    useCases: [
+      "사내 어드민 / 대시보드 (SSR 로 인증·SEO·초기 로딩 최적화)",
+      "마케팅/문서 사이트 (SSG 로 정적 산출)",
+      "API Route 로 가벼운 BFF (Backend-for-Frontend) 동시 제공",
+      "React 컴포넌트 라이브러리 데모/스토리"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-nextjs\n<span class="k">name</span>: <span class="s">"Next.js SPA"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: nextjs\n<span class="k">launch</span>:\n  <span class="k">mode</span>: service\n  <span class="k">command</span>: <span class="s">"pnpm start"</span>\n  <span class="k">env</span>:\n    <span class="k">NEXT_PUBLIC_BASE_PATH</span>: $ROOT_PATH',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-nextjs</code>"],
+      ["2", "<b>pnpm install --frozen-lockfile</b>"],
+      ["3", "<b>pnpm build</b> → <code>.next/</code> 산출물 생성"],
+      ["4", "<b>SIF build</b> → <b>pnpm start</b> 로 instance 기동"]
+    ],
+    caveats: [
+      "SSR 빌드는 의존성이 많아 SIF 빌드 시간이 5분 이상 걸릴 수 있다 — CI 캐시 권장.",
+      "<code>basePath</code> 와 <code>NEXT_PUBLIC_BASE_PATH</code> 를 <code>next.config.js</code> 에 같이 와이어링해야 sub-path 에서 정적 자원이 깨지지 않는다."
+    ],
+    links: [
+      ["nextjs.org", "https://nextjs.org/"],
+      ["react.dev", "https://react.dev/"],
+      ["pnpm.io", "https://pnpm.io/"]
+    ]
+  },
+  go_service: {
+    name: "Go Service",
+    icon: "Go", iconClass: "ic-go",
+    category: "웹 서비스 / Web Services", stackCode: "go_service",
+    overview: "Go 는 Google 이 2009년 공개한 정적 타입 컴파일 언어다. 표준 라이브러리만으로 HTTP 서버를 만들 수 있고, 결과물은 의존성 없는 단일 바이너리다. HEAXHub 에서는 multi-stage 빌드로 SIF 최종 이미지를 매우 작게 유지한다.",
+    components: [
+      "<b>Go 1.22</b> 컴파일러 (빌드 스테이지 한정)",
+      "<b>stdlib net/http</b> — 외부 의존 없음",
+      "<b>debian:stable-slim</b> — 최종 런타임 (~70 MB)",
+      "<code>-trimpath -ldflags=\"-s -w\"</code> 로 바이너리 슬림화"
+    ],
+    useCases: [
+      "고동시성 · 저레이턴시 API 게이트웨이",
+      "CLI 도구 + HTTP 서버 겸용 (단일 바이너리 배포)",
+      "WebSocket / SSE 기반 실시간 푸시 서비스",
+      "에이전트/사이드카 (메모리·CPU 풋프린트 최소화)"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-go\n<span class="k">name</span>: <span class="s">"Go HTTP Service"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: go_service\n  <span class="k">binary</span>: heax-demo-go\n<span class="k">launch</span>:\n  <span class="k">mode</span>: service\n  <span class="k">command</span>: <span class="s">"./heax-demo-go"</span>\n  <span class="k">env</span>:\n    <span class="k">HEAX_BASE_PATH</span>: $ROOT_PATH',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-go</code>"],
+      ["2", "<b>go build -trimpath</b> in <code>golang:1.22</code> 스테이지"],
+      ["3", "<b>multi-stage SIF</b> — 최종은 <code>debian:stable-slim</code> + 바이너리만"],
+      ["4", "<b>./heax-demo-go</b> 로 인스턴스 기동"]
+    ],
+    caveats: [
+      "Cross-compile 시 <code>CGO_ENABLED=0</code> 권장 — glibc 의존을 끊고 진짜 단일 바이너리로.",
+      "Sub-path 라우팅은 stdlib 가 자동 처리 안 함 — 직접 <code>http.StripPrefix</code> 로 와이어링 필요."
+    ],
+    links: [
+      ["go.dev", "https://go.dev/"],
+      ["pkg.go.dev/net/http", "https://pkg.go.dev/net/http"],
+      ["apptainer.org", "https://apptainer.org/"]
+    ]
+  },
+  streamlit: {
+    name: "Streamlit Service",
+    icon: "St", iconClass: "ic-py",
+    category: "데이터 대시보드 / Dashboards", stackCode: "streamlit",
+    overview: "Streamlit 은 2019년 Adrien Treuille 등이 공개한 Python 데이터 앱 프레임워크다 (2022년 Snowflake 인수). 위에서 아래로 흐르는 스크립트 한 파일이 그대로 인터랙티브 웹앱이 되는 게 핵심. 데이터 과학자가 프론트엔드 지식 없이 UI 를 만든다.",
+    components: [
+      "<b>Python 3.12</b> 인터프리터",
+      "<b>Streamlit</b> 본체 — Tornado + WebSocket 서버",
+      "<b>NumPy / Pandas / Matplotlib</b> 기본 동봉",
+      "선택: <code>plotly</code>, <code>altair</code>, <code>scikit-learn</code>"
+    ],
+    useCases: [
+      "데이터 과학자가 코드 한 파일로 인터랙티브 대시보드 작성",
+      "ML 실험 결과를 사내에 빠르게 공유 (모델 비교 / 파라미터 슬라이더)",
+      "CSV/Parquet 분석 도구 임시 배포 (업로드 → 차트)",
+      "CAE/시뮬레이션 후처리 UI"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-streamlit\n<span class="k">name</span>: <span class="s">"Streamlit Stats"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: streamlit\n<span class="k">launch</span>:\n  <span class="k">mode</span>: service\n  <span class="k">command</span>: <span class="s">"streamlit run app.py --server.baseUrlPath=$ROOT_PATH --server.port=$PORT"</span>\n  <span class="k">health</span>: /_stcore/health',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-streamlit</code>"],
+      ["2", "<b>pip install -e .</b> — Streamlit + 분석 라이브러리"],
+      ["3", "<b>SIF build</b> — <code>python:3.12-slim</code>"],
+      ["4", "<b>streamlit run app.py</b> + baseUrlPath 옵션으로 sub-path 마운트"]
+    ],
+    caveats: [
+      "WebSocket 의존이라 reverse proxy 에 <code>--server.baseUrlPath</code> + 웹소켓 업그레이드 헤더 패스가 필수.",
+      "공식적으로 상태는 세션 단위 — 다중 워커 (gunicorn) 배포에 부적합. 단일 프로세스로 운영."
+    ],
+    links: [
+      ["streamlit.io", "https://streamlit.io/"],
+      ["docs.streamlit.io", "https://docs.streamlit.io/"],
+      ["numpy.org", "https://numpy.org/"]
+    ]
+  },
+  dash_plotly: {
+    name: "Plotly Dash Dashboard",
+    icon: "D", iconClass: "ic-py",
+    category: "데이터 대시보드 / Dashboards", stackCode: "dash_plotly",
+    overview: "Dash 는 Plotly 가 2017년 공개한 Python 분석용 웹 프레임워크다. Flask + React + Plotly.js 를 합쳐 Python 만으로 인터랙티브 대시보드를 만든다. <code>@callback</code> 데코레이터로 입력→출력을 선언적으로 연결한다.",
+    components: [
+      "<b>Python 3.12</b> 인터프리터",
+      "<b>Dash</b> — Flask wrapper + 콜백 시스템",
+      "<b>Plotly.js</b> — 브라우저 사이드 차트 렌더링",
+      "<b>Gunicorn</b> — 프로덕션 WSGI 서버",
+      "<b>Pandas / NumPy</b> — 데이터 변환"
+    ],
+    useCases: [
+      "복잡한 필터·드릴다운이 있는 인터랙티브 분석 보드",
+      "다중 페이지 (<code>dash.pages</code>) 사내 BI 대시보드",
+      "센서 시계열 모니터링 (WebSocket 없이 polling 으로 충분할 때)",
+      "Plotly 의 풍부한 3D / 지리 차트가 필요한 도메인 시각화"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-dash\n<span class="k">name</span>: <span class="s">"Dash Analytics"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: dash_plotly\n<span class="k">launch</span>:\n  <span class="k">mode</span>: service\n  <span class="k">command</span>: <span class="s">"gunicorn -b 0.0.0.0:$PORT app:server"</span>\n  <span class="k">env</span>:\n    <span class="k">DASH_URL_BASE_PATHNAME</span>: $ROOT_PATH/',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-dash</code>"],
+      ["2", "<b>pip install -e .</b> — Dash · Plotly · Pandas"],
+      ["3", "<b>SIF build</b> — <code>python:3.12-slim</code>"],
+      ["4", "<b>gunicorn app:server</b> 로 다중 워커 기동"]
+    ],
+    caveats: [
+      "콜백 체인이 길어지면 디버깅이 어려움 — <code>State</code> 와 <code>Input</code> 구분 명확히.",
+      "<code>requests_pathname_prefix</code> / <code>routes_pathname_prefix</code> 둘 다 끝에 슬래시 필수, 아니면 정적 자원 404."
+    ],
+    links: [
+      ["dash.plotly.com", "https://dash.plotly.com/"],
+      ["plotly.com/python", "https://plotly.com/python/"],
+      ["docs.gunicorn.org", "https://docs.gunicorn.org/"]
+    ]
+  },
+  python_cli: {
+    name: "Python CLI / Batch Job",
+    icon: "Py", iconClass: "ic-py",
+    category: "잡 · 배치 / Batch Jobs", stackCode: "python_cli",
+    overview: "Python 표준 라이브러리 기반의 CLI 스크립트를 HEAXHub <code>job_runner</code> 로 등록하는 스택. <code>.portal/run.sh</code> 가 <code>--input-dir</code>, <code>--output-dir</code>, <code>--params</code> 를 받아 비대화형으로 실행되며, 결과 파일이 자동 수집된다.",
+    components: [
+      "<b>Python 3.12</b> 인터프리터",
+      "<b>argparse</b> / <b>click</b> — CLI 파라미터 파싱",
+      "<b>pandas / numpy</b> — 데이터 처리 (선택)",
+      "<code>.portal/run.sh</code> — 표준 진입점 스크립트"
+    ],
+    useCases: [
+      "엔지니어가 작성한 분석 스크립트를 입력 폼과 함께 사내 공유",
+      "CAD/CAE 결과 파일 후처리 배치",
+      "장시간 데이터 변환 / ETL — 결과만 회수",
+      "ML 추론 일괄 처리 (모델 + 입력 → 예측 CSV)"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-cli\n<span class="k">name</span>: <span class="s">"CSV Row Counter"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: python_cli\n<span class="k">launch</span>:\n  <span class="k">mode</span>: job_runner\n  <span class="k">command</span>: <span class="s">"bash .portal/run.sh"</span>\n<span class="k">inputs</span>:\n  - <span class="k">id</span>: csv_file\n    <span class="k">type</span>: file\n    <span class="k">accept</span>: <span class="s">".csv"</span>',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-cli</code>"],
+      ["2", "<b>pip install -e .</b> — 스크립트 + 의존성"],
+      ["3", "<b>SIF build</b> — <code>python:3.12-slim</code>"],
+      ["4", "<b>./.portal/run.sh</b> 실행 → <code>output/</code> 수집"]
+    ],
+    caveats: [
+      "장시간 잡 (>1h) 은 SLURM 백엔드 사용을 고려 — 직접 실행은 단일 노드 자원에 묶임.",
+      "출력 파일은 반드시 <code>--output-dir</code> 아래에만 생성, 그 외 위치는 회수 안 됨."
+    ],
+    links: [
+      ["docs.python.org/3/library/argparse", "https://docs.python.org/3/library/argparse.html"],
+      ["click.palletsprojects.com", "https://click.palletsprojects.com/"],
+      ["pandas.pydata.org", "https://pandas.pydata.org/"]
+    ]
+  },
+  cpp_executable: {
+    name: "C/C++ Executable",
+    icon: "C++", iconClass: "ic-cpp",
+    category: "잡 · 배치 / Batch Jobs", stackCode: "cpp_executable",
+    overview: "C/C++ 소스를 빌드해서 단일 네이티브 바이너리로 배포하는 스택. GCC 13 / CMake / Make 를 빌드 스테이지에 둔 multi-stage SIF 로, 최종 이미지는 슬림한 런타임 + 바이너리만 포함된다. 수치 해석 솔버나 고성능 계산에 적합.",
+    components: [
+      "<b>GCC 13</b> 또는 <b>Clang</b> 컴파일러 (빌드 스테이지)",
+      "<b>CMake</b> / <b>GNU Make</b> — 빌드 시스템",
+      "<b>debian:stable-slim</b> — 최종 런타임",
+      "선택: <code>Eigen</code>, <code>OpenMP</code>, <code>MPI</code>"
+    ],
+    useCases: [
+      "FEM / CFD 사내 솔버 (성능 + 단일 바이너리 배포)",
+      "기존 레거시 C 코드 자산을 카탈로그화",
+      "암호화 / 시그널 처리 같은 SIMD 활용 워크로드",
+      "MATLAB → C++ 변환 결과물의 사내 호스팅"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-cpp\n<span class="k">name</span>: <span class="s">"C++ Counter"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: cpp_executable\n  <span class="k">make_target</span>: heax-demo-cpp\n  <span class="k">binary</span>: bin/heax-demo-cpp\n<span class="k">launch</span>:\n  <span class="k">mode</span>: job_runner\n  <span class="k">command</span>: <span class="s">"./bin/heax-demo-cpp"</span>',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-cpp</code>"],
+      ["2", "<b>make</b> 또는 <b>cmake --build</b> — 빌드 스테이지"],
+      ["3", "<b>multi-stage SIF</b> — 컴파일러 제거, 바이너리만 복사"],
+      ["4", "<b>./bin/heax-demo-cpp</b> 실행 (job_runner 모드)"]
+    ],
+    caveats: [
+      "OS 라이브러리 의존성 차이로 호스트 ≠ 런타임 베이스 일 때 segfault — Apptainer 격리로 회피.",
+      "정적 링크 또는 의존 <code>.so</code> 를 같이 복사하지 않으면 <code>libstdc++</code> 버전 미스매치 발생."
+    ],
+    links: [
+      ["isocpp.org", "https://isocpp.org/"],
+      ["cmake.org", "https://cmake.org/"],
+      ["gcc.gnu.org", "https://gcc.gnu.org/"]
+    ]
+  },
+  r_script: {
+    name: "R Script Runner",
+    icon: "R", iconClass: "ic-r",
+    category: "잡 · 배치 / Batch Jobs", stackCode: "r_script",
+    overview: "R 은 통계 계산과 시각화에 특화된 인터프리터 언어로, R Core Team 이 1993년부터 개발 중이다. HEAXHub 스택은 R 4.4 + renv 격리 환경에서 <code>Rscript</code> 를 비대화형으로 호출해 배치 잡 형태로 실행한다.",
+    components: [
+      "<b>R 4.4</b> 인터프리터",
+      "<b>renv</b> — 프로젝트 단위 패키지 격리 (lockfile)",
+      "<b>Rscript</b> — 비대화형 실행 진입점",
+      "선택: <code>tidyverse</code>, <code>ggplot2</code>, <code>data.table</code>"
+    ],
+    useCases: [
+      "통계 모델링 / 회귀 분석 자동 리포트",
+      "ggplot2 기반 출판 품질 그래프 생성 배치",
+      "임상·실험 데이터의 표준 EDA 파이프라인",
+      "기존 R 자산 (논문 reproducibility) 의 카탈로그화"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-r\n<span class="k">name</span>: <span class="s">"R Sampler"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: r_script\n<span class="k">launch</span>:\n  <span class="k">mode</span>: job_runner\n  <span class="k">command</span>: <span class="s">"Rscript run.R"</span>\n<span class="k">inputs</span>:\n  - <span class="k">id</span>: n\n    <span class="k">type</span>: int\n    <span class="k">default</span>: 1000',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-r</code>"],
+      ["2", "<b>renv::restore()</b> — <code>renv.lock</code> 기반 패키지 복원"],
+      ["3", "<b>SIF build</b> — R 4.4 + 사전 컴파일된 CRAN 바이너리"],
+      ["4", "<b>Rscript run.R</b> 호출 + <code>output/</code> 수집"]
+    ],
+    caveats: [
+      "CRAN 소스 패키지 빌드는 매우 느림 — RSPM 같은 사전 컴파일 미러를 활용 권장.",
+      "R 의 <code>setwd()</code> 는 HEAXHub 의 작업 디렉토리 규약과 충돌할 수 있음 — 절대 경로 사용."
+    ],
+    links: [
+      ["r-project.org", "https://www.r-project.org/"],
+      ["rstudio.github.io/renv", "https://rstudio.github.io/renv/"],
+      ["ggplot2.tidyverse.org", "https://ggplot2.tidyverse.org/"]
+    ]
+  },
+  static_html: {
+    name: "Static HTML / Pre-built Site",
+    icon: "&lt;/&gt;", iconClass: "ic-html",
+    category: "정적 호스팅 / Static", stackCode: "static_html",
+    overview: "빌드 단계 없이 HTML/CSS/JS 파일을 그대로 Caddy <code>file_server</code> 로 서빙하는 스택. Vite/CRA/Webpack 등으로 외부에서 사전 빌드된 산출물도 이 스택으로 등록하면 즉시 카탈로그에 노출된다.",
+    components: [
+      "<b>Caddy</b> — 정적 파일 서버 (HEAXHub 공용)",
+      "<b>HTML / CSS / JS</b> 파일만",
+      "선택: 사전 빌드된 <code>dist/</code>, <code>build/</code>"
+    ],
+    useCases: [
+      "랜딩 페이지 / 사내 안내 페이지",
+      "Vite / Webpack 으로 빌드된 SPA 산출물 호스팅",
+      "디자인 시안 / 프로토타입 빠른 공유",
+      "리포트 (단일 HTML, 인라인 SVG) 아카이브"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-static-html\n<span class="k">name</span>: <span class="s">"Static Landing"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: static_html\n  <span class="k">root</span>: <span class="s">"."</span>\n<span class="k">launch</span>:\n  <span class="k">mode</span>: static\n  <span class="k">index</span>: index.html',
+    flow: [
+      ["1", "<b>git clone</b> <code>integrations/heax-demo-static-html</code>"],
+      ["2", "빌드 단계 <b>없음</b> (noop)"],
+      ["3", "<b>Caddy</b> 가 <code>file_server</code> 라우트로 마운트"],
+      ["4", "<code>/apps/{id}/*</code> 요청 → 디스크 파일 직접 응답"]
+    ],
+    caveats: [
+      "SPA 의 client-side routing 은 fallback 설정 필요 — 404 시 <code>index.html</code> 로 리라이트.",
+      "절대 경로 자원 (<code>/static/...</code>) 은 sub-path 마운트 시 깨짐. 상대 경로 또는 <code>&lt;base&gt;</code> 태그 사용."
+    ],
+    links: [
+      ["caddyserver.com/docs", "https://caddyserver.com/docs/"],
+      ["developer.mozilla.org/HTML", "https://developer.mozilla.org/en-US/docs/Web/HTML"],
+      ["vitejs.dev", "https://vitejs.dev/"]
+    ]
+  },
+  mkdocs_static: {
+    name: "MkDocs Pre-built Docs",
+    icon: "Md", iconClass: "ic-doc",
+    category: "정적 호스팅 / Static", stackCode: "mkdocs_static",
+    overview: "MkDocs 는 Tom Christie 가 2014년 공개한 Markdown → 정적 사이트 생성기다. HEAXHub 의 <code>mkdocs_static</code> 은 빌드된 <code>site/</code> 디렉토리만 서빙 — 빌드는 외부에서 수행한다 (CI / 작성자 로컬).",
+    components: [
+      "<b>Caddy</b> — 정적 파일 서버",
+      "<b>외부 빌드된 site/</b> 디렉토리 (필수)",
+      "<b>mkdocs.yml</b> — 빌드 시 사용된 설정 (참조용)",
+      "선택: Material for MkDocs, mkdocstrings"
+    ],
+    useCases: [
+      "API 레퍼런스 / 사내 개발자 문서",
+      "기술 가이드 / Runbook / 온보딩 문서",
+      "ADR (Architecture Decision Records) 아카이브",
+      "정적 검색이 포함된 다국어 매뉴얼"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-mkdocs-static\n<span class="k">name</span>: <span class="s">"Docs Site"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: mkdocs_static\n  <span class="k">root</span>: site\n<span class="k">launch</span>:\n  <span class="k">mode</span>: static\n  <span class="k">index</span>: index.html',
+    flow: [
+      ["1", "<b>로컬/CI</b> 에서 <code>mkdocs build</code> 수행"],
+      ["2", "<b>git clone</b> + <code>site/</code> 디렉토리 포함"],
+      ["3", "빌드 단계 <b>없음</b> (noop)"],
+      ["4", "<b>Caddy</b> 가 <code>site/</code> 를 마운트해 서빙"]
+    ],
+    caveats: [
+      "HEAXHub 가 mkdocs 를 직접 빌드하지 않으므로 <code>site/</code> 가 저장소에 커밋되어 있어야 함.",
+      "검색 인덱스 (<code>search_index.json</code>) 도 함께 빌드 후 커밋 필요 — 누락 시 검색창 동작 안 함."
+    ],
+    links: [
+      ["mkdocs.org", "https://www.mkdocs.org/"],
+      ["squidfunk.github.io/mkdocs-material", "https://squidfunk.github.io/mkdocs-material/"],
+      ["caddyserver.com/docs", "https://caddyserver.com/docs/"]
+    ]
+  },
+  external_link: {
+    name: "External Link (new tab)",
+    icon: "→", iconClass: "ic-ext",
+    category: "외부 통합 / External", stackCode: "external_link",
+    overview: "HEAXHub 카탈로그에 카드만 등록하고, 클릭 시 새 탭에서 외부 URL 을 여는 스택. 빌드/런타임 모두 noop 이며 트래픽은 HEAXHub 를 거치지 않는다. 컨테이너 빌드 비용이 0.",
+    components: [
+      "<b>noop</b> 빌더 — 아무것도 빌드 안 함",
+      "<b>noop</b> 런타임 — 컨테이너 없음",
+      "<b>HEAXHub 프론트엔드</b> — <code>window.open(url, '_blank')</code> 만 수행"
+    ],
+    useCases: [
+      "사내 위키 (Confluence, Notion) 바로가기",
+      "외부 SaaS (Jira, Figma, GitHub) 진입점",
+      "공식 문서 / 표준 사이트 북마크",
+      "HEAXHub 도입 초기에 카탈로그 채우기 (마이그레이션 전)"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-external-link\n<span class="k">name</span>: <span class="s">"HEAXHub GitHub"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: external_link\n<span class="k">launch</span>:\n  <span class="k">mode</span>: url\n  <span class="k">url</span>: <span class="s">"https://github.com/squall321/HEAXHub"</span>\n  <span class="k">open_in</span>: new_tab',
+    flow: [
+      ["1", "manifest 한 장만 추가 (clone 불필요)"],
+      ["2", "<b>noop build</b> — SIF 생성 없음"],
+      ["3", "HEAXHub 카탈로그에 카드 등록"],
+      ["4", "클릭 시 <code>window.open</code> 으로 새 탭"]
+    ],
+    caveats: [
+      "트래픽이 HEAXHub 를 안 거치므로 접근 로그/감사 수집이 안 됨.",
+      "URL 변경 시 manifest 만 수정해도 즉시 반영 — 그러나 캐시된 카드는 새로고침 필요."
+    ],
+    links: [
+      ["developer.mozilla.org/Window/open", "https://developer.mozilla.org/en-US/docs/Web/API/Window/open"],
+      ["github.com/squall321/HEAXHub", "https://github.com/squall321/HEAXHub"]
+    ]
+  },
+  external_iframe: {
+    name: "External URL (iframe embed)",
+    icon: "▣", iconClass: "ic-ext",
+    category: "외부 통합 / External", stackCode: "external_iframe",
+    overview: "외부 웹앱을 HEAXHub 레이아웃 안의 <code>&lt;iframe&gt;</code> 으로 임베드하는 스택. 사용자는 HEAXHub 를 떠나지 않고 외부 도구를 사용한다. 대상 사이트의 <code>X-Frame-Options</code> / CSP <code>frame-ancestors</code> 정책이 허용해야 한다.",
+    components: [
+      "<b>noop</b> 빌더 / 런타임",
+      "<b>HEAXHub 프론트엔드</b> 의 iframe 래퍼",
+      "<code>sandbox</code> 속성으로 권한 제한"
+    ],
+    useCases: [
+      "Grafana / Kibana / Prometheus UI 임베드",
+      "Jupyter Hub / RStudio Server 통합",
+      "사내 모니터링 도구 / 대시보드 임베드",
+      "외부 데모 / playground 페이지 통합"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-external-iframe\n<span class="k">name</span>: <span class="s">"Example Embed"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: external_iframe\n<span class="k">launch</span>:\n  <span class="k">mode</span>: iframe\n  <span class="k">url</span>: <span class="s">"https://example.com"</span>\n  <span class="k">sandbox</span>: <span class="s">"allow-scripts allow-forms allow-same-origin"</span>',
+    flow: [
+      ["1", "manifest 한 장 (clone 불필요)"],
+      ["2", "<b>noop build</b>"],
+      ["3", "HEAXHub 가 <code>&lt;iframe src=...&gt;</code> 로 렌더"],
+      ["4", "대상 사이트가 frame-ancestors 허용 시 표시"]
+    ],
+    caveats: [
+      "대상이 <code>X-Frame-Options: DENY</code> 또는 CSP <code>frame-ancestors 'none'</code> 이면 빈 화면 — 대상 측 헤더 변경 필요.",
+      "sandbox 권한이 약하면 일부 SaaS 기능 (쿠키, 클립보드) 미동작 — 신뢰 가능한 도메인에만 권한 완화."
+    ],
+    links: [
+      ["developer.mozilla.org/iframe", "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe"],
+      ["content-security-policy.com", "https://content-security-policy.com/frame-ancestors/"],
+      ["developer.mozilla.org/X-Frame-Options", "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"]
+    ]
+  },
+  external_proxy: {
+    name: "External Reverse Proxy",
+    icon: "⇄", iconClass: "ic-ext",
+    category: "외부 통합 / External", stackCode: "external_proxy",
+    overview: "외부 호스트의 서비스를 HEAXHub 도메인의 <code>/apps/{id}/*</code> 경로로 reverse proxy 하는 스택. 사용자에게는 HEAXHub 의 일부처럼 보이고, 동일 출처(same-origin) 가 되므로 쿠키 / 인증을 HEAXHub 와 공유할 수 있다.",
+    components: [
+      "<b>noop</b> 빌더 / 런타임",
+      "<b>Caddy</b> 의 <code>reverse_proxy</code> 디렉티브",
+      "옵션: <code>strip_prefix</code>, <code>headers</code> 재작성"
+    ],
+    useCases: [
+      "온프레미스 레거시 도구를 HEAXHub 도메인으로 통합",
+      "별도 머신/포트의 MailHog · MinIO · Adminer 같은 도구 노출",
+      "사내 SSO 쿠키를 공유해야 하는 외부 서비스",
+      "기존 서비스를 점진적으로 HEAXHub 카탈로그로 이관"
+    ],
+    manifest: '<span class="k">id</span>: heax-demo-external-proxy\n<span class="k">name</span>: <span class="s">"MailHog UI"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: external_proxy\n<span class="k">launch</span>:\n  <span class="k">mode</span>: proxy\n  <span class="k">upstream</span>: <span class="s">"http://localhost:8126"</span>\n  <span class="k">strip_prefix</span>: true',
+    flow: [
+      ["1", "manifest 한 장 (clone 불필요)"],
+      ["2", "<b>noop build</b>"],
+      ["3", "Caddy 가 <code>/apps/{id}/*</code> 라우트 등록"],
+      ["4", "요청 → <code>reverse_proxy upstream</code> 로 포워딩"]
+    ],
+    caveats: [
+      "upstream 이 절대 경로로 자산을 참조하면 <code>strip_prefix</code> 만으로 부족 — HTML 리라이트 또는 upstream 측 base path 옵션 필요.",
+      "WebSocket / SSE 사용 upstream 은 Caddy 의 자동 업그레이드 처리되지만 timeout 튜닝 필요."
+    ],
+    links: [
+      ["caddyserver.com/docs/reverse_proxy", "https://caddyserver.com/docs/caddyfile/directives/reverse_proxy"],
+      ["developer.mozilla.org/Same-origin", "https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy"]
+    ]
+  },
+  windows_local: {
+    name: "Windows Local Installer",
+    icon: "Win", iconClass: "ic-html",
+    category: "데스크톱 / Desktop", stackCode: "windows_local",
+    overview: "Windows 전용 GUI 도구 (CAD/CAE 등) 를 HEAXHub 가 카탈로그화하는 스택. HEAXHub 는 <code>.exe</code> 인스톨러 호스팅과 <code>heaxhub://</code> 프로토콜 핸들러만 담당하고, 실제 실행은 사용자 PC 의 Windows Agent 가 수행한다. v0.7.0 기준 설계 완료, 데모 미수록.",
+    components: [
+      "<b>Windows Agent</b> (예정) — 사용자 PC 에 설치되는 경량 클라이언트",
+      "<b>인스톨러 스토리지</b> — HEAXHub 가 <code>.exe</code> 호스팅",
+      "<b>heaxhub:// 프로토콜 핸들러</b> — 브라우저 → 로컬 Agent 트리거",
+      "<b>noop 컨테이너</b> — 서버 측 컨테이너 없음"
+    ],
+    useCases: [
+      "CATIA / NX / ANSYS Workbench 같은 Windows 전용 CAD/CAE",
+      "윈도우 라이선스에 묶인 측정/계측 소프트웨어",
+      "Office 매크로 / VBA 도구의 표준화된 배포",
+      "사내 윈도우 GUI 자동화 스크립트 (AutoHotkey 등) 카탈로그화"
+    ],
+    manifest: '<span class="k">id</span>: example-windows-app\n<span class="k">name</span>: <span class="s">"Legacy CAE Tool"</span>\n<span class="k">build</span>:\n  <span class="k">stack</span>: windows_local\n<span class="k">launch</span>:\n  <span class="k">mode</span>: installer\n  <span class="k">installer_url</span>: <span class="s">"/storage/installers/cae-tool-1.2.exe"</span>\n  <span class="k">protocol</span>: <span class="s">"heaxhub://cae-tool/launch"</span>',
+    flow: [
+      ["1", "<b>manifest</b> 등록 + <code>.exe</code> 업로드"],
+      ["2", "사용자가 <b>Windows Agent</b> 설치 (1회)"],
+      ["3", "카드 클릭 → <b>heaxhub://</b> 프로토콜 트리거"],
+      ["4", "Agent 가 로컬에서 <code>.exe</code> 실행 / 인자 전달"]
+    ],
+    caveats: [
+      "v0.7.0 기준 <b>데모 미수록</b> — 인스톨러 스토리지 + Agent 의 추가 컴포넌트 릴리즈 후 활성화 예정.",
+      "프로토콜 핸들러는 OS 레벨 등록 필요 — Agent 인스톨러가 레지스트리 설정을 수반해야 함."
+    ],
+    links: [
+      ["learn.microsoft.com/uri-schemes", "https://learn.microsoft.com/en-us/windows/win32/shell/app-registration"],
+      ["github.com/squall321/HEAXHub", "https://github.com/squall321/HEAXHub"]
+    ]
+  }
+};
+
+/* ── Modal logic ─────────────────────────────────── */
+(function(){
+  var backdrop = document.getElementById('modalBackdrop');
+  var panel    = document.getElementById('modalPanel');
+  var closeBtn = document.getElementById('modalClose');
+  var iconEl   = document.getElementById('modalIcon');
+  var titleEl  = document.getElementById('modalTitle');
+  var metaEl   = document.getElementById('modalMeta');
+  var bodyEl   = document.getElementById('modalBody');
+  var lastFocus = null;
+
+  function renderLinks(links){
+    return links.map(function(l){
+      var host = '';
+      try { host = new URL(l[1]).hostname; } catch(e){}
+      return '<a href="'+l[1]+'" target="_blank" rel="noopener noreferrer">'+
+        '<span>'+l[0]+'</span><span class="host">'+host+'</span></a>';
+    }).join('');
+  }
+
+  function renderFlow(flow){
+    return flow.map(function(r){
+      return '<div class="row"><span class="n">'+r[0]+'</span><span class="t">'+r[1]+'</span></div>';
+    }).join('');
+  }
+
+  function render(d){
+    iconEl.className = 'mono-ic '+d.iconClass;
+    iconEl.innerHTML = d.icon;
+    titleEl.textContent = d.name;
+    metaEl.innerHTML =
+      '<span class="chip cat">'+d.category+'</span>'+
+      '<span class="chip code">stack: '+d.stackCode+'</span>';
+
+    bodyEl.innerHTML =
+      '<div class="m-sec"><h4>스택 개요 / Overview</h4><p>'+d.overview+'</p></div>'+
+      '<div class="m-sec"><h4>구성 요소 / Components</h4><ul>'+
+        d.components.map(function(c){return '<li>'+c+'</li>'}).join('')+
+      '</ul></div>'+
+      '<div class="m-sec"><h4>유리한 사용 사례 / Best for</h4><ul>'+
+        d.useCases.map(function(u){return '<li>'+u+'</li>'}).join('')+
+      '</ul></div>'+
+      '<div class="m-sec"><h4>manifest.yaml 예시</h4>'+
+        '<pre class="m-pre">'+d.manifest+'</pre>'+
+      '</div>'+
+      '<div class="m-sec"><h4>빌드 · 실행 흐름 / Build &amp; Run</h4>'+
+        '<div class="m-flow">'+renderFlow(d.flow)+'</div>'+
+      '</div>'+
+      '<div class="m-sec"><h4>한계 · 주의사항 / Caveats</h4><ul>'+
+        d.caveats.map(function(c){return '<li>'+c+'</li>'}).join('')+
+      '</ul></div>'+
+      '<div class="m-sec"><h4>외부 자료 / References</h4>'+
+        '<div class="m-links">'+renderLinks(d.links)+'</div>'+
+      '</div>';
+
+    bodyEl.scrollTop = 0;
+  }
+
+  window.openStackModal = function(key){
+    var d = STACK_DATA[key];
+    if(!d) return;
+    lastFocus = document.activeElement;
+    render(d);
+    backdrop.classList.add('open');
+    panel.classList.add('open');
+    backdrop.setAttribute('aria-hidden','false');
+    panel.setAttribute('aria-hidden','false');
+    document.body.style.overflow = 'hidden';
+    setTimeout(function(){ closeBtn.focus(); }, 50);
+  };
+
+  function closeModal(){
+    backdrop.classList.remove('open');
+    panel.classList.remove('open');
+    backdrop.setAttribute('aria-hidden','true');
+    panel.setAttribute('aria-hidden','true');
+    document.body.style.overflow = '';
+    if(lastFocus && lastFocus.focus){ try{ lastFocus.focus(); }catch(e){} }
+  }
+  window.closeStackModal = closeModal;
+
+  closeBtn.addEventListener('click', closeModal);
+  backdrop.addEventListener('click', closeModal);
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && panel.classList.contains('open')) closeModal();
+  });
+
+  /* Focus trap inside panel */
+  panel.addEventListener('keydown', function(e){
+    if(e.key !== 'Tab') return;
+    var focusables = panel.querySelectorAll('a[href], button, [tabindex]:not([tabindex="-1"])');
+    if(!focusables.length) return;
+    var first = focusables[0], last = focusables[focusables.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  });
+})();
+</script>
+</body>
+</html>

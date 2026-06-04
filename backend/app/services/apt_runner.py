@@ -251,6 +251,11 @@ def instance_exec(
     args: list[str] = [local_apptainer_path(), "exec"]
     if cleanenv:
         args.append("--cleanenv")
+    # Default the in-container working directory to /app (the SIF templates
+    # COPY upstream/ → /app, so this matches where source files live).
+    # The host-side ``cwd`` kwarg only sets the subprocess cwd before exec,
+    # not the in-container pwd; apptainer needs --pwd for that.
+    args.extend(["--pwd", "/app"])
     args.append(f"instance://{name}")
     args.extend(argv)
 

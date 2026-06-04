@@ -1,23 +1,23 @@
 schema_version: 2
 id: heax_demo_fastapi
 name: Demo · Memo CRUD (FastAPI)
-version: 0.7.0
+version: 2.3.0
 owner: heaxhub-demo
 status: stable
 app_type: web_app
 execution_target: linux_runner
-description: "HEAXHub FastAPI 스택 데모. 간단 메모 CRUD API + Swagger UI."
-
+description: HEAXHub FastAPI 스택 데모. 간단 메모 CRUD API + Swagger UI.
 build:
   stack: fastapi
-
 launch:
   mode: service
   command: uvicorn app.main:app --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH
-
 health_check:
   path: /health
-
 restart_policy:
   policy: on_failure
   max_retries: 3
+source:
+  type: git
+  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-fastapi.git
+  ref: main

@@ -594,7 +594,10 @@ def _sif_argv_for(
     if stack_name == "nodejs_express":
         return ["node", "dist/server.js"]
     if stack_name == "go_service":
-        return ["./server"]
+        # go_service.def copies the built binary to /app/bin/server inside the SIF.
+        # --pwd /app means the relative path is bin/server, but we use an absolute
+        # path so it works regardless of pwd flag interaction.
+        return ["/app/bin/server"]
     if stack_name == "dotnet_aspnet":
         override = (manifest.get("launch") or {}).get("assembly") or "app.dll"
         return ["dotnet", f"/app/{override}", "--urls", f"http://0.0.0.0:{port}"]

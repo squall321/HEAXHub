@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:4180/apps/heax_demo_fastapi/)"
+    ]
+  }
+}

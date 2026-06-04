@@ -229,19 +229,34 @@ def _stack_name(manifest: dict[str, Any]) -> str:
     return str(stack or "unknown")
 
 
-def _commit_identity(fetch_result: dict[str, Any]) -> str:
+def _fr_to_dict(fr: Any) -> dict[str, Any]:
+    """Accept either a dict-style result (legacy source_fetcher) or our
+    integration_fetcher.FetchResult dataclass. Returns a plain dict."""
+    if isinstance(fr, dict):
+        return fr
+    # dataclass: pull standard fields
+    return {
+        "commit_sha": getattr(fr, "commit", None) or getattr(fr, "commit_sha", None),
+        "action": getattr(fr, "action", None),
+        "error": getattr(fr, "error", None),
+    }
+
+
+def _commit_identity(fetch_result: Any) -> str:
     """Pick the best stable identity from a fetch_result."""
+    d = _fr_to_dict(fetch_result)
     # source_fetcher returns commit_sha for git, sha256 for archive_url, etc.
     for key in ("commit_sha", "sha256", "image", "path"):
-        value = fetch_result.get(key)
+        value = d.get(key)
         if isinstance(value, str) and value:
             return value
     return "unknown"
 
 
-def _upstream_dir(fetch_result: dict[str, Any], slug: str) -> Path:
+def _upstream_dir(fetch_result: Any, slug: str) -> Path:
     """Where the fetched source lives. Falls back to the managed workspace."""
-    path_str = fetch_result.get("workspace") or fetch_result.get("dest")
+    d = _fr_to_dict(fetch_result)
+    path_str = d.get("workspace") or d.get("dest")
     if isinstance(path_str, str) and path_str:
         return Path(path_str)
     return _REPO_ROOT / "var" / "integration_workspaces" / slug / "upstream"

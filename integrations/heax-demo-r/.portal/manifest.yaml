@@ -1,11 +1,20 @@
 schema_version: 2
 id: heax_demo_r
-version: 0.7.0
+version: 2.3.0
 app_type: cli_tool
 execution_target: linux_runner
-build: {stack: r_script}
+build:
+  stack: r_script
 launch:
   mode: job_runner
   command: Rscript run.R
 inputs:
-  - {name: n, type: integer, default: 100, min: 10, max: 1000000}
+- name: n
+  type: integer
+  default: 100
+  min: 10
+  max: 1000000
+source:
+  type: git
+  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-r.git
+  ref: main

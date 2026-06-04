@@ -203,25 +203,80 @@ def _build_and_launch(
     integration_dir: Path,
     manifest: dict[str, Any],
 ) -> None:
-    """Build + launch the integration for service-mode stacks.
+    """Fetch source, build SIF (or fall back to legacy host-PATH builder),
+    then launch.
 
-    Both steps are best-effort. Failures are logged with the slug so the
-    operator can inspect ``var/logs/integration_<slug>.log`` and the next
-    scan re-tries automatically.
+    When manifest.source is present:
+      1) integration_fetcher.fetch_for_integration clones the upstream into
+         var/integration_workspaces/<slug>/upstream/
+      2) integration_sif_builder.build_sif renders the stack .def template
+         and invokes apt_runner.run_build → var/sifs/<slug>.sif
+      3) integration_launcher.launch is called with sif_path so it dispatches
+         via apptainer instance start/exec.
+
+    When manifest.source is absent the legacy in-tree builder + host-PATH
+    launcher runs (backwards compatibility with pre-2.0 manifests).
+
+    All steps are best-effort: failures are logged with the slug so the
+    operator can inspect ``var/logs/build_<slug>.log`` and the next scan
+    re-tries automatically.
     """
-    # ── build (idempotent, may take minutes on cold install) ──────────
+    slug = integration_dir.name
+
+    # ── parse source block, if any ────────────────────────────────────
     try:
-        from app.services import integration_builder  # noqa: PLC0415
-        br = integration_builder.build(integration_dir, manifest=manifest)
-        if br.action == "failed":
-            logger.warning("build failed for %s: %s", app.id, br.error)
-            return
-        if br.action == "built":
-            logger.info("integration built: %s (stack=%s, %.1fs)",
-                        app.id, br.stack, br.duration_seconds)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("builder crashed for %s: %s", app.id, exc)
+        source = SourceSpec.from_manifest(manifest)
+    except ValueError as exc:
+        logger.warning("source block invalid for %s: %s", app.id, exc)
         return
+
+    sif_path = None  # populated when SIF build succeeds
+
+    if source is not None and source.url:
+        # ── fetch upstream into managed workspace ─────────────────────
+        try:
+            from app.services import integration_fetcher  # noqa: PLC0415
+            fr = integration_fetcher.fetch_for_integration(slug, source)
+            if fr.action == "failed":
+                logger.warning("fetch failed for %s: %s", app.id, fr.error)
+                return
+            if fr.action in {"cloned", "updated"}:
+                logger.info("integration fetched: %s (%s) commit=%s",
+                            app.id, fr.action, (fr.commit or "?")[:8])
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("fetcher crashed for %s: %s", app.id, exc)
+            return
+
+        # ── build per-demo SIF via apptainer ──────────────────────────
+        try:
+            from app.services import integration_sif_builder  # noqa: PLC0415
+            sr = integration_sif_builder.build_sif(slug, manifest, fr)
+            if sr.action == "failed":
+                logger.warning("SIF build failed for %s: %s", app.id,
+                               (sr.error or "")[:300])
+                return
+            if sr.action == "built":
+                logger.info("SIF built: %s (%s)", app.id, sr.sif)
+            elif sr.action == "skipped":
+                logger.debug("SIF skipped for %s (cached or no template)", app.id)
+            sif_path = sr.sif
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("sif_builder crashed for %s: %s", app.id, exc)
+            return
+    else:
+        # ── legacy host-PATH builder for in-tree integrations ─────────
+        try:
+            from app.services import integration_builder  # noqa: PLC0415
+            br = integration_builder.build(integration_dir, manifest=manifest)
+            if br.action == "failed":
+                logger.warning("build failed for %s: %s", app.id, br.error)
+                return
+            if br.action == "built":
+                logger.info("integration built: %s (stack=%s, %.1fs)",
+                            app.id, br.stack, br.duration_seconds)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("builder crashed for %s: %s", app.id, exc)
+            return
 
     if stack.launch_mode != "service":
         return
@@ -229,7 +284,13 @@ def _build_and_launch(
     # ── launch ────────────────────────────────────────────────────────
     try:
         from app.services import integration_launcher  # noqa: PLC0415
-        lr = integration_launcher.launch(integration_dir, manifest=manifest, db=db)
+        from dataclasses import asdict  # noqa: PLC0415
+        lr = integration_launcher.launch(
+            integration_dir, manifest=manifest, db=db,
+            slug=slug,
+            source=asdict(source) if source else None,
+            sif_path=sif_path,
+        )
         if lr.action == "failed":
             logger.warning("launch failed for %s: %s", app.id, lr.error)
             return

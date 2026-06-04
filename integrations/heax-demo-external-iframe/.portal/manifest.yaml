@@ -1,11 +1,16 @@
 schema_version: 2
 id: heax_demo_external_iframe
 name: Demo · External Iframe (example.com)
-version: 0.7.0
+version: 2.3.0
 owner: heaxhub-demo
 status: stable
 app_type: external_link
 execution_target: external_url
-build: {stack: external_iframe}
-launch: {mode: url, url: "https://example.com", open_in: new_tab}
-description: "외부 사이트를 HEAXHub 레이아웃 안에 iframe 으로 임베드. 대상 사이트의 X-Frame-Options/CSP frame-ancestors 가 HEAXHub origin 을 허용해야 한다."
+build:
+  stack: external_iframe
+launch:
+  mode: url
+  url: https://example.com
+  open_in: new_tab
+description: 외부 사이트를 HEAXHub 레이아웃 안에 iframe 으로 임베드. 대상 사이트의 X-Frame-Options/CSP frame-ancestors
+  가 HEAXHub origin 을 허용해야 한다.

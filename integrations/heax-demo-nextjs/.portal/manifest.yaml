@@ -1,49 +1,47 @@
 schema_version: 2
 id: heax_demo_nextjs
 name: Demo · Next.js SPA
-version: 0.7.0
+version: 2.3.0
 owner: heaxhub-demo
 status: stable
 app_type: web_app
 execution_target: linux_runner
+description: 'HEAXHub Next.js 스택 데모. base path 인지 SPA.
 
-description: |
-  HEAXHub Next.js 스택 데모. base path 인지 SPA.
   Caddy 의 /apps/{id}/ 뒤에서 Node 빌드 산출물이 정상 서빙되는지,
+
   basePath / assetPrefix 가 런처에서 주입한 값으로 동작하는지 확인하는 픽스처.
 
+  '
 tags:
-  - demo
-  - nextjs
-  - react
-  - spa
-  - web
-
+- demo
+- nextjs
+- react
+- spa
+- web
 build:
   stack: nextjs
   basePath_env: NEXT_PUBLIC_BASE_PATH
-
 launch:
   mode: service
   command: pnpm start -- --port $PORT --hostname 0.0.0.0
-
 health_check:
   path: /
   interval_seconds: 10
   timeout_seconds: 3
-
 restart_policy:
   policy: on_failure
   max_retries: 3
-
 permissions:
   visibility: team
-
 resources:
   cpu: 1
   memory_gb: 1
   gpu: false
-
 requirements:
   os: linux
-  node: ">=18"
+  node: '>=18'
+source:
+  type: git
+  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-nextjs.git
+  ref: main

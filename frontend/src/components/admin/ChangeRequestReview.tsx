@@ -90,7 +90,7 @@ export function ChangeRequestReview({ crId }: ChangeRequestReviewProps) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `change-request-${crId.slice(0, 8)}.md`;
+      a.download = `change-request-${crId?.slice(0, 8) ?? "unknown"}.md`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Markdown을 다운로드했습니다.");
@@ -185,7 +185,7 @@ function Header({ cr }: { cr: ChangeRequest }) {
       <CardContent className="flex items-start justify-between gap-4 p-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">변경 요청 #{cr.id.slice(0, 8)}</h2>
+            <h2 className="text-lg font-semibold">변경 요청 #{cr.id?.slice(0, 8) ?? "—"}</h2>
             <StatusBadge status={cr.status} />
           </div>
           <div className="font-mono text-xs text-muted-foreground">{cr.repo_url}</div>

@@ -47,7 +47,7 @@ export function UpdateProposalList() {
               <div>
                 <div className="text-sm font-semibold">{u.app_name}</div>
                 <div className="mt-0.5 font-mono text-xs text-muted-foreground">
-                  {u.current_commit.slice(0, 7)} → {u.latest_commit.slice(0, 7)}
+                  {u.current_commit?.slice(0, 7) ?? "—"} → {u.latest_commit?.slice(0, 7) ?? "—"}
                   {u.latest_tag && (
                     <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-[10px]">
                       {u.latest_tag}

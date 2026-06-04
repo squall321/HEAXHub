@@ -76,9 +76,9 @@ export function Header() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-9 gap-2 px-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
-                    {user.display_name.slice(0, 1)}
+                    {(user.display_name ?? user.email ?? "?").slice(0, 1).toUpperCase()}
                   </div>
-                  <span className="hidden text-sm font-medium md:inline">{user.display_name}</span>
+                  <span className="hidden text-sm font-medium md:inline">{user.display_name ?? user.email}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">

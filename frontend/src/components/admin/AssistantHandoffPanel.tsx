@@ -58,7 +58,7 @@ export function AssistantHandoffPanel({ changeRequest }: AssistantHandoffPanelPr
         toast.error("패킷이 비어 있습니다. 백엔드를 확인하세요.");
         return;
       }
-      const filename = `heaxhub-packet-${cr.id.slice(0, 8)}.zip`;
+      const filename = `heaxhub-packet-${cr.id?.slice(0, 8) ?? "unknown"}.zip`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

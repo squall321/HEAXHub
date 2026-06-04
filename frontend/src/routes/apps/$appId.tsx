@@ -167,7 +167,7 @@ function AppDetailPage() {
                     <div className="flex items-center gap-2">
                       <Badge variant="muted">v{v.version}</Badge>
                       <code className="text-xs text-muted-foreground">
-                        {v.git_commit_hash.slice(0, 7)}
+                        {v.git_commit_hash?.slice(0, 7) ?? "—"}
                       </code>
                       {v.git_tag && <Badge variant="outline">{v.git_tag}</Badge>}
                     </div>

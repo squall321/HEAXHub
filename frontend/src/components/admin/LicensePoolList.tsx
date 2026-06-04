@@ -201,7 +201,7 @@ function HoldingsTable({ name }: { name: string }) {
         <TableBody>
           {items.map((h) => (
             <TableRow key={h.id}>
-              <TableCell className="font-mono text-xs">{h.job_id.slice(0, 8)}</TableCell>
+              <TableCell className="font-mono text-xs">{h.job_id?.slice(0, 8) ?? "—"}</TableCell>
               <TableCell className="text-xs">{h.job_app_id ?? "—"}</TableCell>
               <TableCell>{h.tokens}</TableCell>
               <TableCell className="text-xs text-muted-foreground">

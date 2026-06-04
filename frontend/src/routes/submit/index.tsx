@@ -413,7 +413,7 @@ function SubmitPage() {
                         value={
                           <Badge variant="info">
                             <Sparkles className="mr-1 h-3 w-3" />
-                            CR {previewCr.id.slice(0, 8)}
+                            CR {previewCr.id?.slice(0, 8) ?? "—"}
                           </Badge>
                         }
                       />

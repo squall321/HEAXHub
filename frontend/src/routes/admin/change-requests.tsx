@@ -112,7 +112,7 @@ function AdminChangeRequestsPage() {
                         params={{ crId: cr.id } as never}
                         className="hover:underline"
                       >
-                        {cr.id.slice(0, 8)}
+                        {cr.id?.slice(0, 8) ?? "—"}
                       </Link>
                     </TableCell>
                     <TableCell className="max-w-[28ch] truncate font-mono text-xs text-muted-foreground">

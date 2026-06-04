@@ -130,10 +130,10 @@ export interface AppVersion {
   id: string;
   app_id: string;
   version: string;
-  git_commit_hash: string;
+  git_commit_hash: string | null;
   git_tag?: string | null;
   build_status: "pending" | "building" | "success" | "failed";
-  released_at: string;
+  released_at: string | null;
   released_by?: string | null;
 }
 

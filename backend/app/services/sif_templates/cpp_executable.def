@@ -1,0 +1,27 @@
+Bootstrap: docker
+From: debian:bookworm-slim
+
+%files
+    {{UPSTREAM_DIR}} /app
+
+%post
+    set -eux
+    apt-get update
+    apt-get install -y --no-install-recommends build-essential make ca-certificates
+    rm -rf /var/lib/apt/lists/*
+    cd /app
+    if [ -f Makefile ] || [ -f makefile ]; then make; fi
+    if [ -f CMakeLists.txt ]; then apt-get update && apt-get install -y --no-install-recommends cmake && mkdir -p build && cd build && cmake .. && make; fi
+
+%environment
+    export PATH=/app/bin:/app:/usr/local/bin:$PATH
+
+%runscript
+    cd /app
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed C++ executable SIF.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

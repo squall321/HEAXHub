@@ -1,0 +1,24 @@
+Bootstrap: docker
+From: r-base:4.4.0
+
+%files
+    {{UPSTREAM_DIR}} /app
+
+%post
+    set -eux
+    cd /app
+    if [ -f renv.lock ]; then Rscript -e 'install.packages("renv", repos="https://cloud.r-project.org"); renv::restore()' || true; fi
+    if [ -f DESCRIPTION ]; then Rscript -e 'install.packages(".", repos=NULL, type="source")' || true; fi
+
+%environment
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    cd /app
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed R script SIF.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

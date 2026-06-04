@@ -1,7 +1,7 @@
 schema_version: 2
 id: heax_demo_static_html
 name: Demo · Static HTML
-version: 2.3.0
+version: 2.4.0
 owner: heaxhub-demo
 status: stable
 app_type: web_app

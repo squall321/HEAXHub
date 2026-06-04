@@ -117,6 +117,29 @@ def _build_static_route(
     }
 
 
+def _idempotent_put_or_insert(
+    client: httpx.Client, route: dict[str, Any], route_id: str
+) -> None:
+    """PUT-replace the route by @id; on any non-2xx (404 absent, 400 conflict,
+    409, etc.) fall back to DELETE-by-id + POST-at-head so a stale entry from a
+    previous run can never block re-registration. Raises on the final POST
+    failure so the caller can surface it.
+    """
+    resp = client.put(_admin_url(f"/id/{route_id}"), json=route)
+    if 200 <= resp.status_code < 300:
+        return
+    # Anything other than 2xx — Caddy may already have a route with this @id
+    # whose match/handle shape isn't PUT-replaceable, OR there's no route at
+    # all yet. DELETE-then-POST is safe either way: DELETE on a missing @id
+    # returns 404 (treated as success) and POST inserts at the head.
+    client.delete(_admin_url(f"/id/{route_id}"))  # noqa: S113 — best effort
+    resp = client.post(
+        _admin_url("/config/apps/http/servers/srv0/routes/0"),
+        json=route,
+    )
+    resp.raise_for_status()
+
+
 def register_app_route(
     app_id: str,
     port: int,
@@ -133,17 +156,7 @@ def register_app_route(
     route_id = _route_id(app_id)
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-            # Try replacing an existing route by @id first.
-            resp = client.put(_admin_url(f"/id/{route_id}"), json=route)
-            if resp.status_code == 404:
-                # No existing route — insert at the HEAD of the list so this
-                # specific /apps/<id>/* matcher wins over the SPA catch-all
-                # that lives at the tail.
-                resp = client.post(
-                    _admin_url("/config/apps/http/servers/srv0/routes/0"),
-                    json=route,
-                )
-            resp.raise_for_status()
+            _idempotent_put_or_insert(client, route, route_id)
     except httpx.HTTPError as exc:
         logger.warning("Caddy register failed for app=%s: %s", app_id, exc)
         return ProxyResult(ok=False, reason=f"caddy unreachable: {exc}")
@@ -169,15 +182,7 @@ def register_static_route(
     route_id = _route_id(app_id)
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-            resp = client.put(_admin_url(f"/id/{route_id}"), json=route)
-            if resp.status_code == 404:
-                # Insert at HEAD so the specific /apps/<id>/* matcher wins
-                # over the SPA catch-all that lives at the tail.
-                resp = client.post(
-                    _admin_url("/config/apps/http/servers/srv0/routes/0"),
-                    json=route,
-                )
-            resp.raise_for_status()
+            _idempotent_put_or_insert(client, route, route_id)
     except httpx.HTTPError as exc:
         logger.warning("Caddy static register failed for app=%s: %s", app_id, exc)
         return ProxyResult(ok=False, reason=f"caddy unreachable: {exc}")
@@ -266,13 +271,7 @@ def register_external_proxy_route(
     route_id = _route_id(app_id)
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
-            resp = client.put(_admin_url(f"/id/{route_id}"), json=route)
-            if resp.status_code == 404:
-                resp = client.post(
-                    _admin_url("/config/apps/http/servers/srv0/routes/0"),
-                    json=route,
-                )
-            resp.raise_for_status()
+            _idempotent_put_or_insert(client, route, route_id)
     except httpx.HTTPError as exc:
         logger.warning("Caddy external register failed for app=%s: %s", app_id, exc)
         return ProxyResult(ok=False, reason=f"caddy unreachable: {exc}")

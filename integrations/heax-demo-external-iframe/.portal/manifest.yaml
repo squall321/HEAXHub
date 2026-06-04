@@ -1,7 +1,7 @@
 schema_version: 2
 id: heax_demo_external_iframe
 name: Demo · External Iframe (example.com)
-version: 2.3.0
+version: 2.4.0
 owner: heaxhub-demo
 status: stable
 app_type: external_link

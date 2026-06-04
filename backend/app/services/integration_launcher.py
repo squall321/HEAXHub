@@ -170,7 +170,10 @@ def launch(
     # static_root directory via the file_server handler. We resolve the root
     # to an absolute filesystem path Caddy can read, then register the route.
     if mode == "static":
-        return _launch_static(workspace, canonical, manifest)
+        return _launch_static(
+            workspace, canonical, manifest,
+            slug=slug, source=source,
+        )
 
     if mode != "service":
         return LaunchResult(
@@ -614,21 +617,34 @@ def _launch_static(
     workspace: Path,
     canonical: str,
     manifest: dict[str, Any],
+    *,
+    slug: str | None = None,
+    source: dict[str, Any] | None = None,
 ) -> LaunchResult:
     """Wire a static-runtime stack into Caddy via ``file_server``.
 
     No port is allocated, no process is spawned. We resolve the configured
     ``static_root`` to an absolute filesystem path (validated already by the
     builder) and ask Caddy's admin API to serve it from ``/apps/{id}/*``.
+
+    When the manifest carries a ``source:`` block, the static_root lives under
+    the fetched upstream workspace at
+    ``var/integration_workspaces/<slug>/upstream[/<subpath>]/`` instead of the
+    in-tree integration directory — the manifest-only pivot leaves the latter
+    empty of build artefacts.
     """
+    # Local import to avoid an import cycle at module load.
+    from app.services import managed_workspaces
+
     base_path = f"/apps/{canonical}"
+    effective_slug = slug or workspace.name
 
     build_section = manifest.get("build") or {}
     stack_name = build_section.get("stack") or build_section.get("type") or "unknown"
     spec: StackSpec | None = load_stacks().get(stack_name)
     if spec is None:
         return LaunchResult(
-            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            slug=effective_slug, action="failed", port=None, base_path=base_path,
             error=f"unknown stack '{stack_name}'",
         )
 
@@ -646,13 +662,23 @@ def _launch_static(
         or extra.get("index_file")
         or "index.html"
     )
-    root_abs = (workspace / root_rel).resolve()
+
+    # Source-aware base path:
+    #   - source present → static_root lives under the fetched upstream
+    #     workspace (var/integration_workspaces/<slug>/upstream[/subpath])
+    #   - source absent  → legacy: resolve under the in-tree integration_dir
+    if source and slug:
+        subpath = (source.get("subpath") or "")
+        base_dir = managed_workspaces.upstream_dir(slug, subpath)
+    else:
+        base_dir = workspace
+    root_abs = (base_dir / root_rel).resolve()
     if not root_abs.is_dir():
         return LaunchResult(
-            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            slug=effective_slug, action="failed", port=None, base_path=base_path,
             error=(
                 f"static_root '{root_rel}' missing at {root_abs} — "
-                f"did the builder run successfully?"
+                f"did fetch/build run successfully?"
             ),
         )
 
@@ -665,16 +691,16 @@ def _launch_static(
         )
     except Exception as exc:
         return LaunchResult(
-            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            slug=effective_slug, action="failed", port=None, base_path=base_path,
             error=f"caddy register failed: {exc}",
         )
     if not getattr(res, "ok", False):
         return LaunchResult(
-            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            slug=effective_slug, action="failed", port=None, base_path=base_path,
             error=f"caddy register failed: {getattr(res, 'reason', 'unknown')}",
         )
     return LaunchResult(
-        slug=workspace.name, action="started", port=None, base_path=base_path,
+        slug=effective_slug, action="started", port=None, base_path=base_path,
     )
 
 

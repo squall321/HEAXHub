@@ -175,8 +175,8 @@ def test_launcher_already_running_reuses_state(
     register_calls = []
     class _Stub:
         @staticmethod
-        def register_app_route(*, app_id, port, base_path):
-            register_calls.append((app_id, port, base_path))
+        def register_app_route(*, app_id, port, base_path, strip_prefix=True):
+            register_calls.append((app_id, port, base_path, strip_prefix))
             return SimpleNamespace(ok=True)
     monkeypatch.setattr(integration_launcher, "proxy_manager", _Stub)
 

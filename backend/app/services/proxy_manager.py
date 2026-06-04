@@ -41,53 +41,60 @@ def _admin_url(path: str) -> str:
     return f"{base}{path}"
 
 
-def _build_route(app_id: str, port: int, base_path: str | None) -> dict[str, Any]:
+def _build_route(
+    app_id: str,
+    port: int,
+    base_path: str | None,
+    *,
+    strip_prefix: bool = True,
+) -> dict[str, Any]:
     """Build a Caddy route object for path-based reverse proxy.
 
-    Default match: `/apps/{app_id}/*`. The `handle_path` handler strips the
-    matched prefix before forwarding to the upstream so the app receives root
-    paths.
+    Default match: ``/apps/{app_id}`` and ``/apps/{app_id}/*``.
+
+    ``strip_prefix=True`` (default) strips the matched prefix before forwarding
+    so the upstream receives root paths — appropriate for apps that don't know
+    about their base path (e.g. uvicorn with ``--root-path``).
+
+    ``strip_prefix=False`` forwards the path unchanged — required for apps that
+    bake the prefix into their own routing (e.g. Streamlit ``baseUrlPath``,
+    Next.js ``basePath``).
     """
     path = base_path or f"/apps/{app_id}"
     if not path.startswith("/"):
         path = "/" + path
     path = path.rstrip("/")
-    match_path = f"{path}/*"
+    # Match both the bare prefix (no trailing slash) and any subpath.
+    match_paths = [path, f"{path}/*"]
+
+    handle_chain: list[dict[str, Any]] = []
+    if strip_prefix:
+        handle_chain.append({"handler": "rewrite", "strip_path_prefix": path})
+    handle_chain.append({
+        "handler": "reverse_proxy",
+        "upstreams": [{"dial": f"127.0.0.1:{port}"}],
+    })
 
     return {
         "@id": _route_id(app_id),
-        "match": [{"path": [match_path]}],
-        "handle": [
-            {
-                "handler": "subroute",
-                "routes": [
-                    {
-                        "handle": [
-                            {
-                                "handler": "rewrite",
-                                "strip_path_prefix": path,
-                            },
-                            {
-                                "handler": "reverse_proxy",
-                                "upstreams": [{"dial": f"127.0.0.1:{port}"}],
-                            },
-                        ]
-                    }
-                ],
-            }
-        ],
+        "match": [{"path": match_paths}],
+        "handle": [{"handler": "subroute", "routes": [{"handle": handle_chain}]}],
     }
 
 
 def register_app_route(
-    app_id: str, port: int, base_path: str | None = None
+    app_id: str,
+    port: int,
+    base_path: str | None = None,
+    *,
+    strip_prefix: bool = True,
 ) -> ProxyResult:
     """Idempotently register/replace a route for `app_id` -> `127.0.0.1:port`.
 
-    Uses Caddy `@id` to PUT-replace any existing definition. If Caddy is
-    unreachable, logs a warning and returns ProxyResult(ok=False).
+    ``strip_prefix=False`` for apps that handle the base path themselves
+    (Streamlit baseUrlPath, Next.js basePath).
     """
-    route = _build_route(app_id, port, base_path)
+    route = _build_route(app_id, port, base_path, strip_prefix=strip_prefix)
     route_id = _route_id(app_id)
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:

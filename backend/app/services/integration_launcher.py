@@ -91,8 +91,10 @@ def launch(
     if state and _is_alive(state.get("pid")) and _is_healthy(
         state.get("port"), health_path, root=base_path
     ):
+        strip_prefix = stack_name not in ("streamlit", "nextjs", "node_service")
         proxy_manager.register_app_route(
-            app_id=canonical, port=int(state["port"]), base_path=base_path
+            app_id=canonical, port=int(state["port"]), base_path=base_path,
+            strip_prefix=strip_prefix,
         )
         return LaunchResult(
             slug=slug, action="already_running",
@@ -164,12 +166,18 @@ def launch(
         logger.warning("%s did not pass health within %ds; registering route anyway",
                        canonical, _HEALTH_WAIT_SECONDS)
 
+    # Streamlit + Next.js handle their own base path; FastAPI/uvicorn does not,
+    # so we strip the prefix at Caddy for FastAPI but pass through for the
+    # other two so their internal routers see the canonical paths.
+    strip_prefix = stack_name not in ("streamlit", "nextjs", "node_service")
     proxy_manager.register_app_route(
-        app_id=canonical, port=port, base_path=base_path
+        app_id=canonical, port=port, base_path=base_path,
+        strip_prefix=strip_prefix,
     )
 
     _write_state(canonical, {"slug": canonical, "pid": proc.pid, "port": port,
                              "base_path": base_path, "health_path": health_path,
+                             "stack": stack_name,
                              "started_at": time.time()})
 
     return LaunchResult(

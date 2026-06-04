@@ -1,0 +1,14 @@
+schema_version: 2
+id: heax_demo_mkdocs
+name: "Demo · MkDocs Static Site"
+version: 0.7.0
+owner: heaxhub-demo
+status: stable
+app_type: web_app
+execution_target: linux_runner
+build:
+  stack: mkdocs_static
+  root: site
+launch:
+  mode: service
+description: "Pre-built MkDocs documentation site served by Caddy."

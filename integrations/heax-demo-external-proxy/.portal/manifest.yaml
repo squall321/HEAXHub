@@ -1,0 +1,14 @@
+schema_version: 2
+id: heax_demo_external_proxy
+name: Demo · External Reverse Proxy (MailHog UI)
+version: 0.7.0
+owner: heaxhub-demo
+status: stable
+app_type: external_link
+execution_target: external_url
+build: {stack: external_proxy}
+launch:
+  mode: service
+  upstream: http://localhost:8126
+  strip_prefix: true
+description: "사내 사이트(MailHog UI)를 HEAXHub 하위 경로로 reverse_proxy."

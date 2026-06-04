@@ -1,0 +1,16 @@
+[project]
+name = "heax-demo-flask"
+version = "0.1.0"
+description = "HEAXHub Flask stack demo. Jinja templates + session + flash + JSON API."
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.0",
+    "gunicorn>=21.2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

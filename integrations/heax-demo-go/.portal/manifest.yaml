@@ -1,0 +1,23 @@
+schema_version: 2
+id: heax_demo_go
+name: Demo · Hello (Go)
+version: 0.7.0
+owner: heaxhub-demo
+status: stable
+app_type: web_app
+execution_target: linux_runner
+description: "HEAXHub go_service stack demo. Stdlib-only Go HTTP service with health probe and in-memory counter."
+
+build:
+  stack: go_service
+
+launch:
+  mode: service
+  command: ./heax-demo-go
+
+health_check:
+  path: /health
+
+restart_policy:
+  policy: on_failure
+  max_retries: 3

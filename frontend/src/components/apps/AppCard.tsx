@@ -11,25 +11,34 @@ import { StatusBadge } from "./StatusBadge";
 interface AppCardProps {
   app: AppSummary;
   compact?: boolean;
+  /** Optional second-row tag, e.g. "최근 실행" or "내가 만든". */
+  badgeLabel?: string;
 }
 
-export function AppCard({ app, compact = false }: AppCardProps) {
+export function AppCard({ app, compact = false, badgeLabel }: AppCardProps) {
   const accent = colors.category[app.app_type] ?? colors.category.cli_tool;
 
   return (
     <motion.div
       whileHover={{ y: -2 }}
       transition={{ type: "spring", stiffness: 220, damping: 18 }}
+      className="h-full"
     >
-      <Link to="/apps/$appId" params={{ appId: app.id }} className="block">
+      <Link to="/apps/$appId" params={{ appId: app.id }} className="block h-full">
         <Card
-          className="group h-full overflow-hidden border-t-[3px] hover:shadow-lg"
+          className="group relative h-full overflow-hidden rounded-2xl border-t-[3px] hover:shadow-lg"
           style={{ borderTopColor: accent }}
         >
-          <div className="flex h-full flex-col p-5">
+          {/* Hover shimmer sweep */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 transition-all duration-700 ease-out group-hover:translate-x-full group-hover:opacity-100 group-focus-visible:translate-x-full group-focus-visible:opacity-100"
+          />
+
+          <div className="relative flex h-full flex-col p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span
                     className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
                     style={{ background: `${accent}1f`, color: accent }}
@@ -37,15 +46,20 @@ export function AppCard({ app, compact = false }: AppCardProps) {
                     {categoryLabel[app.app_type]}
                   </span>
                   <StatusBadge status={app.status} />
+                  {badgeLabel && (
+                    <Badge variant="muted" className="text-[10px]">
+                      {badgeLabel}
+                    </Badge>
+                  )}
                 </div>
                 <h3 className="mt-2 truncate text-base font-bold tracking-tight">{app.name}</h3>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{app.id}</p>
               </div>
-              <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
+              <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground" />
             </div>
 
             {!compact && (
-              <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
+              <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
                 {app.description ?? "설명이 없습니다."}
               </p>
             )}

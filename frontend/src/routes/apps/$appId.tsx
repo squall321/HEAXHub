@@ -92,15 +92,43 @@ function AppDetailPage() {
             <span>업데이트 {formatDateTime(app.updated_at)}</span>
           </div>
           <div className="mt-6 flex gap-2">
-            <Button asChild>
-              <Link to="/apps/$appId/run" params={{ appId }}>
-                <Play className="mr-1.5 h-4 w-4" /> 실행
-              </Link>
-            </Button>
+            {app.manifest?.launch?.mode === "url" && app.manifest?.launch?.url ? (
+              <Button asChild>
+                <a
+                  href={String(app.manifest.launch.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink className="mr-1.5 h-4 w-4" /> 열기
+                </a>
+              </Button>
+            ) : (
+              <Button asChild>
+                <Link to="/apps/$appId/run" params={{ appId }}>
+                  <Play className="mr-1.5 h-4 w-4" /> 실행
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" size="default">
               <Star className="mr-1.5 h-4 w-4" /> 즐겨찾기
             </Button>
           </div>
+
+          {/* Embedded iframe for external_iframe stacks. Renders inline below
+              the action row instead of opening a new tab. */}
+          {app.manifest?.launch?.mode === "iframe" && app.manifest?.launch?.url && (
+            <div className="mt-6 overflow-hidden rounded-lg border bg-muted/20">
+              <iframe
+                src={String(app.manifest.launch.url)}
+                title={app.name}
+                sandbox={String(
+                  app.manifest.launch.iframe?.sandbox ??
+                    "allow-scripts allow-forms allow-same-origin",
+                )}
+                className="block h-[70vh] w-full border-0"
+              />
+            </div>
+          )}
         </div>
       </motion.div>
 

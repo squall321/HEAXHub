@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Play, Upload } from "lucide-react";
+import { ExternalLink, Loader2, Play, Upload } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ interface RunFormProps {
 export function RunForm({ appId, manifest }: RunFormProps) {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
+  const isService = manifest.launch?.mode === "service";
   const defaults = buildDefaults(manifest.inputs ?? []);
 
   const { register, handleSubmit, control, formState } = useForm({ defaultValues: defaults });
@@ -34,33 +35,58 @@ export function RunForm({ appId, manifest }: RunFormProps) {
   const onSubmit = handleSubmit(async (values) => {
     setSubmitting(true);
     try {
-      const fd = new FormData();
       const params: Record<string, unknown> = {};
-      let hasFiles = false;
+      const files: File[] = [];
 
       for (const inp of manifest.inputs ?? []) {
         const v = values[inp.name];
         if (inp.type === "file" || inp.type === "folder") {
           if (v instanceof FileList && v.length > 0) {
             for (const f of Array.from(v)) {
-              fd.append(`file:${inp.name}`, f);
+              files.push(f);
             }
-            hasFiles = true;
           }
         } else {
           params[inp.name] = v;
         }
       }
 
-      const res = await appsApi.run(appId, { params, files: hasFiles ? fd : undefined });
-      toast.success("작업이 큐에 적재되었습니다.");
-      navigate({ to: "/jobs/$jobId", params: { jobId: res.job_id } });
+      const res = await appsApi.run(appId, { params, files });
+      if (!res?.id) {
+        toast.error("실행 응답에 job id가 없습니다.");
+        return;
+      }
+      toast.success(`작업 ${res.id.slice(0, 8)} 이 큐에 적재되었습니다.`);
+      navigate({ to: "/jobs/$jobId", params: { jobId: res.id } });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "실행 실패");
     } finally {
       setSubmitting(false);
     }
   });
+
+  if (isService) {
+    const openService = () => {
+      window.open(`/apps/${appId}/`, "_blank");
+    };
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>서비스 앱</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center gap-4 py-10">
+          <p className="text-sm text-muted-foreground">
+            이 앱은 장기 실행 서비스(launch.mode=service)로 등록되어 있어 작업 제출 없이 바로 열 수
+            있습니다.
+          </p>
+          <Button onClick={openService}>
+            <ExternalLink className="mr-2 h-4 w-4" />
+            열기
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!manifest.inputs || manifest.inputs.length === 0) {
     return (

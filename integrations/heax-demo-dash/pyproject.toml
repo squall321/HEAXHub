@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heax-demo-dash"
+version = "0.1.0"
+description = "HEAXHub Dash 스택 데모 - @callback 시그니처 reactive 대시보드"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "HEAXHub Demo" },
+]
+keywords = ["heaxhub", "demo", "dash", "plotly", "dashboard"]
+dependencies = [
+    "dash>=2.16",
+    "plotly>=5.20",
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
+
+[project.urls]
+Homepage = "https://heaxhub.local/integrations/heax-demo-dash"
+
+[tool.setuptools]
+py-modules = ["app"]

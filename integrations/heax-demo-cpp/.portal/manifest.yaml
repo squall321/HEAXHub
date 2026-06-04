@@ -1,0 +1,11 @@
+schema_version: 2
+id: heax_demo_cpp
+version: 0.7.0
+app_type: cli_tool
+execution_target: linux_runner
+build: {stack: cpp_executable, binary: bin/heax-demo-cpp}
+launch:
+  mode: job_runner
+  command: ./bin/heax-demo-cpp
+inputs:
+  - {name: count, type: integer, default: 10, min: 1, max: 10000}

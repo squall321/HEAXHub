@@ -13,6 +13,17 @@ module:
 
 It is best-effort: failures log + return without raising. Job-runner mode
 integrations are no-ops here (they spawn per-job, not as long-running daemons).
+
+State file robustness
+---------------------
+* All writes are fsync'd + atomically renamed so power loss doesn't leave a
+  half-written JSON.
+* Every record carries a ``schema_version`` so older state from a previous
+  HEAXHub release degrades gracefully (we ignore unknown versions instead of
+  blowing up the launcher).
+* Before sending SIGTERM we verify ``/proc/<pid>/cmdline`` still matches the
+  argv we recorded — guards against the classic PID-reuse footgun where the
+  stored pid has been recycled by an unrelated process.
 """
 from __future__ import annotations
 
@@ -45,6 +56,25 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 _HEALTH_TIMEOUT = 2.0
 _HEALTH_WAIT_SECONDS = 20
 
+# Bump this when the state file shape changes incompatibly. Older state files
+# (different or absent version) are ignored, NOT crashed on, so an upgrade
+# in-place just costs one extra spawn cycle.
+_STATE_SCHEMA_VERSION = 1
+
+# Stacks whose framework bakes the base path into routing and therefore must
+# RECEIVE the full incoming path (no Caddy prefix strip). For everything else
+# the upstream listens at "/" and Caddy strips ``/apps/<slug>`` before proxying,
+# which is the safer default — most WSGI/HTTP servers (Flask, gunicorn, node
+# express, Go net/http) don't auto-handle a sub-path on request URLs.
+_PREFIX_AWARE_STACKS = frozenset({
+    "streamlit", "nextjs", "node_service",
+    # Dash builds internal links from requests_pathname_prefix; it must see the
+    # full /apps/<slug>/... path, so do not strip at Caddy.
+    "dash_plotly",
+    # Shiny --root-path == ASGI root_path; upstream expects full prefix.
+    "shiny_for_python",
+})
+
 
 @dataclass(slots=True)
 class LaunchResult:
@@ -66,7 +96,58 @@ def launch(
     slug = workspace.name
     canonical = manifest.get("id") or slug.replace("-", "_")
     launch_section = manifest.get("launch") or {}
-    if launch_section.get("mode") != "service":
+    mode = launch_section.get("mode")
+
+    # Non-process launch modes: bail out before any port allocation or Popen.
+    # ``url`` and ``iframe`` are pure-frontend dispatches — the catalog reads
+    # ``launch.url`` and either opens a new tab or embeds an iframe. There is
+    # nothing for the launcher to spawn or register.
+    if mode in ("url", "iframe"):
+        return LaunchResult(
+            slug=slug, action="skipped", port=None,
+            base_path=f"/apps/{canonical}",
+        )
+
+    # ``proxy`` mode is non-process too, but we DO register a Caddy route
+    # pointing /apps/{id}/* at an external upstream URL.
+    if mode == "proxy":
+        upstream = launch_section.get("upstream") or launch_section.get("url")
+        if not upstream:
+            return LaunchResult(
+                slug=slug, action="failed", port=None,
+                base_path=f"/apps/{canonical}",
+                error="proxy mode requires launch.upstream (URL)",
+            )
+        base_path = f"/apps/{canonical}"
+        strip_prefix = bool(launch_section.get("strip_prefix", True))
+        try:
+            res = proxy_manager.register_external_proxy_route(
+                app_id=canonical,
+                upstream_url=str(upstream),
+                base_path=base_path,
+                strip_prefix=strip_prefix,
+            )
+        except Exception as exc:
+            return LaunchResult(
+                slug=slug, action="failed", port=None, base_path=base_path,
+                error=f"caddy register failed: {exc}",
+            )
+        if not getattr(res, "ok", False):
+            return LaunchResult(
+                slug=slug, action="failed", port=None, base_path=base_path,
+                error=f"caddy register failed: {getattr(res, 'reason', 'unknown')}",
+            )
+        return LaunchResult(
+            slug=slug, action="started", port=None, base_path=base_path,
+        )
+
+    # ``static`` mode: no process. Caddy serves the workspace's pre-built
+    # static_root directory via the file_server handler. We resolve the root
+    # to an absolute filesystem path Caddy can read, then register the route.
+    if mode == "static":
+        return _launch_static(workspace, canonical, manifest)
+
+    if mode != "service":
         return LaunchResult(
             slug=slug, action="skipped", port=None, base_path=None,
             error="not a service-mode integration",
@@ -91,11 +172,23 @@ def launch(
     if state and _is_alive(state.get("pid")) and _is_healthy(
         state.get("port"), health_path, root=base_path
     ):
-        strip_prefix = stack_name not in ("streamlit", "nextjs", "node_service")
-        proxy_manager.register_app_route(
-            app_id=canonical, port=int(state["port"]), base_path=base_path,
-            strip_prefix=strip_prefix,
-        )
+        strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
+        # Re-register on every confirmed-alive probe if state says we missed
+        # it last time (Caddy admin was down during the previous launch).
+        needs_caddy = not bool(state.get("caddy_registered"))
+        caddy_ok = True
+        if needs_caddy:
+            caddy_ok = _safe_register_caddy(
+                canonical, int(state["port"]), base_path, strip_prefix,
+            )
+            if caddy_ok:
+                state["caddy_registered"] = True
+                _write_state(canonical, state)
+        else:
+            # Idempotent refresh; harmless if Caddy already has the route.
+            _safe_register_caddy(
+                canonical, int(state["port"]), base_path, strip_prefix,
+            )
         return LaunchResult(
             slug=slug, action="already_running",
             port=int(state["port"]), base_path=base_path, pid=int(state["pid"]),
@@ -114,8 +207,10 @@ def launch(
     try:
         argv = _argv_for(workspace, spec, manifest, port=port, base_path=base_path)
     except Exception as exc:
+        # Release the port we just claimed — nobody else can use it otherwise.
+        _safe_release_port(db, port)
         return LaunchResult(
-            slug=slug, action="failed", port=port, base_path=base_path,
+            slug=slug, action="failed", port=None, base_path=base_path,
             error=f"argv build failed: {exc}",
         )
 
@@ -126,23 +221,42 @@ def launch(
         "ROOT_PATH": base_path,
         "BASE_URL_PATH": base_path,
         "NEXT_PUBLIC_BASE_PATH": base_path,
+        # Stack-specific sub-path env vars. We set them unconditionally because
+        # they're inert when the framework doesn't read them, and saves us
+        # branching per stack here.
+        "SCRIPT_NAME": base_path,           # Flask / WSGI standard
+        "BASE_PATH": base_path,             # nodejs_express / go_service convention
+        "DASH_URL_BASE_PATHNAME": base_path + "/",  # Plotly Dash needs trailing slash
     })
 
     logger.info("launching %s on :%d (root=%s) → %s",
                 canonical, port, base_path, argv)
+    # Open the per-integration log append+binary so multiple workers can't
+    # truncate each other and we tolerate non-UTF-8 binary output from the
+    # child (rare but happens with some launchers).
+    try:
+        log_fh = log_file.open("ab")
+    except OSError as exc:
+        _safe_release_port(db, port)
+        return LaunchResult(
+            slug=slug, action="failed", port=None, base_path=base_path,
+            error=f"could not open log {log_file}: {exc}",
+        )
     try:
         proc = subprocess.Popen(  # noqa: S603
             argv,
             cwd=str(workspace),
             env=env,
-            stdout=log_file.open("ab"),
+            stdout=log_fh,
             stderr=subprocess.STDOUT,
             start_new_session=True,  # behaves like setsid
             close_fds=True,
         )
     except Exception as exc:
+        log_fh.close()
+        _safe_release_port(db, port)
         return LaunchResult(
-            slug=slug, action="failed", port=port, base_path=base_path,
+            slug=slug, action="failed", port=None, base_path=base_path,
             error=f"Popen failed: {exc}",
         )
 
@@ -166,22 +280,95 @@ def launch(
         logger.warning("%s did not pass health within %ds; registering route anyway",
                        canonical, _HEALTH_WAIT_SECONDS)
 
-    # Streamlit + Next.js handle their own base path; FastAPI/uvicorn does not,
-    # so we strip the prefix at Caddy for FastAPI but pass through for the
-    # other two so their internal routers see the canonical paths.
-    strip_prefix = stack_name not in ("streamlit", "nextjs", "node_service")
-    proxy_manager.register_app_route(
-        app_id=canonical, port=port, base_path=base_path,
-        strip_prefix=strip_prefix,
-    )
+    # Stacks that handle their own base path (Streamlit, Next.js, Dash, Shiny)
+    # need Caddy to pass through the full /apps/<slug> prefix so their internal
+    # routers see canonical paths. Everything else strips the prefix.
+    strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
+    caddy_ok = _safe_register_caddy(canonical, port, base_path, strip_prefix)
 
-    _write_state(canonical, {"slug": canonical, "pid": proc.pid, "port": port,
-                             "base_path": base_path, "health_path": health_path,
-                             "stack": stack_name,
-                             "started_at": time.time()})
+    _write_state(canonical, {
+        "schema_version": _STATE_SCHEMA_VERSION,
+        "slug": canonical,
+        "pid": proc.pid,
+        "port": port,
+        "base_path": base_path,
+        "health_path": health_path,
+        "stack": stack_name,
+        "argv": argv,
+        "caddy_registered": caddy_ok,
+        "started_at": time.time(),
+    })
 
     return LaunchResult(
         slug=slug, action="started", port=port, base_path=base_path, pid=proc.pid,
+    )
+
+
+def _launch_static(
+    workspace: Path,
+    canonical: str,
+    manifest: dict[str, Any],
+) -> LaunchResult:
+    """Wire a static-runtime stack into Caddy via ``file_server``.
+
+    No port is allocated, no process is spawned. We resolve the configured
+    ``static_root`` to an absolute filesystem path (validated already by the
+    builder) and ask Caddy's admin API to serve it from ``/apps/{id}/*``.
+    """
+    base_path = f"/apps/{canonical}"
+
+    build_section = manifest.get("build") or {}
+    stack_name = build_section.get("stack") or build_section.get("type") or "unknown"
+    spec: StackSpec | None = load_stacks().get(stack_name)
+    if spec is None:
+        return LaunchResult(
+            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            error=f"unknown stack '{stack_name}'",
+        )
+
+    extra = spec.extra or {}
+    # Accept both ``static_root`` (canonical) and ``root`` (shorter alias) so
+    # we stay in step with the builder's resolution logic.
+    root_rel = (
+        build_section.get("static_root")
+        or build_section.get("root")
+        or extra.get("static_root")
+        or "public"
+    )
+    index_file = (
+        build_section.get("index_file")
+        or extra.get("index_file")
+        or "index.html"
+    )
+    root_abs = (workspace / root_rel).resolve()
+    if not root_abs.is_dir():
+        return LaunchResult(
+            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            error=(
+                f"static_root '{root_rel}' missing at {root_abs} — "
+                f"did the builder run successfully?"
+            ),
+        )
+
+    try:
+        res = proxy_manager.register_static_route(
+            app_id=canonical,
+            root_path=str(root_abs),
+            base_path=base_path,
+            index_file=index_file,
+        )
+    except Exception as exc:
+        return LaunchResult(
+            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            error=f"caddy register failed: {exc}",
+        )
+    if not getattr(res, "ok", False):
+        return LaunchResult(
+            slug=workspace.name, action="failed", port=None, base_path=base_path,
+            error=f"caddy register failed: {getattr(res, 'reason', 'unknown')}",
+        )
+    return LaunchResult(
+        slug=workspace.name, action="started", port=None, base_path=base_path,
     )
 
 
@@ -190,12 +377,22 @@ def stop(canonical: str, *, db) -> bool:
     state = _read_state(canonical)
     killed = False
     if state and _is_alive(state.get("pid")):
-        try:
-            os.killpg(os.getpgid(int(state["pid"])), signal.SIGTERM)
-            killed = True
-        except Exception as exc:
-            logger.warning("kill failed for %s pid=%s: %s",
-                           canonical, state.get("pid"), exc)
+        expected_argv = state.get("argv") or []
+        if _pid_matches_argv(int(state["pid"]), expected_argv):
+            try:
+                os.killpg(os.getpgid(int(state["pid"])), signal.SIGTERM)
+                killed = True
+            except Exception as exc:
+                logger.warning("kill failed for %s pid=%s: %s",
+                               canonical, state.get("pid"), exc)
+        else:
+            # PID reuse: the process at this pid is no longer ours. Don't
+            # SIGTERM a stranger; just clean up the stale state.
+            logger.warning(
+                "refusing to kill pid %s for %s — cmdline does not match "
+                "recorded argv (likely PID reuse)",
+                state.get("pid"), canonical,
+            )
     proxy_manager.unregister_app_route(app_id=canonical)
     if state and state.get("port"):
         try:
@@ -259,6 +456,193 @@ def _argv_for(
         if next_bin.exists():
             return [str(next_bin), "start", "--port", str(port), "--hostname", "0.0.0.0"]
         return [pnpm, "start", "--", "--port", str(port), "--hostname", "0.0.0.0"]
+    if stack_name == "flask":
+        # gunicorn from the venv binds to $PORT; Flask reads SCRIPT_NAME from
+        # env (WSGI standard) so we don't need to pass base_path on argv.
+        bin_ = venv / "bin" / "gunicorn"
+        if not bin_.exists():
+            raise FileNotFoundError(
+                f"{bin_} not found — has integration_builder run successfully? "
+                "Check var/logs/backend.log for build errors."
+            )
+        callable_ = (
+            (manifest.get("launch") or {}).get("entrypoint_override")
+            or "app:app"
+        )
+        return [
+            str(bin_),
+            "--bind", f"0.0.0.0:{port}",
+            "--workers", "2",
+            "--access-logfile", "-",
+            str(callable_),
+        ]
+    if stack_name == "nodejs_express":
+        # Operator builds to dist/server.js (TypeScript) or commits a plain
+        # src/server.js. Prefer dist/, fall back to src/ for non-TS projects.
+        node_bin = shutil.which("node")
+        if node_bin is None:
+            raise FileNotFoundError("node not on PATH for nodejs_express launch")
+        dist_entry = workspace / "dist" / "server.js"
+        src_entry = workspace / "src" / "server.js"
+        entry = dist_entry if dist_entry.exists() else src_entry
+        if not entry.exists():
+            raise FileNotFoundError(
+                f"neither {dist_entry} nor {src_entry} found — did the build run?"
+            )
+        return [node_bin, str(entry)]
+    if stack_name == "go_service":
+        # Built statically by go_toolchain; just exec the binary.
+        bin_ = workspace / "bin" / "server"
+        if not bin_.exists():
+            raise FileNotFoundError(
+                f"{bin_} not found — has integration_builder run successfully? "
+                "Check var/logs/backend.log for build errors."
+            )
+        return [str(bin_)]
+    if stack_name == "dash_plotly":
+        # Dash apps expose `server = app.server` (a Flask WSGI callable). We
+        # exec `python app.py` directly so the operator's __main__ block reads
+        # PORT/DASH_URL_BASE_PATHNAME from env and is in control of binding —
+        # avoids requiring gunicorn in the venv for the demo footprint.
+        python_bin = venv / "bin" / "python"
+        if not python_bin.exists():
+            raise FileNotFoundError(
+                f"{python_bin} not found — has integration_builder run successfully? "
+                "Check var/logs/backend.log for build errors."
+            )
+        return [str(python_bin), "app.py"]
+    if stack_name == "shiny_for_python":
+        # The `shiny` CLI is installed into .venv/bin/shiny by `pip install shiny`.
+        # --root-path mounts the ASGI app under the canonical sub-path prefix.
+        bin_ = venv / "bin" / "shiny"
+        if not bin_.exists():
+            raise FileNotFoundError(
+                f"{bin_} not found — has integration_builder run successfully? "
+                "Check var/logs/backend.log for build errors."
+            )
+        return [
+            str(bin_), "run",
+            "--host", "0.0.0.0",
+            "--port", str(port),
+            "--root-path", base_path,
+            "app.py",
+        ]
+    if stack_name == "dotnet_aspnet":
+        # Operator runs `dotnet publish -c Release -o publish/`. We resolve the
+        # main entry assembly: prefer publish/<override>.dll if the manifest
+        # names it, else the first non-shared .dll under publish/. ASP.NET
+        # Core reads --urls and binds; Caddy strips /apps/<slug> before proxy
+        # so the app sees canonical paths and we don't need a sub-path option.
+        dotnet_bin = shutil.which("dotnet")
+        if dotnet_bin is None:
+            raise FileNotFoundError(
+                "dotnet not on PATH — operator must install .NET 8 SDK on the host"
+            )
+        publish_dir = workspace / "publish"
+        if not publish_dir.exists():
+            raise FileNotFoundError(
+                f"{publish_dir} not found — has integration_builder run successfully? "
+                "Check var/logs/backend.log for build errors."
+            )
+        override = (manifest.get("launch") or {}).get("assembly")
+        dll_path: Path | None = None
+        if override:
+            cand = publish_dir / override
+            if cand.exists():
+                dll_path = cand
+        if dll_path is None:
+            # Pick the newest .dll that isn't an obvious dependency (ref/Microsoft.*).
+            # The MSBuild target writes the entry assembly LAST so mtime sort is
+            # a reasonable heuristic for the default project layout.
+            dlls = sorted(
+                publish_dir.glob("*.dll"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for cand in dlls:
+                if cand.name.startswith(("Microsoft.", "System.")):
+                    continue
+                dll_path = cand
+                break
+        if dll_path is None:
+            raise FileNotFoundError(
+                f"no entry .dll found under {publish_dir}; set launch.assembly "
+                "in the manifest to disambiguate."
+            )
+        return [
+            dotnet_bin, str(dll_path),
+            "--urls", f"http://0.0.0.0:{port}",
+        ]
+    if stack_name == "java_springboot":
+        # Spring Boot reads --server.port from the command-line property bridge.
+        # We exec the fat-jar produced by `./mvnw package` (target/*.jar). The
+        # operator can pin a specific jar via manifest.launch.jar; otherwise we
+        # pick the most-recently-built one that isn't a -sources/-javadoc artifact.
+        java_bin = shutil.which("java")
+        if java_bin is None:
+            raise FileNotFoundError(
+                "java not on PATH — operator must install JDK 17 on the host"
+            )
+        target_dir = workspace / "target"
+        override = (manifest.get("launch") or {}).get("jar")
+        jar_path: Path | None = None
+        if override:
+            cand = workspace / override
+            if cand.exists():
+                jar_path = cand
+        if jar_path is None and target_dir.exists():
+            jars = sorted(
+                (
+                    p for p in target_dir.glob("*.jar")
+                    if not p.name.endswith(("-sources.jar", "-javadoc.jar"))
+                ),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            jar_path = jars[0] if jars else None
+        if jar_path is None:
+            raise FileNotFoundError(
+                f"no runnable jar under {target_dir} — has integration_builder "
+                "run successfully? Check var/logs/backend.log for build errors."
+            )
+        return [
+            java_bin, "-jar", str(jar_path),
+            f"--server.port={port}",
+        ]
+    if stack_name == "rust_actix":
+        # cargo build --release puts the binary at target/release/<crate_name>.
+        # Operator may pin the binary name via manifest.launch.binary; default
+        # picks the first executable file under target/release/ that isn't a
+        # build artefact (.d / .rlib). The actix app reads $PORT from env
+        # (heaxhub injects PORT for every service launch).
+        release_dir = workspace / "target" / "release"
+        if not release_dir.exists():
+            raise FileNotFoundError(
+                f"{release_dir} not found — has integration_builder run successfully? "
+                "Check var/logs/backend.log for build errors."
+            )
+        override = (manifest.get("launch") or {}).get("binary")
+        bin_path: Path | None = None
+        if override:
+            cand = release_dir / override
+            if cand.exists() and os.access(cand, os.X_OK):
+                bin_path = cand
+        if bin_path is None:
+            for cand in sorted(release_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+                if not cand.is_file():
+                    continue
+                if cand.name.endswith((".d", ".rlib", ".rmeta")):
+                    continue
+                if not os.access(cand, os.X_OK):
+                    continue
+                bin_path = cand
+                break
+        if bin_path is None:
+            raise FileNotFoundError(
+                f"no release binary under {release_dir}; set launch.binary in the "
+                "manifest to disambiguate."
+            )
+        return [str(bin_path)]
 
     # Generic fallback: run manifest.launch.command via /bin/sh
     cmd = (manifest.get("launch") or {}).get("command") or "./.portal/run.sh"
@@ -275,21 +659,60 @@ def _state_path(canonical: str) -> Path:
 
 
 def _read_state(canonical: str) -> dict | None:
+    """Read the state file, ignoring records from a different schema version.
+
+    Older state (no schema_version key, or a different number) is treated as
+    nonexistent so the launcher takes the cold-start path instead of crashing
+    on a missing field.
+    """
     p = _state_path(canonical)
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
+    if not isinstance(data, dict):
+        return None
+    version = data.get("schema_version")
+    if version is None:
+        # Pre-versioned state: upgrade in-memory but trust enough fields to
+        # re-register Caddy. If anything is missing the launcher will cold-start.
+        data["schema_version"] = _STATE_SCHEMA_VERSION
+        return data
+    if version != _STATE_SCHEMA_VERSION:
+        logger.info(
+            "ignoring %s state file with schema_version=%r (current=%d)",
+            canonical, version, _STATE_SCHEMA_VERSION,
+        )
+        return None
+    return data
 
 
 def _write_state(canonical: str, state: dict) -> None:
-    """Atomic write: tmp file + rename so a crash mid-write doesn't corrupt."""
+    """Atomic write with fsync — survives power-loss between write and rename."""
+    state.setdefault("schema_version", _STATE_SCHEMA_VERSION)
     target = _state_path(canonical)
     tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    tmp.replace(target)
+    payload = json.dumps(state, indent=2).encode("utf-8")
+    # fsync the tmp file before rename so the rename can't be reordered ahead
+    # of the bytes hitting the disk platter.
+    with open(tmp, "wb") as f:
+        f.write(payload)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except OSError:
+            pass
+    os.replace(tmp, target)
+    try:
+        dir_fd = os.open(str(target.parent), os.O_DIRECTORY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
 
 
 def _delete_state(canonical: str) -> None:
@@ -309,6 +732,41 @@ def _is_alive(pid: int | None) -> bool:
         return False
 
 
+def _pid_matches_argv(pid: int, expected_argv: list[str]) -> bool:
+    """True when /proc/<pid>/cmdline starts with the expected argv prefix.
+
+    Guards against PID-reuse: an unrelated process inherited our recorded pid
+    after the integration died and we never noticed. We compare the first
+    argv token (the executable) plus the second token if present, which is
+    enough to disambiguate ``streamlit run`` from ``ssh root@host`` without
+    being overly strict about minor argv differences.
+    """
+    if not expected_argv:
+        # No recorded argv (old state) — assume ok; the worst case is we kill
+        # a foreign process, which is the bug we're trying to avoid, but we
+        # can't do better without recorded data.
+        return True
+    try:
+        with open(f"/proc/{int(pid)}/cmdline", "rb") as f:
+            raw = f.read()
+    except (FileNotFoundError, PermissionError, OSError):
+        return False
+    actual = [t.decode("utf-8", errors="replace") for t in raw.split(b"\x00") if t]
+    if not actual:
+        return False
+    # Match on the executable basename so /usr/bin/python3 vs ./.venv/bin/python3
+    # don't false-negative. Then require the second token (sub-command) to match
+    # too when present.
+    exp0 = os.path.basename(expected_argv[0])
+    act0 = os.path.basename(actual[0])
+    if exp0 != act0:
+        return False
+    if len(expected_argv) >= 2 and len(actual) >= 2:
+        if expected_argv[1] != actual[1]:
+            return False
+    return True
+
+
 def _is_healthy(port: int | None, health_path: str, *, root: str) -> bool:
     """Probe several candidate URLs; anything < 500 (including 3xx redirects
     Next.js issues for trailing-slash normalization) counts as healthy."""
@@ -318,6 +776,7 @@ def _is_healthy(port: int | None, health_path: str, *, root: str) -> bool:
         f"http://127.0.0.1:{port}{root}{health_path}",
         f"http://127.0.0.1:{port}{health_path}",
         f"http://127.0.0.1:{port}{root}",  # plain root (Next.js redirect)
+        f"http://127.0.0.1:{port}{root.rstrip('/')}",  # bare slug, no trailing slash
     ]
     for url in urls:
         try:
@@ -327,6 +786,37 @@ def _is_healthy(port: int | None, health_path: str, *, root: str) -> bool:
         except Exception:
             continue
     return False
+
+
+def _safe_register_caddy(
+    app_id: str, port: int, base_path: str, strip_prefix: bool,
+) -> bool:
+    """Register a Caddy route, returning False on transient admin failures.
+
+    The caller can persist this to know it must retry on next scan instead
+    of falsely believing the route is wired up.
+    """
+    try:
+        proxy_manager.register_app_route(
+            app_id=app_id, port=port, base_path=base_path,
+            strip_prefix=strip_prefix,
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "Caddy admin unreachable while registering %s; will retry: %s",
+            app_id, exc,
+        )
+        return False
+
+
+def _safe_release_port(db, port: int | None) -> None:
+    if not port:
+        return
+    try:
+        port_allocator.release_port(db, port=int(port))
+    except Exception:
+        logger.exception("release_port failed for port %s", port)
 
 
 def read_manifest(workspace: Path) -> dict[str, Any] | None:

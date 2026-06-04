@@ -1,0 +1,23 @@
+schema_version: 2
+id: heax_demo_flask
+name: Demo · Flask Service
+version: 0.7.0
+owner: heaxhub-demo
+status: stable
+app_type: web_app
+execution_target: linux_runner
+description: "Flask + gunicorn 서비스 데모."
+
+build:
+  stack: flask
+
+launch:
+  mode: service
+  command: gunicorn app.main:app --bind 0.0.0.0:$PORT
+
+health_check:
+  path: /health
+
+restart_policy:
+  policy: on_failure
+  max_retries: 3

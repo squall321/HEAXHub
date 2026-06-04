@@ -1,0 +1,11 @@
+schema_version: 2
+id: heax_demo_r
+version: 0.7.0
+app_type: cli_tool
+execution_target: linux_runner
+build: {stack: r_script}
+launch:
+  mode: job_runner
+  command: Rscript run.R
+inputs:
+  - {name: n, type: integer, default: 100, min: 10, max: 1000000}

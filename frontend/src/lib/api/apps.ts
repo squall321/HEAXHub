@@ -5,6 +5,7 @@ import type {
   AppType,
   AppVersion,
   ExecutionTarget,
+  Job,
   Manifest,
   Pagination,
   Visibility,
@@ -17,6 +18,8 @@ export interface AppListQuery {
   visibility?: Visibility;
   status?: string;
   tag?: string;
+  /** HEAXHub stack key (e.g. "fastapi", "streamlit"); matches manifest.build.stack. */
+  stack?: string;
   page?: number;
   page_size?: number;
   sort?: "updated_at" | "name" | "popularity";
@@ -36,12 +39,12 @@ export const appsApi = {
     api.get<{ items: { id: string; status: string; created_at: string; user: string }[] }>(
       `/apps/${appId}/history`,
     ),
-  run: (appId: string, body: { params: Record<string, unknown>; files?: FormData }) => {
-    if (body.files) {
-      const fd = body.files;
-      fd.append("params", JSON.stringify(body.params));
-      return api.upload<{ job_id: string }>(`/apps/${appId}/run`, fd);
+  run: (appId: string, body: { params: Record<string, unknown>; files?: File[] }) => {
+    const fd = new FormData();
+    fd.append("params_json", JSON.stringify(body.params ?? {}));
+    for (const f of body.files ?? []) {
+      fd.append("files", f, f.name);
     }
-    return api.post<{ job_id: string }>(`/apps/${appId}/run`, { params: body.params });
+    return api.upload<Job>(`/apps/${appId}/run`, fd);
   },
 };

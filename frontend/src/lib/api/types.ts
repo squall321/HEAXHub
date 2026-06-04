@@ -98,12 +98,24 @@ export interface Manifest {
   description?: string;
   tags?: string[];
   launch: {
-    mode: "job_runner" | "url" | "remote_agent" | "local_protocol";
+    mode:
+      | "job_runner"
+      | "service"
+      | "url"
+      | "iframe"
+      | "proxy"
+      | "remote_agent"
+      | "local_protocol";
     command?: string;
     url?: string;
+    upstream?: string;
     open_in?: "new_tab" | "iframe";
     auth_mode?: "none" | "sso" | "token";
     runtime?: "python_venv" | "apptainer" | "shell" | "windows_exe";
+    iframe?: {
+      sandbox?: string;
+      allowed_origins?: string[];
+    };
     [k: string]: unknown;
   };
   inputs?: ManifestInput[];

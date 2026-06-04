@@ -83,7 +83,325 @@ stacks:
       - SSR / SSG 혼합
     examples: [heax-demo-nextjs]
 
-  # ── 5. Windows Local Installer ───────────────────────────────────────
+  # ── 6. Flask / Gunicorn Service ─────────────────────────────────────
+  # 경량 Python WSGI 백엔드. gunicorn + Flask 콜러블(app:app)을 SCRIPT_NAME
+  # 으로 sub-path 마운트.
+  flask:
+    label: "Flask / Gunicorn Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: python_venv
+    runtime: python_venv
+    python_version: "3.12"
+    install: pip install -e .
+    entrypoint: gunicorn --bind 0.0.0.0:$PORT --workers 2 --access-logfile - app:app
+    health_path: /health
+    base_path_env: SCRIPT_NAME
+    use_cases:
+      - 경량 Python WSGI 백엔드
+      - 사내 폼/리포트 웹앱
+      - 레거시 Flask 앱 호스팅
+    examples: []
+
+  # ── 7. Node.js Express / Fastify Service ────────────────────────────
+  # pnpm install + (optional) tsc → node dist/server.js. BASE_PATH 환경
+  # 변수로 sub-path 마운트.
+  nodejs_express:
+    label: "Node.js Express / Fastify Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: nodejs
+    runtime: nodejs
+    node_version: "20"
+    install: pnpm install --frozen-lockfile
+    build: pnpm build --if-present
+    entrypoint: node dist/server.js
+    health_path: /health
+    base_path_env: BASE_PATH
+    use_cases:
+      - REST/GraphQL API 서버
+      - 가벼운 BFF (Backend-for-Frontend)
+      - 실시간 WebSocket 서비스
+    examples: []
+
+  # ── 7b. .NET 8 ASP.NET Core Service ─────────────────────────────────
+  # `dotnet publish -c Release` 산출물(publish/*.dll) 을 dotnet 런타임으로 구동.
+  # 운영자가 dotnet 8 SDK 를 호스트에 설치해야 빌드 가능 (자동 설치 안 함).
+  dotnet_aspnet:
+    label: ".NET 8 ASP.NET Core Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: dotnet
+    runtime: dotnet
+    dotnet_version: "8.0"
+    install: dotnet publish -c Release -o publish
+    entrypoint: dotnet publish/app.dll --urls http://0.0.0.0:$PORT
+    health_path: /health
+    use_cases:
+      - 기존 ASP.NET Core REST API 마이그레이션
+      - 엔터프라이즈 .NET 도메인 서비스
+      - C# 기반 인증/권한 백엔드
+    examples: []
+
+  # ── 7c. Java 17 Spring Boot Service ─────────────────────────────────
+  # `./mvnw package` 또는 `mvn package` 산출물(target/*.jar) 을 java 로 구동.
+  # 운영자가 JDK 17 과 (선택적으로) Maven 을 호스트에 설치해야 함.
+  java_springboot:
+    label: "Java 17 Spring Boot Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: java_maven
+    runtime: java_jre
+    java_version: "17"
+    install: ./mvnw -B -DskipTests package
+    entrypoint: java -jar target/app.jar --server.port=$PORT
+    health_path: /actuator/health
+    jar_glob: "target/*.jar"
+    use_cases:
+      - 엔터프라이즈 REST API
+      - 기존 Spring Boot 앱 마이그레이션
+      - JVM 기반 도메인 서비스
+    examples: []
+
+  # ── 7d. Rust Actix-web Service ──────────────────────────────────────
+  # `cargo build --release` 산출물(target/release/<bin>) 을 직접 구동.
+  # 운영자가 rustup/cargo 툴체인을 호스트에 설치해야 함.
+  rust_actix:
+    label: "Rust Actix-web Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: rust_cargo
+    runtime: native_binary
+    rust_edition: "2021"
+    install: cargo build --release
+    entrypoint: ./target/release/server
+    health_path: /health
+    use_cases:
+      - 고성능 HTTP 마이크로서비스
+      - 저메모리 사이드카
+      - WebAssembly host
+    examples: []
+
+  # ── 8. Go Service ───────────────────────────────────────────────────
+  # 정적 링크된 단일 바이너리. CGO_ENABLED=0이 기본.
+  go_service:
+    label: "Go Service (statically-linked)"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: go_toolchain
+    runtime: native_binary
+    go_version: "1.22"
+    build: go build -trimpath -ldflags='-s -w' -o ./bin/server ./cmd/server
+    entrypoint: ./bin/server
+    health_path: /healthz
+    base_path_env: BASE_PATH
+    use_cases:
+      - 고성능 HTTP/gRPC 마이크로서비스
+      - CLI + 서버 겸용 단일 바이너리
+      - 저메모리 사이드카
+    examples: []
+
+  # ── 9. Plotly Dash Dashboard ────────────────────────────────────────
+  # Flask wrapper 위에 동작하는 Dash 인스턴스. requests_pathname_prefix 를
+  # DASH_URL_BASE_PATHNAME 환경변수로 받아 sub-path 마운트.
+  dash_plotly:
+    label: "Plotly Dash Dashboard"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: python_venv
+    runtime: python_venv
+    python_version: "3.12"
+    install: pip install -e .
+    entrypoint: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 app:server
+    health_path: /
+    base_path_env: DASH_URL_BASE_PATHNAME
+    use_cases:
+      - 실시간 데이터 시각화 대시보드
+      - Plotly 그래프 + 인터랙티브 콜백
+      - Streamlit 대비 다중 페이지/콜백 UI
+    examples: []
+
+  # ── 10. Shiny for Python Service ────────────────────────────────────
+  # Posit Shiny for Python. uvicorn-기반 ASGI 서비스로 띄우며
+  # --root-path 로 sub-path 마운트.
+  shiny_for_python:
+    label: "Shiny for Python Dashboard"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: python_venv
+    runtime: python_venv
+    python_version: "3.12"
+    install: pip install -e .
+    entrypoint: shiny run --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH app.py
+    health_path: /
+    base_path_env: ROOT_PATH
+    use_cases:
+      - reactive 데이터 시각화 대시보드
+      - 통계/ML 모델 인터랙티브 데모
+      - R Shiny 대비 Python 친화 대시보드
+    examples: []
+
+  # ── 11. R Script Runner ─────────────────────────────────────────────
+  # renv 로 패키지 격리, run.sh 에서 Rscript 호출하는 job_runner.
+  r_script:
+    label: "R Script Runner"
+    app_type: cli_tool
+    execution_target: linux_runner
+    launch_mode: job_runner
+    builder: r_renv
+    runtime: r_runtime
+    r_version: "4.4"
+    install: Rscript -e 'renv::restore(prompt = FALSE)'
+    entrypoint: ./.portal/run.sh
+    use_cases:
+      - 통계 분석 / 회귀 모델
+      - ggplot 기반 그래프 생성
+      - R Markdown 리포트 자동화
+    examples: []
+
+  # ── 12. Static HTML / Pre-built Site ────────────────────────────────
+  # 빌드 단계 없음. 커밋된 정적 파일을 Caddy file_server 가 그대로 서빙.
+  # 사전 빌드 산출물(Vite/CRA의 dist/, hugo의 public/ 등)을 그대로 올리는 용도.
+  static_html:
+    label: "Static HTML / Pre-built Site"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: static
+    builder: static_copy
+    runtime: caddy_static
+    install: null
+    build: null
+    entrypoint: null
+    static_root: public
+    index_file: index.html
+    health_path: /
+    use_cases:
+      - 정적 사이트 (HTML/CSS/JS 만)
+      - 사전 빌드된 React/Vite 정적 export
+      - 단일 페이지 문서 / 안내 페이지
+    examples: [heax-demo-static-html]
+
+  # ── 13. MkDocs Pre-built Static Docs ────────────────────────────────
+  # mkdocs build 결과인 site/ 디렉토리를 그대로 서빙. 빌드는 외부 CI/저자가 수행.
+  # HEAXHub 는 Python/MkDocs 를 설치/실행하지 않는다.
+  mkdocs_static:
+    label: "MkDocs Pre-built Static Docs"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: static
+    builder: static_copy
+    runtime: caddy_static
+    install: null
+    build: null
+    entrypoint: null
+    static_root: site
+    index_file: index.html
+    health_path: /
+    use_cases:
+      - 사전 빌드된 MkDocs 문서 사이트
+      - 사내 위키 / API 레퍼런스
+      - 정적 출력만으로 충분한 매뉴얼
+    examples: []
+
+  # ── 14. External Link (open in new tab) ─────────────────────────────
+  # HEAXHub 외부 URL 카탈로그 엔트리. 빌드/런타임 없음 — 카드의 'Open' 클릭 시
+  # 새 탭에서 매니페스트의 launch.url 이 열린다.
+  external_link:
+    label: "External Link (open in new tab)"
+    app_type: external_link
+    execution_target: external_url
+    launch_mode: url
+    builder: noop
+    runtime: noop
+    entrypoint: null
+    use_cases:
+      - 사외 SaaS / 문서 사이트 바로가기
+      - 기존 사내 시스템 카탈로그 통합
+    examples: []
+
+  # ── 15. External URL (embedded iframe) ──────────────────────────────
+  # HEAXHub 레이아웃 안에 외부 URL 을 iframe 으로 임베드. 빌드/런타임 없음.
+  # 대상 사이트의 X-Frame-Options / CSP frame-ancestors 가 HEAXHub origin 을
+  # 허용해야 한다.
+  external_iframe:
+    label: "External URL (embedded iframe)"
+    app_type: external_link
+    execution_target: external_url
+    launch_mode: iframe
+    builder: noop
+    runtime: noop
+    entrypoint: null
+    iframe_sandbox: "allow-scripts allow-forms allow-same-origin"
+    use_cases:
+      - 내부 Grafana / Kibana 대시보드 임베드
+      - 사내 위키 페이지 통합
+    examples: []
+
+  # ── 16. External Proxy (Caddy reverse_proxy to upstream URL) ────────
+  # HEAXHub /apps/{id}/* → upstream URL. 빌더는 no-op, 런처는 Caddy 라우트만
+  # 등록한다. 매니페스트의 launch.upstream 에 대상 host:port 또는 https URL.
+  external_proxy:
+    label: "External Proxy (Caddy reverse_proxy)"
+    app_type: external_link
+    execution_target: external_url
+    launch_mode: proxy
+    builder: noop
+    runtime: noop
+    entrypoint: null
+    use_cases:
+      - 기존 사내 서비스를 HEAXHub 카탈로그/SSO 뒤에 노출
+      - 외부 API 게이트웨이의 단일 진입점
+    examples: []
+
+  # ── 18. C/C++ Executable (job runner) ────────────────────────────────
+  # CMake/Make 로 빌드한 단일 실행 파일을 job_runner 모드로 호출. 빌드 산출물은
+  # build/bin/ 아래에 두고 .portal/run.sh 가 그것을 실행한다.
+  cpp_executable:
+    label: "C/C++ Executable (job runner)"
+    app_type: cli_tool
+    execution_target: linux_runner
+    launch_mode: job_runner
+    builder: cmake_make
+    runtime: native_binary
+    toolchain: "gcc-13"
+    install: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+    entrypoint: ./.portal/run.sh
+    binary_path: build/bin/solver
+    use_cases:
+      - 수치 해석 / 솔버
+      - 고성능 전처리 / 후처리 유틸리티
+      - 레거시 C++ 라이브러리 호출 래퍼
+    examples: []
+
+  # ── 19. Apptainer SIF (pre-built image) ─────────────────────────────
+  # 운영자가 미리 빌드한 .sif 파일을 그대로 가져다 쓴다. 빌드 단계는 SIF 파일
+  # 존재 검증만 수행하고, 실행은 apptainer_runner 가 'apptainer exec <sif>' 로
+  # 디스패치한다.
+  apptainer_sif:
+    label: "Apptainer SIF (pre-built image)"
+    app_type: cli_tool
+    execution_target: apptainer
+    launch_mode: job_runner
+    builder: noop
+    runtime: apptainer
+    install: null
+    entrypoint: ./.portal/run.sh
+    sif_path: image.sif
+    use_cases:
+      - 사전에 빌드된 컨테이너 이미지 실행
+      - GPU/MPI 의존성이 큰 도구의 격리 실행
+      - 외부 빌드 파이프라인에서 받은 SIF 등록
+    examples: []
+
+  # ── 20. Windows Local Installer ─────────────────────────────────────
   # 사용자가 .exe 를 다운로드해 로컬 PC 에서 실행. HEAXHub 는 매니페스트 +
   # 인스톨러 호스팅 + 프로토콜 핸들러(heaxhub://) 만 제공.
   # NOTE: 첫 릴리즈에서 데모는 만들지 않음 (사용자 결정).

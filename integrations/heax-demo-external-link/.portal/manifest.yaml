@@ -1,0 +1,11 @@
+schema_version: 2
+id: heax_demo_external_link
+name: Demo · External Link (GitHub)
+version: 0.7.0
+owner: heaxhub-demo
+status: stable
+app_type: external_link
+execution_target: external_url
+build: {stack: external_link}
+launch: {mode: url, url: "https://github.com/squall321/HEAXHub", open_in: new_tab}
+description: "외부 URL 카탈로그 항목 — 새 탭으로 열림."

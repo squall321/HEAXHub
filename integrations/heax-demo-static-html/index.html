@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HEAXHub · Static HTML 데모</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.css">
+  <style>
+    :root {
+      --navy: #0f172a;
+      --navy-2: #1e293b;
+      --indigo: #4f46e5;
+      --indigo-2: #6366f1;
+      --amber: #f59e0b;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+    }
+    a { color: var(--indigo); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre, .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    code {
+      background: #eef2ff;
+      color: var(--navy-2);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+
+    .topbar {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 50%, var(--indigo) 100%);
+      color: #f8fafc;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .topbar img { width: 32px; height: 32px; }
+    .topbar .brand { font-weight: 700; letter-spacing: 0.02em; }
+    .topbar .brand .accent { color: var(--amber); }
+
+    .hero {
+      background: linear-gradient(180deg, var(--navy) 0%, var(--navy-2) 100%);
+      color: #f8fafc;
+      padding: 64px 24px 80px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 4vw, 44px);
+      margin: 0 0 12px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .hero h1 .pill {
+      display: inline-block;
+      background: var(--amber);
+      color: var(--navy);
+      padding: 2px 12px;
+      border-radius: 999px;
+      font-size: 0.7em;
+      vertical-align: middle;
+      margin-left: 8px;
+      font-weight: 700;
+    }
+    .hero p {
+      max-width: 720px;
+      margin: 0 auto;
+      color: #cbd5e1;
+      font-size: 17px;
+    }
+
+    main {
+      max-width: 1080px;
+      margin: -48px auto 0;
+      padding: 0 24px 64px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: var(--navy);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card h2 .tag {
+      display: inline-block;
+      background: #eef2ff;
+      color: var(--indigo);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+    .card .kv {
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    .card .kv div { padding: 4px 0; }
+    .card .kv .k { color: var(--muted); }
+    .card .kv .v { color: var(--navy); font-weight: 600; word-break: break-all; }
+    .card ul {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+    .card ul li { margin: 4px 0; }
+    .card ul li strong { color: var(--navy-2); }
+
+    .accent-bar {
+      height: 3px;
+      width: 36px;
+      background: var(--amber);
+      border-radius: 2px;
+      margin-bottom: 12px;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      background: #ffffff;
+    }
+    footer a {
+      color: var(--indigo);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <img src="logo.svg" alt="HEAX logo">
+    <div class="brand">HEAX<span class="accent">Hub</span></div>
+  </div>
+
+  <section class="hero">
+    <h1>Static HTML 데모 <span class="pill">static_html</span></h1>
+    <p>
+      이 페이지는 HEAXHub 의 <code>static_html</code> 스택 시그니처를 시연하는 단일 파일 정적 페이지입니다.
+      별도 런타임 없이 Caddy 의 <code>file_server</code> 가 그대로 서빙합니다.
+    </p>
+  </section>
+
+  <main>
+    <div class="grid">
+
+      <div class="card">
+        <div class="accent-bar"></div>
+        <h2>Stack 정보 <span class="tag">MANIFEST</span></h2>
+        <p style="margin:6px 0 0;color:var(--muted);font-size:14px;">
+          <code>.portal/manifest.yaml</code> 의 빌드 시그니처입니다.
+        </p>
+        <div class="kv">
+          <div><span class="k">build.stack</span> · <span class="v">static_html</span></div>
+          <div><span class="k">build.root</span> · <span class="v">.</span></div>
+          <div><span class="k">launch.mode</span> · <span class="v">static</span></div>
+          <div><span class="k">app_type</span> · <span class="v">web_app</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="accent-bar"></div>
+        <h2>Base Path <span class="tag">RUNTIME</span></h2>
+        <p style="margin:6px 0 0;color:var(--muted);font-size:14px;">
+          브라우저가 읽는 실제 경로입니다. HEAXHub 의 Caddy 가
+          <code>/apps/{id}/</code> 하위에 배치합니다.
+        </p>
+        <div class="kv">
+          <div><span class="k">location.pathname</span></div>
+          <div class="v mono" id="pathname">(loading...)</div>
+          <div style="margin-top:6px;"><span class="k">예상 prefix</span></div>
+          <div class="v mono">/apps/heax_demo_static_html/</div>
+          <div style="margin-top:6px;"><span class="k">prefix 매칭</span></div>
+          <div class="v mono" id="prefix-match">(loading...)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="accent-bar"></div>
+        <h2>이 페이지가 뭐가 빌드되었나 <span class="tag">NO-BUILD</span></h2>
+        <p style="margin:6px 0 0;color:var(--muted);font-size:14px;">
+          <code>static_html</code> 스택은 <strong>아무 것도 빌드하지 않습니다</strong>.
+          아래는 명시적으로 <em>일어나지 않는 것들</em>:
+        </p>
+        <ul>
+          <li><strong>venv 생성 없음</strong> — Python 인터프리터/패키지 설치를 하지 않음</li>
+          <li><strong>npm/pnpm install 없음</strong> — Node 의존성 다운로드 단계 없음</li>
+          <li><strong>build 단계 없음</strong> — webpack/vite/next build 가 돌지 않음</li>
+          <li><strong>런타임 프로세스 없음</strong> — uvicorn/node/streamlit 데몬이 뜨지 않음</li>
+          <li><strong>health check 폴링 없음</strong> — 살아있는 프로세스가 없으므로</li>
+        </ul>
+        <p style="margin-top:10px;color:var(--muted);font-size:14px;">
+          HEAXHub 는 그저 <code>build.root</code> 디렉터리를 Caddy 의
+          <code>file_server</code> 에 마운트만 해 줍니다.
+        </p>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    <a href="/">← HEAXHub 본 페이지로 돌아가기</a>
+  </footer>
+
+  <script>
+    (function () {
+      var path = window.location.pathname;
+      var el = document.getElementById('pathname');
+      if (el) el.textContent = path;
+
+      var expected = '/apps/heax_demo_static_html/';
+      var match = document.getElementById('prefix-match');
+      if (match) {
+        if (path.indexOf(expected) === 0) {
+          match.textContent = 'OK · ' + expected;
+          match.style.color = '#15803d';
+        } else {
+          match.textContent = 'mismatch (local preview?) · ' + path;
+          match.style.color = '#b45309';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Build outputs
+bin/
+heax-demo-go
+heax-demo-go.exe
+server
+server.exe
+
+# Go test/build caches
+*.test
+*.out
+coverage.txt
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/

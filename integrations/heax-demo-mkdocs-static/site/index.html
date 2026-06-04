@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="generator" content="mkdocs-1.5.3, mkdocs-material-9.5.2">
+  <title>Home — MkDocs Demo</title>
+  <link rel="stylesheet" href="css/heax-docs.css">
+</head>
+<body class="md-body">
+  <header class="md-header" role="banner">
+    <div class="md-header__inner">
+      <a href="." class="md-header__title">MkDocs Demo</a>
+      <nav class="md-header__nav">
+        <a href="./">Home</a>
+        <a href="api/">API</a>
+        <a href="guide/">Guide</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="md-container">
+    <aside class="md-sidebar md-sidebar--primary" role="navigation">
+      <nav class="md-nav">
+        <ul class="md-nav__list">
+          <li class="md-nav__item md-nav__item--active"><a href="./">Home</a></li>
+          <li class="md-nav__item"><a href="api/">API Reference</a></li>
+          <li class="md-nav__item"><a href="guide/">User Guide</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="md-main" role="main">
+      <article class="md-content__inner md-typeset">
+        <h1>MkDocs Demo</h1>
+        <p>This is a pre-built MkDocs documentation site bundled as a HEAXHub
+        integration. The output under <code>site/</code> is exactly what
+        <code>mkdocs build</code> produces locally.</p>
+
+        <h2>Sections</h2>
+        <ul>
+          <li><a href="api/">API Reference</a> — endpoint and schema docs.</li>
+          <li><a href="guide/">User Guide</a> — getting started walkthrough.</li>
+        </ul>
+
+        <h2>Why static?</h2>
+        <p>The portal serves these HTML files via Caddy's <code>file_server</code>
+        directive. No Python runtime is needed at serve time — the MkDocs
+        toolchain only runs at build time on the operator's machine.</p>
+
+        <hr>
+        <footer class="md-footer">
+          <small>Built with MkDocs · served by HEAXHub</small>
+        </footer>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

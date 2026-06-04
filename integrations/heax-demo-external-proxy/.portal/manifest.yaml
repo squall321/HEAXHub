@@ -6,9 +6,10 @@ owner: heaxhub-demo
 status: stable
 app_type: external_link
 execution_target: external_url
-build: {stack: external_proxy}
+build:
+  stack: external_proxy
 launch:
-  mode: service
+  mode: proxy
   upstream: http://localhost:8126
   strip_prefix: true
-description: "사내 사이트(MailHog UI)를 HEAXHub 하위 경로로 reverse_proxy."
+description: 사내 사이트(MailHog UI)를 HEAXHub 하위 경로로 reverse_proxy.

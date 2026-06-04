@@ -1,6 +1,6 @@
 schema_version: 2
 id: heax_demo_mkdocs
-name: "Demo · MkDocs Static Site"
+name: Demo · MkDocs Static Site
 version: 0.7.0
 owner: heaxhub-demo
 status: stable
@@ -10,5 +10,5 @@ build:
   stack: mkdocs_static
   root: site
 launch:
-  mode: service
-description: "Pre-built MkDocs documentation site served by Caddy."
+  mode: static
+description: Pre-built MkDocs documentation site served by Caddy.

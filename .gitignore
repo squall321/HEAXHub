@@ -85,3 +85,10 @@ integrations/*/node_modules/
 integrations/*/.next/
 integrations/*/dist/
 var/integration_state/
+
+# Demo build artifacts
+integrations/heax-demo-go/heax-demo-go
+integrations/heax-demo-go/bin/
+integrations/heax-demo-cpp/bin/
+integrations/heax-demo-cpp/output/
+integrations/heax-demo-r/output/

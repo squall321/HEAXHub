@@ -73,6 +73,10 @@ _PREFIX_AWARE_STACKS = frozenset({
     "dash_plotly",
     # Shiny --root-path == ASGI root_path; upstream expects full prefix.
     "shiny_for_python",
+    # Flask via DispatcherMiddleware requires SCRIPT_NAME == prefix AND the
+    # request path to START with that prefix; Caddy strip breaks the second
+    # half of that contract, so we forward unchanged.
+    "flask",
 })
 
 
@@ -226,6 +230,7 @@ def launch(
         # branching per stack here.
         "SCRIPT_NAME": base_path,           # Flask / WSGI standard
         "BASE_PATH": base_path,             # nodejs_express / go_service convention
+        "HEAX_BASE_PATH": base_path,        # generic HEAXHub-side convention
         "DASH_URL_BASE_PATHNAME": base_path + "/",  # Plotly Dash needs trailing slash
     })
 
@@ -491,12 +496,20 @@ def _argv_for(
             )
         return [node_bin, str(entry)]
     if stack_name == "go_service":
-        # Built statically by go_toolchain; just exec the binary.
-        bin_ = workspace / "bin" / "server"
-        if not bin_.exists():
+        # `go build` drops the binary at the project root with the module
+        # basename. Older convention was `bin/server`. We probe both so the
+        # operator's project layout choice doesn't matter.
+        candidates = [
+            workspace / "bin" / "server",
+            workspace / "bin" / workspace.name,
+            workspace / workspace.name,
+        ]
+        bin_ = next((c for c in candidates if c.exists()), None)
+        if bin_ is None:
             raise FileNotFoundError(
-                f"{bin_} not found — has integration_builder run successfully? "
-                "Check var/logs/backend.log for build errors."
+                f"go binary not found at any of: {[str(c) for c in candidates]} "
+                "— has integration_builder run 'go build' successfully? "
+                "Check var/logs/build_*.log for build errors."
             )
         return [str(bin_)]
     if stack_name == "dash_plotly":

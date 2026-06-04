@@ -6,11 +6,9 @@ owner: heaxhub-demo
 status: stable
 app_type: web_app
 execution_target: linux_runner
-description: "HEAXHub static_html 스택 데모. 빌드/프로세스 없이 Caddy file_server 가 정적 파일만 서빙한다."
-
+description: HEAXHub static_html 스택 데모. 빌드/프로세스 없이 Caddy file_server 가 정적 파일만 서빙한다.
 build:
   stack: static_html
   root: .
-
 launch:
   mode: static

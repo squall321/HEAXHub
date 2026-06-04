@@ -68,7 +68,11 @@ BASE_PATH = _normalize_base_path(
 # Dash app
 # ---------------------------------------------------------------------------
 app_kwargs: dict[str, object] = {"title": "HEAXHub Dash Demo"}
-if BASE_PATH != "/":
+# Dash 2.x auto-reads DASH_URL_BASE_PATHNAME from env. Passing
+# requests_pathname_prefix/routes_pathname_prefix on top of that env var
+# raises InvalidConfig. Strategy: only set the explicit prefixes when the
+# env var is NOT set; otherwise let Dash's env auto-detection win.
+if BASE_PATH != "/" and not os.environ.get("DASH_URL_BASE_PATHNAME"):
     app_kwargs["requests_pathname_prefix"] = BASE_PATH
     app_kwargs["routes_pathname_prefix"] = BASE_PATH
 

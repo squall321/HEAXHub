@@ -1,5 +1,9 @@
 schema_version: 2
 id: heax_demo_fastapi
+name: Demo · Memo CRUD (FastAPI)
+version: 0.3.0
+owner: heaxhub-demo
+status: stable
 app_type: web_app
 execution_target: linux_runner
 description: "HEAXHub FastAPI 스택 데모. 간단 메모 CRUD API + Swagger UI."

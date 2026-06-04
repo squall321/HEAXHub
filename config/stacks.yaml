@@ -19,7 +19,7 @@ stacks:
     launch_mode: job_runner
     builder: python_venv
     runtime: python_venv
-    python_version: "3.11"
+    python_version: "3.12"
     install: pip install -e .
     entrypoint: ./.portal/run.sh
     use_cases:
@@ -36,7 +36,7 @@ stacks:
     launch_mode: service
     builder: python_venv
     runtime: python_venv
-    python_version: "3.11"
+    python_version: "3.12"
     install: pip install -e .
     entrypoint: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.baseUrlPath $ROOT_PATH
     health_path: /_stcore/health
@@ -54,7 +54,7 @@ stacks:
     launch_mode: service
     builder: python_venv
     runtime: python_venv
-    python_version: "3.11"
+    python_version: "3.12"
     install: pip install -e .
     entrypoint: uvicorn app.main:app --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH
     health_path: /health

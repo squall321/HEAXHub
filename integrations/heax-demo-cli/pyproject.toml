@@ -7,7 +7,7 @@ name = "heax-demo-cli"
 version = "0.1.0"
 description = "HEAXHub Python CLI 스택 데모 — CSV 행 카운터."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "heaxhub-demo" }]
 keywords = ["heaxhub", "demo", "cli", "csv"]

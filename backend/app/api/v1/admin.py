@@ -402,6 +402,68 @@ def get_integration_status(_admin: AdminUser) -> dict[str, Any]:
     }
 
 
+@router.get("/integrations/builtin")
+def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
+    """Status table of in-tree integrations/ — what each demo's live state is.
+
+    For each integrations/<slug>/:
+      - slug (directory name)
+      - id (manifest.id, the canonical App.id)
+      - name + version + stack + launch_mode
+      - has_venv: bool   — integration_builder sentinel present
+      - state file:      — pid + port + base_path + started_at (if launched)
+      - process_alive    — os.kill 0
+      - http_health      — curl 200 via Caddy /apps/<id>/<health_path>
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    import yaml as _yaml  # noqa: PLC0415
+
+    from app.services import integration_launcher  # noqa: PLC0415
+
+    root = Path(__file__).resolve().parents[3] / "integrations"
+    rows: list[dict[str, Any]] = []
+    if not root.exists():
+        return {"root": str(root), "exists": False, "items": []}
+
+    for child in sorted(p for p in root.iterdir() if p.is_dir()):
+        slug = child.name
+        manifest_path = child / ".portal" / "manifest.yaml"
+        manifest: dict[str, Any] = {}
+        if manifest_path.exists():
+            try:
+                manifest = _yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+            except Exception as exc:  # noqa: BLE001
+                manifest = {"__error__": str(exc)}
+
+        canonical = str(manifest.get("id") or slug.replace("-", "_"))
+        state = integration_launcher._read_state(canonical)  # noqa: SLF001
+        alive = integration_launcher._is_alive(state.get("pid")) if state else False  # noqa: SLF001
+        healthy = False
+        if state and state.get("port"):
+            healthy = integration_launcher._is_healthy(  # noqa: SLF001
+                int(state["port"]),
+                state.get("health_path") or "/",
+                root=state.get("base_path") or f"/apps/{canonical}",
+            )
+
+        rows.append({
+            "slug": slug,
+            "id": canonical,
+            "name": manifest.get("name"),
+            "version": manifest.get("version"),
+            "stack": (manifest.get("build") or {}).get("stack"),
+            "launch_mode": (manifest.get("launch") or {}).get("mode"),
+            "has_venv": (child / ".venv" / "bin").exists(),
+            "build_sentinel": (child / ".heaxhub_build_ok").exists(),
+            "state": state,
+            "process_alive": alive,
+            "http_healthy": healthy,
+            "log_file": f"var/logs/integration_{canonical}.log",
+        })
+    return {"root": str(root), "exists": True, "count": len(rows), "items": rows}
+
+
 @router.post("/integrations/sync")
 def sync_integration_repos(
     _admin: AdminUser,

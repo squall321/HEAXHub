@@ -2,7 +2,7 @@
 name = "heax-demo-fastapi"
 version = "0.1.0"
 description = "HEAXHub FastAPI 스택 데모. 간단 메모 CRUD API + Swagger UI."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",

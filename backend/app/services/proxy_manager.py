@@ -94,9 +94,12 @@ def register_app_route(
             # Try replacing an existing route by @id first.
             resp = client.put(_admin_url(f"/id/{route_id}"), json=route)
             if resp.status_code == 404:
-                # No existing route — append to the default server's routes list.
+                # No existing route — insert at the HEAD of the list so this
+                # specific /apps/<id>/* matcher wins over the SPA catch-all
+                # that lives at the tail.
                 resp = client.post(
-                    _admin_url("/config/apps/http/servers/srv0/routes"), json=route
+                    _admin_url("/config/apps/http/servers/srv0/routes/0"),
+                    json=route,
                 )
             resp.raise_for_status()
     except httpx.HTTPError as exc:

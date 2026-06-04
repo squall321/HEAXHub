@@ -78,3 +78,10 @@ agents/windows/obj/
 app_workspaces/
 job_storage/
 backend/celerybeat-schedule
+# Build sentinels (run-time)
+integrations/*/.heaxhub_build_ok
+integrations/*/.venv/
+integrations/*/node_modules/
+integrations/*/.next/
+integrations/*/dist/
+var/integration_state/

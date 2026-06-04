@@ -151,48 +151,52 @@ def _resolve_visibility(manifest: dict[str, Any]) -> AppVisibility:
 # ---------------------------------------------------------------------------
 
 
-def _maybe_start_service(db: Session, *, app: App, version: AppVersion, stack: StackSpec) -> None:
-    """If the stack runs in service mode and no live instance exists, start one.
+def _build_and_launch(
+    db: Session,
+    *,
+    app: App,
+    version: AppVersion,
+    stack: StackSpec,
+    integration_dir: Path,
+    manifest: dict[str, Any],
+) -> None:
+    """Build + launch the integration for service-mode stacks.
 
-    Failures are logged but never raised — discovery must succeed even when
-    the service runtime isn't fully wired (e.g. Caddy down in dev).
+    Both steps are best-effort. Failures are logged with the slug so the
+    operator can inspect ``var/logs/integration_<slug>.log`` and the next
+    scan re-tries automatically.
     """
+    # ── build (idempotent, may take minutes on cold install) ──────────
+    try:
+        from app.services import integration_builder  # noqa: PLC0415
+        br = integration_builder.build(integration_dir, manifest=manifest)
+        if br.action == "failed":
+            logger.warning("build failed for %s: %s", app.id, br.error)
+            return
+        if br.action == "built":
+            logger.info("integration built: %s (stack=%s, %.1fs)",
+                        app.id, br.stack, br.duration_seconds)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("builder crashed for %s: %s", app.id, exc)
+        return
+
     if stack.launch_mode != "service":
         return
 
-    # Lazy import to keep the test path lightweight (service_manager pulls in
-    # httpx, secret_manager, port_allocator transitively).
+    # ── launch ────────────────────────────────────────────────────────
     try:
-        from app.db.models.service_instance import ServiceInstance  # noqa: PLC0415
-        from app.services import service_manager  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
-        logger.debug("service_manager not importable — skipping auto-start for %s", app.id)
-        return
-
-    existing = db.execute(
-        select(ServiceInstance)
-        .where(ServiceInstance.app_id == app.id)
-        .where(ServiceInstance.version_id == version.id)
-        .where(ServiceInstance.status != "stopped")
-    ).scalars().first()
-    if existing is not None:
-        logger.debug(
-            "service already running for app=%s version=%s instance=%s",
-            app.id, version.version, existing.id,
-        )
-        return
-
-    try:
-        instance = service_manager.start_service(db, app=app, version=version)
-        logger.info(
-            "auto-started service for app=%s version=%s instance=%s",
-            app.id, version.version, instance.id,
-        )
+        from app.services import integration_launcher  # noqa: PLC0415
+        lr = integration_launcher.launch(integration_dir, manifest=manifest, db=db)
+        if lr.action == "failed":
+            logger.warning("launch failed for %s: %s", app.id, lr.error)
+            return
+        if lr.action == "started":
+            logger.info("integration started: %s pid=%s port=%s",
+                        app.id, lr.pid, lr.port)
+        else:
+            logger.debug("integration %s: %s", app.id, lr.action)
     except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "auto-start failed for app=%s version=%s: %s",
-            app.id, version.version, exc,
-        )
+        logger.exception("launcher crashed for %s: %s", app.id, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -297,7 +301,10 @@ def _process_dir(
         db.commit()
         db.refresh(app)
         db.refresh(version)
-        _maybe_start_service(db, app=app, version=version, stack=stack)
+        _build_and_launch(
+            db, app=app, version=version, stack=stack,
+            integration_dir=integration_dir, manifest=manifest,
+        )
         return ScanResult(
             slug=slug,
             action="created" if created_app else "updated",

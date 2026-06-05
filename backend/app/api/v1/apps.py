@@ -162,15 +162,28 @@ def get_app(
         .scalars()
         .all()
     )
+    # Manifest resolution priority:
+    #   1. current AppVersion.manifest_snapshot (scanner writes this from
+    #      integrations/<slug>/.portal/manifest.yaml on every scan)
+    #   2. legacy overlay/.portal/manifest.yaml on disk
+    #   3. integrations/<slug>/.portal/manifest.yaml (manifest-only pivot)
     manifest: dict[str, Any] | None = None
-    overlay = Path(app.workspace_path) / "overlay" / ".portal" / "manifest.yaml"
-    if overlay.exists():
-        try:
-            import yaml
-
-            manifest = yaml.safe_load(overlay.read_text(encoding="utf-8"))
-        except Exception:
-            manifest = None
+    if app.current_version_id:
+        current_v = next((v for v in versions if v.id == app.current_version_id), None)
+        if current_v and isinstance(current_v.manifest_snapshot, dict):
+            manifest = current_v.manifest_snapshot
+    if manifest is None:
+        for candidate in (
+            Path(app.workspace_path) / "overlay" / ".portal" / "manifest.yaml",
+            Path(__file__).resolve().parents[3] / "integrations" / app.id.replace("_", "-") / ".portal" / "manifest.yaml",
+        ):
+            if candidate.exists():
+                try:
+                    import yaml
+                    manifest = yaml.safe_load(candidate.read_text(encoding="utf-8"))
+                    break
+                except Exception:
+                    continue
     base = AppDetailOut.model_validate(app)
     base = base.model_copy(
         update={
@@ -188,12 +201,20 @@ def get_app_manifest(
     user: CurrentUser,
 ) -> dict[str, Any]:
     permission_service.assert_view(db, app, user)
-    overlay = Path(app.workspace_path) / "overlay" / ".portal" / "manifest.yaml"
-    if not overlay.exists():
-        raise NotFoundError("Manifest not found")
-    import yaml
-
-    return yaml.safe_load(overlay.read_text(encoding="utf-8")) or {}
+    # Same priority as get_app: AppVersion.manifest_snapshot > overlay >
+    # integrations/<slug>/.portal/manifest.yaml.
+    if app.current_version_id:
+        v = db.get(AppVersion, app.current_version_id)
+        if v and isinstance(v.manifest_snapshot, dict):
+            return v.manifest_snapshot
+    for candidate in (
+        Path(app.workspace_path) / "overlay" / ".portal" / "manifest.yaml",
+        Path(__file__).resolve().parents[3] / "integrations" / app.id.replace("_", "-") / ".portal" / "manifest.yaml",
+    ):
+        if candidate.exists():
+            import yaml
+            return yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
+    raise NotFoundError("Manifest not found")
 
 
 @router.get("/{app_id}/versions", response_model=list[AppVersionOut])

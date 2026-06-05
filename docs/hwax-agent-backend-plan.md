@@ -284,7 +284,7 @@ integrations/<slug>/.portal/manifest.yaml  (schema_version 2 or 3)
               │       /api/v1/installers/{id}/download 절대 URL 로 채움
               │
               ▼
-   programs.json  ──► HWAXAgent (WinUI3 launcher)
+   programs.json  ──► HWAXAgent (Tauri 2 + Rust + React launcher)
                             │
                             ▼
                      install / audit / heartbeat

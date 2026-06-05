@@ -17,7 +17,7 @@
 | 실행 환경 | Windows 10 / 11 (워크스테이션) | Linux 서버 (Ubuntu LTS / RHEL 호환) |
 | 주요 책임 | 사용자측 launcher, 매니페스트 수집, 결과 업로드 | API 게이트웨이, 인증/세션, 잡 큐, 저장소, 감사 로그 |
 | 배포 주기 | 사용자 PC 기준 수동 / 자동 업데이트 | 서버 컨테이너 롤아웃 (CI/CD) |
-| 언어/스택 | C# (WinUI 3) + Rust 보조 모듈 | Python (FastAPI) + Celery + PostgreSQL |
+| 언어/스택 | Tauri 2 + Rust (core) + React/TypeScript (UI) | Python (FastAPI) + Celery + PostgreSQL |
 
 두 레포 사이의 통신은 다음 세 가지 표면(surface)에 한해서만 일어난다.
 

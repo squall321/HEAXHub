@@ -1,7 +1,20 @@
-# HWAXLauncher — Windows Desktop Launcher 기획서 (WinUI 3 안)
+# [DEPRECATED — 탈락안] HWAXLauncher — WinUI 3 기획서
 
-> HEAXHub 자매 프로젝트. Tauri 2 안(`docs/hwax-launcher-plan.md`)과 동일 범위·동일 깊이로,
-> **WinUI 3 + .NET 8 + Windows App SDK** 스택으로 재해석한 두 번째 기획서.
+> **DEPRECATED — 채택되지 않은 대안 (Rejected Alternative)**
+>
+> 본 문서는 결정 이력 보존 목적의 **탈락 후보**입니다.
+> 최종 채택안은 **Tauri 2 + React + Rust** 이며, 단일 진실 문서는:
+>
+> [hwax-launcher-plan-v2.md](hwax-launcher-plan-v2.md)
+>
+> 본 WinUI 3 안의 어떤 부분도 구현하지 마십시오.
+> WinUI 3 / WPF / .NET 8 / C# / XAML 스택을 절대 사용하지 마십시오.
+> 본 파일은 archive/ 로 이동 예정이며, 참조 시점에 따라 이미 이동되었을 수 있습니다.
+
+---
+
+HEAXHub 자매 프로젝트. Tauri 2 안(`docs/hwax-launcher-plan.md`)과 동일 범위·동일 깊이로,
+**WinUI 3 + .NET 8 + Windows App SDK** 스택으로 재해석한 두 번째 기획서.
 
 | 항목 | 내용 |
 |---|---|

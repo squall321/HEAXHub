@@ -1,6 +1,18 @@
-# HWAXLauncher — Windows Desktop Agent 기획서
+# [SUPERSEDED — 1차 안] HWAXLauncher — Windows Desktop Agent 기획서
 
-> HEAXHub 자매 프로젝트. 사내 사용자가 윈도우 데스크탑에서 HEAXHub 카탈로그를 검색·설치·실행하는 단일 진입점.
+> **SUPERSEDED — v2 가 최종안입니다 (Superseded by v2)**
+>
+> 본 문서는 결정 이력 보존 목적의 **이전 버전**입니다. 스택(Tauri 2)은 유지되지만
+> "패널 카탈로그 풀스크린" 방향에서 "트레이 상주 모듈 배포/관리 에이전트" 방향으로
+> 재설계되었습니다. 단일 진실 문서는:
+>
+> [hwax-launcher-plan-v2.md](hwax-launcher-plan-v2.md)
+>
+> 본 1차 안에만 있는 결정/구조는 구현하지 마십시오. v2 와 충돌 시 v2 우선.
+
+---
+
+HEAXHub 자매 프로젝트. 사내 사용자가 윈도우 데스크탑에서 HEAXHub 카탈로그를 검색·설치·실행하는 단일 진입점.
 
 | 항목 | 내용 |
 |---|---|

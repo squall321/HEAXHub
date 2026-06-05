@@ -1,0 +1,48 @@
+Bootstrap: docker
+From: python:3.12-slim
+
+%files
+    {{UPSTREAM_DIR}} /app
+
+%post
+    set -eux
+    # Need Node 20 + pnpm for the Vite/React frontend build, and Python
+    # tooling (already provided by python:3.12-slim) for the FastAPI backend.
+    apt-get update
+    apt-get install -y --no-install-recommends ca-certificates curl gnupg
+    # NodeSource pins Node 20.x — matches the nextjs.def base and works with
+    # corepack-prepared pnpm@9.15.0 (pnpm@latest needs Node 22+).
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y --no-install-recommends nodejs
+    rm -rf /var/lib/apt/lists/*
+
+    corepack enable
+    corepack prepare pnpm@9.15.0 --activate
+
+    # Stage 1: build the frontend → /app/frontend/dist/
+    cd /app/frontend
+    pnpm install --frozen-lockfile
+    pnpm build
+
+    # Stage 2: install the FastAPI backend (which serves /app/frontend/dist/
+    # via StaticFiles at /). Editable install so app.main:app stays importable
+    # the same way as the fastapi.def template.
+    cd /app/backend
+    pip install --no-cache-dir -e .
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export NODE_ENV=production
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    cd /app/backend
+    exec {{ENTRYPOINT}} "$@"
+
+%help
+    HEAXHub-managed FastAPI + Vite/React (TS) fullstack SIF.
+    Frontend built into /app/frontend/dist/ and mounted by FastAPI StaticFiles.
+    Backend uvicorn served at /api/* and (catch-all) /.
+    slug: {{SLUG}}
+    upstream commit: {{COMMIT}}
+    subpath: {{SUBPATH}}

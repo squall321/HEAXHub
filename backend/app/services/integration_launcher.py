@@ -570,6 +570,16 @@ def _sif_argv_for(
             "--port", str(port),
             "--root-path", base_path,
         ]
+    if stack_name == "fastapi_react":
+        # Same as fastapi: the SIF runscript cd's into /app/backend before
+        # exec, so app.main:app resolves. The Vite-built frontend at
+        # /app/frontend/dist is StaticFiles-mounted by main.py at "/".
+        return [
+            "uvicorn", "app.main:app",
+            "--host", "0.0.0.0",
+            "--port", str(port),
+            "--root-path", base_path,
+        ]
     if stack_name == "flask":
         callable_ = (
             (manifest.get("launch") or {}).get("entrypoint_override")

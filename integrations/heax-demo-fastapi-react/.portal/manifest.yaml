@@ -1,0 +1,21 @@
+schema_version: 2
+id: heax_demo_fastapi_react
+name: HEAXHub TS+Vite+React + FastAPI 풀스택 데모
+version: 0.1.0
+app_type: web_app
+execution_target: linux_runner
+description: |
+  TypeScript Vite+React 프론트엔드 + FastAPI 백엔드를 하나의 SIF로 묶은 풀스택 데모.
+  사용자는 브라우저에서 /apps/heax_demo_fastapi_react/ 로 접근하고, 프론트는 같은 origin 의
+  /api/tasks 로 JSON CRUD 한다.
+build:
+  stack: fastapi_react
+launch:
+  mode: service
+  upstream: http://localhost:{port}
+permissions:
+  visibility: company
+source:
+  type: git
+  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-fastapi-react.git
+  ref: main

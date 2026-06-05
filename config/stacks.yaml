@@ -63,6 +63,30 @@ stacks:
       - REST API + 간단한 HTML
     examples: [heax-demo-fastapi]
 
+  # ── 3b. FastAPI + Vite/React (TS) Fullstack Service ──────────────────
+  # 단일 SIF 에 Vite/React TS 프론트엔드(빌드 산출물)와 FastAPI 백엔드를
+  # 함께 패키징. FastAPI 가 /api/* JSON 엔드포인트를 노출하고, 빌드된
+  # frontend/dist/ 를 StaticFiles 로 / 에 마운트. Caddy 가 /apps/<slug>/
+  # → http://localhost:$PORT 로 프록시하므로 --root-path $ROOT_PATH 로
+  # 서브패스 하에서도 URL 생성이 정확하게 동작한다.
+  fastapi_react:
+    label: "FastAPI + Vite/React (TS) Fullstack Service"
+    app_type: web_app
+    execution_target: linux_runner
+    launch_mode: service
+    builder: python_venv
+    runtime: python_venv
+    python_version: "3.12"
+    node_version: "20"
+    install: pnpm install --frozen-lockfile && pnpm build && pip install -e ../backend
+    entrypoint: uvicorn app.main:app --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH
+    health_path: /api/health
+    base_path_env: ROOT_PATH
+    use_cases:
+      - 풀스택 TS 프론트엔드 + FastAPI 백엔드
+      - 단일 SIF로 SPA + JSON API 동시 제공
+    examples: [heax-demo-fastapi-react]
+
   # ── 4. Next.js / React SPA Service ───────────────────────────────────
   # 빌드 산출물(.next/) 을 node 가 서빙. 또는 정적 export.
   nextjs:

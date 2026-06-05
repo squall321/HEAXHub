@@ -117,6 +117,39 @@ def _build_static_route(
     }
 
 
+def _ensure_spa_last(client: httpx.Client) -> None:
+    """Guarantee ``spa-static`` is the LAST route so it never shadows an
+    ``app-*`` route. Idempotent: if spa-static is already last (or absent),
+    this is a no-op.
+
+    Root-cause for the demo-shadowing bug: PUT /id/<route_id> succeeds when an
+    entry with that @id already exists, but it preserves the entry's current
+    position. If a new ``app-*`` was inserted BEHIND ``spa-static`` (e.g.
+    because some previous step injected spa-static at the head), Caddy's
+    first-match wins and spa-static swallows everything under /apps/. Fixing
+    insertion order at every register call closes the race for good.
+    """
+    try:
+        resp = client.get(_admin_url("/config/apps/http/servers/srv0/routes"))
+        if resp.status_code != 200:
+            return
+        rs = resp.json() or []
+    except Exception:
+        return
+    rs = [r for r in rs if r is not None]
+    spa = [r for r in rs if r.get("@id") == "spa-static"]
+    if not spa or rs[-1].get("@id") == "spa-static":
+        return
+    others = [r for r in rs if r.get("@id") != "spa-static"]
+    try:
+        client.patch(
+            _admin_url("/config/apps/http/servers/srv0/routes"),
+            json=others + spa,
+        )
+    except Exception:
+        pass
+
+
 def _idempotent_put_or_insert(
     client: httpx.Client, route: dict[str, Any], route_id: str
 ) -> None:
@@ -124,9 +157,13 @@ def _idempotent_put_or_insert(
     409, etc.) fall back to DELETE-by-id + POST-at-head so a stale entry from a
     previous run can never block re-registration. Raises on the final POST
     failure so the caller can surface it.
+
+    After the write, always call :func:`_ensure_spa_last` so the SPA catch-all
+    never shadows an ``app-*`` route — adding one demo must not break another.
     """
     resp = client.put(_admin_url(f"/id/{route_id}"), json=route)
     if 200 <= resp.status_code < 300:
+        _ensure_spa_last(client)
         return
     # Anything other than 2xx — Caddy may already have a route with this @id
     # whose match/handle shape isn't PUT-replaceable, OR there's no route at
@@ -138,6 +175,7 @@ def _idempotent_put_or_insert(
         json=route,
     )
     resp.raise_for_status()
+    _ensure_spa_last(client)
 
 
 def register_app_route(

@@ -92,23 +92,48 @@ function AppDetailPage() {
             <span>업데이트 {formatDateTime(app.updated_at)}</span>
           </div>
           <div className="mt-6 flex gap-2">
-            {app.manifest?.launch?.mode === "url" && app.manifest?.launch?.url ? (
-              <Button asChild>
-                <a
-                  href={String(app.manifest.launch.url)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <ExternalLink className="mr-1.5 h-4 w-4" /> 열기
-                </a>
-              </Button>
-            ) : (
-              <Button asChild>
-                <Link to="/apps/$appId/run" params={{ appId }}>
-                  <Play className="mr-1.5 h-4 w-4" /> 실행
-                </Link>
-              </Button>
-            )}
+            {(() => {
+              const mode = app.manifest?.launch?.mode;
+              const url = app.manifest?.launch?.url;
+              // External URL → open the configured external URL in a new tab.
+              if (mode === "url" && url) {
+                return (
+                  <Button asChild>
+                    <a href={String(url)} target="_blank" rel="noreferrer">
+                      <ExternalLink className="mr-1.5 h-4 w-4" /> 열기
+                    </a>
+                  </Button>
+                );
+              }
+              // Service / proxy / static → the live page is served at
+              // /apps/{appId}/ via Caddy. Open it in a new tab so the demo's
+              // own UI takes over.
+              if (mode === "service" || mode === "proxy" || mode === "static") {
+                return (
+                  <Button asChild>
+                    <a
+                      href={`/apps/${appId}/`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink className="mr-1.5 h-4 w-4" /> 열기
+                    </a>
+                  </Button>
+                );
+              }
+              // iframe → inline embed below; no top button needed.
+              if (mode === "iframe") {
+                return null;
+              }
+              // job_runner (or unknown) → fill in inputs + submit a job.
+              return (
+                <Button asChild>
+                  <Link to="/apps/$appId/run" params={{ appId }}>
+                    <Play className="mr-1.5 h-4 w-4" /> 실행
+                  </Link>
+                </Button>
+              );
+            })()}
             <Button variant="outline" size="default">
               <Star className="mr-1.5 h-4 w-4" /> 즐겨찾기
             </Button>

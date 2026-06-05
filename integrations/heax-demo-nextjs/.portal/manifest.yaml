@@ -33,7 +33,7 @@ restart_policy:
   policy: on_failure
   max_retries: 3
 permissions:
-  visibility: team
+  visibility: company
 resources:
   cpu: 1
   memory_gb: 1

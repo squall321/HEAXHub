@@ -13,7 +13,7 @@ function RegisterPage() {
       <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-xl">계정 만들기</CardTitle>
-          <CardDescription>회사 이메일과 조직 정보를 입력하세요.</CardDescription>
+          <CardDescription>회사 이메일과 조직 정보 입력. 가입 즉시 사용 가능.</CardDescription>
         </CardHeader>
         <CardContent>
           <RegisterForm />

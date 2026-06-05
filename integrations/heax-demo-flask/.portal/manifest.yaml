@@ -21,3 +21,5 @@ source:
   type: git
   url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-flask.git
   ref: main
+permissions:
+  visibility: company

@@ -22,3 +22,5 @@ source:
   type: git
   url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-go.git
   ref: main
+permissions:
+  visibility: company

@@ -67,8 +67,8 @@ export function RegisterForm() {
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       await register(values);
-      toast.success("가입 신청이 접수되었습니다. 이메일 인증을 진행해 주세요.");
-      navigate({ to: "/verify-email" });
+      toast.success("가입 완료. 로그인하세요.");
+      navigate({ to: "/login" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "가입에 실패했습니다.");
     }
@@ -85,7 +85,7 @@ export function RegisterForm() {
               <FormItem>
                 <FormLabel>이름</FormLabel>
                 <FormControl>
-                  <Input placeholder="박정호" {...field} />
+                  <Input placeholder="박국진" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -98,7 +98,7 @@ export function RegisterForm() {
               <FormItem>
                 <FormLabel>조직 (그룹/랩)</FormLabel>
                 <FormControl>
-                  <Input placeholder="CAE자동화파트" {...field} />
+                  <Input placeholder="디지털트윈AI파트" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -113,7 +113,7 @@ export function RegisterForm() {
             <FormItem>
               <FormLabel>회사 이메일</FormLabel>
               <FormControl>
-                <Input type="email" placeholder="you@company.com" {...field} />
+                <Input type="email" placeholder="you@samsung.com" {...field} />
               </FormControl>
               <FormDescription>회사 도메인만 허용됩니다.</FormDescription>
               <FormMessage />

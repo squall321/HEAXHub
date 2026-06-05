@@ -12,7 +12,13 @@
       "Bash(curl -s -D - -o /dev/null \"http://127.0.0.1:4180/apps/heax_demo_nextjs/\")",
       "Bash(curl -sL -o /dev/null -w '%{http_code}' \"http://127.0.0.1:4180/apps/heax_demo_nextjs/\")",
       "Bash(curl -sL -o /dev/null -w '%{http_code} %{url_effective}\\\\n' \"http://localhost:4180/apps/heax_demo_nextjs/\")",
-      "Bash(curl -sL \"http://localhost:4180/apps/heax_demo_nextjs/\")"
+      "Bash(curl -sL \"http://localhost:4180/apps/heax_demo_nextjs/\")",
+      "Bash(bash /home/koopark/claude/HEAXHub/deploy/apptainer/start.sh)",
+      "Bash(PGPASSWORD=heaxhub psql -h 127.0.0.1 -p 5732 -U heaxhub -d heaxhub -c ' *)",
+      "Bash(curl -s -X POST http://localhost:4040/api/v1/auth/register -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(grep -nE \"\\\\\\\\s*실행|열기|Play|launch.mode|service|window\\\\\\\\.open|Open\" /home/koopark/claude/HEAXHub/frontend/src/routes/apps/\\\\$appId.tsx 2>&1 | head -30)",
+      "Read(//home/koopark/claude/HEAXHub/frontend/src/routes/apps/**)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:4180/apps/__TRACKED_VAR__/)"
     ]
   }
 }

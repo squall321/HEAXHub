@@ -82,28 +82,22 @@ def register_user(db: Session, payload: UserRegister) -> User:
     if existing is not None:
         raise ConflictError("Email already registered")
 
+    # Auto-approve every signup: no email verification, account active
+    # immediately. (Per operator directive — this is an internal portal,
+    # accounts are pre-vetted by ALLOWED_EMAIL_DOMAINS.)
     user = User(
         email=email,
         display_name=payload.display_name,
         organization=payload.organization,
         password_hash=hash_password(payload.password),
         auth_source=AuthSource.LOCAL,
-        status=UserStatus.PENDING_VERIFICATION,
+        status=UserStatus.ACTIVE,
         role=UserRole.USER,
-        email_verified=False,
+        email_verified=True,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-
-    token = create_email_verify_token(str(user.id))
-    try:
-        mail_service.send_verification_email(
-            to=user.email, display_name=user.display_name, token=token
-        )
-    except Exception:
-        logger.exception("verification mail failed; user may need re-send")
-
     return user
 
 
@@ -151,8 +145,14 @@ def login(db: Session, payload: LoginRequest) -> AuthTokens:
         raise UnauthorizedError("Invalid credentials")
     if user.status == UserStatus.DISABLED:
         raise UnauthorizedError("Account disabled")
+    # PENDING_VERIFICATION should no longer happen for fresh signups
+    # (auto-approve). Legacy unverified accounts get a one-time upgrade so
+    # they don't have to re-register; DISABLED is still blocked above.
     if user.status == UserStatus.PENDING_VERIFICATION or not user.email_verified:
-        raise UnauthorizedError("Email not verified")
+        user.status = UserStatus.ACTIVE
+        user.email_verified = True
+        db.commit()
+        db.refresh(user)
 
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()

@@ -28,7 +28,7 @@ resources:
   memory_gb: 1
   gpu: false
 permissions:
-  visibility: team
+  visibility: company
 requirements:
   os: linux
 source:

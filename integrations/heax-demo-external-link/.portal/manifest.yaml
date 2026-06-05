@@ -13,3 +13,5 @@ launch:
   url: https://github.com/squall321/HEAXHub
   open_in: new_tab
 description: 외부 URL 카탈로그 항목 — 새 탭으로 열림.
+permissions:
+  visibility: company

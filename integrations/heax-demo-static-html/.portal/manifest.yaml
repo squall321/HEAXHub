@@ -16,3 +16,5 @@ source:
   type: git
   url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-static-html.git
   ref: main
+permissions:
+  visibility: company

@@ -1,32 +1,30 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
 type Size = "sm" | "md" | "lg";
 
 // Full → collapsed mapping. Every char in FULL maps to either:
-//   - a slot in the final short form ("H","E","A","X","H","u","b" 그리고 공백 1개)
+//   - a slot in the final short form ("HEAXHub" — no spaces)
 //   - or fades out as a "filler" character.
 // The trick: we render the full string, then animate every filler char's
 // width → 0 + opacity → 0, leaving exactly the short form behind.
-const FULL = "Hardware Engineering AI Transformation Hub";
-//             ↑           ↑          ↑↑ ↑              ↑↑↑
-//             H           E          AX (with space)   Hub
-// Char positions kept in the final short form:
+const FULL = "Hardware Engineering Team AI Transformation Hub";
+//             ↑           ↑           ↑↑              ↑↑↑
+//             H           E           AX(I→X)         Hub
+// Char positions kept in the final short form (no spaces between):
 //   0  'H' (Hardware)
-//   9  'E' (Engineering)  — actual 9 (after "Hardware "+space at 8)
-//   21 'A' (AI)
-//   22 'I' → rendered as 'X' via OVERRIDES
-//   23 ' ' (between "AI" and "Transformation")
-//   39 'H' (Hub)
-//   40 'u'
-//   41 'b'
-const SHORT_CHARS = new Set([0, 9, 21, 22, 23, 39, 40, 41]);
+//   9  'E' (Engineering)
+//   26 'A' (AI)
+//   27 'I' → rendered as 'X' via OVERRIDES
+//   44 'H' (Hub)
+//   45 'u'
+//   46 'b'
+const SHORT_CHARS = new Set([0, 9, 26, 27, 44, 45, 46]);
 
-// Character override: index 22 displays "X" not "I".
-const OVERRIDES: Record<number, string> = { 22: "X" };
+// Character override: index 27 displays "X" not "I".
+const OVERRIDES: Record<number, string> = { 27: "X" };
 // Indices that should render with the amber accent color.
-const ACCENT_INDICES = new Set([21, 22]);
+const ACCENT_INDICES = new Set([26, 27]);
 
 interface BrandLogoProps {
   /** Size preset. */
@@ -52,21 +50,10 @@ export function BrandLogo({
   tone = "dark",
 }: BrandLogoProps) {
   const prefersReducedMotion = useReducedMotion();
-  const [hasPlayed, setHasPlayed] = useState(true);
-
-  useEffect(() => {
-    if (staticShort) return;
-    try {
-      const key = "heaxhub.brandlogo.played";
-      const played = sessionStorage.getItem(key) === "1";
-      setHasPlayed(played);
-      if (!played) sessionStorage.setItem(key, "1");
-    } catch {
-      setHasPlayed(false);
-    }
-  }, [staticShort]);
-
-  const shouldAnimate = !staticShort && !prefersReducedMotion && !hasPlayed;
+  // Play the collapse animation EVERY page entry (no sessionStorage gate) —
+  // the user wants to see the full "Hardware Engineering Team AI Transformation
+  // Hub" sweep to "HEAXHub" each time, not just the first visit.
+  const shouldAnimate = !staticShort && !prefersReducedMotion;
 
   const toneClass =
     tone === "light"
@@ -82,7 +69,7 @@ export function BrandLogo({
           toneClass,
           className,
         )}
-        aria-label="HEAXHub — Hardware Engineering AI Transformation Hub"
+        aria-label="HEAXHub — Hardware Engineering Team AI Transformation Hub"
       >
         <span>HE</span>
         <span className="text-amber-300">AX</span>
@@ -99,7 +86,7 @@ export function BrandLogo({
         toneClass,
         className,
       )}
-      aria-label="HEAXHub — Hardware Engineering AI Transformation Hub"
+      aria-label="HEAXHub — Hardware Engineering Team AI Transformation Hub"
       initial={false}
     >
       {FULL.split("").map((ch, i) => {

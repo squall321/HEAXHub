@@ -51,7 +51,7 @@ outputs:
   path: output/result.json
   description: row_count, file_size_bytes, elapsed_ms 를 담은 결과 JSON
 permissions:
-  visibility: team
+  visibility: company
 resources:
   cpu: 1
   memory_gb: 1

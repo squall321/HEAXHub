@@ -52,18 +52,37 @@ class LocalRunner(BaseRunner):
         Manifest-driven hooks (env_required, license, gpu) are wrapped in a
         :class:`ResourceContext` so reservations get released even if the
         subprocess crashes.
+
+        SIF dispatch: if var/sifs/<slug>.sif exists for this app, the job is
+        executed inside that SIF via apptainer run (the runscript baked into
+        the .def template carries the entrypoint). Falls back to the legacy
+        bash overlay/run.sh path otherwise.
         """
+        from app.services import apt_runner, managed_workspaces  # noqa: PLC0415
+
         storage = Path(job.storage_path)
         workspace = Path(self._workspace_for_app(job.app_id))
 
-        run_script = workspace / "overlay" / ".portal" / "run.sh"
-        if not run_script.exists():
-            # Fallback: try upstream run.sh
-            run_script = workspace / "upstream" / "run.sh"
-        if not run_script.exists():
-            raise FileNotFoundError(
-                f"No run.sh found at overlay/.portal/run.sh or upstream/run.sh for app {job.app_id}"
-            )
+        # SIF lookup: the App.id is the canonical (heax_demo_*) form; the SIF
+        # is keyed by the integrations/ dirname (heax-demo-*). Try both.
+        sif_path: Path | None = None
+        for candidate in (
+            managed_workspaces.sif_path_for(job.app_id),
+            managed_workspaces.sif_path_for(job.app_id.replace("_", "-")),
+        ):
+            if candidate.is_file():
+                sif_path = candidate
+                break
+
+        run_script: Path | None = None
+        if sif_path is None:
+            run_script = workspace / "overlay" / ".portal" / "run.sh"
+            if not run_script.exists():
+                run_script = workspace / "upstream" / "run.sh"
+            if not run_script.exists():
+                raise FileNotFoundError(
+                    f"No run.sh found at overlay/.portal/run.sh or upstream/run.sh for app {job.app_id}"
+                )
 
         with ResourceContext(job=job) as ctx:
             base_env = os.environ.copy()
@@ -80,13 +99,29 @@ class LocalRunner(BaseRunner):
 
             env = ctx.env(base_env)
 
-            cmd = [
-                "bash",
-                str(run_script),
-                str(storage / "input"),
-                str(storage / "output"),
-                str(storage / "params.json"),
-            ]
+            if sif_path is not None:
+                # apptainer run <sif> <argv...> — the .def %runscript handles
+                # the actual entrypoint (e.g. python -m heax_demo_cli.cli,
+                # ./bin/heax-demo-cpp, Rscript run.R). We bind the host job
+                # storage in as /job so the script can read /job/input and
+                # write /job/output regardless of the SIF's internal layout.
+                bind_arg = f"{storage}:/job"
+                cmd = [
+                    apt_runner.local_apptainer_path(),
+                    "run",
+                    "--bind", bind_arg,
+                    "--pwd", "/app",
+                    str(sif_path),
+                    "/job/input", "/job/output", "/job/params.json",
+                ]
+            else:
+                cmd = [
+                    "bash",
+                    str(run_script),
+                    str(storage / "input"),
+                    str(storage / "output"),
+                    str(storage / "params.json"),
+                ]
 
             log_file = storage / "logs" / "stdout.log"
             log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -97,15 +132,24 @@ class LocalRunner(BaseRunner):
             # Pull resource limits from the manifest (best-effort; Linux only).
             limits = ctx.manifest.get("resources") if isinstance(ctx.manifest, dict) else None
 
+            run_cwd = str(storage) if sif_path is not None else str(workspace / "upstream")
+
+            # apptainer is a Go binary and creates many threads; manifest-derived
+            # ulimits (NPROC/AS in particular) trip pthread_create even before
+            # the script inside the SIF starts. Skip preexec rlimits in SIF mode
+            # — the container's own cgroup/ns isolation is the right place to
+            # constrain runtime resources, not host rlimits on the launcher.
+            preexec = None if sif_path is not None else build_preexec(limits)
+
             with log_file.open("ab") as log_fp:
                 proc = subprocess.Popen(  # noqa: S603
                     cmd,
                     env=env,
-                    cwd=str(workspace / "upstream"),
+                    cwd=run_cwd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     bufsize=0,
-                    preexec_fn=build_preexec(limits),
+                    preexec_fn=preexec,
                 )
                 with _LOCK:
                     _RUNNING_PROCESSES[job.id] = proc

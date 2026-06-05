@@ -104,6 +104,7 @@ export interface Manifest {
       | "url"
       | "iframe"
       | "proxy"
+      | "static"
       | "remote_agent"
       | "local_protocol";
     command?: string;

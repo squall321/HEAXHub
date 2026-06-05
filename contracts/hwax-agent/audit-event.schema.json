@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://heaxhub.local/contracts/hwax-agent/audit-event.schema.json",
+  "title": "HWAXAgentAuditEvent",
+  "description": "Single audit event emitted by the agent. The hub stores these in the existing audit_log table under actor='system:hwax-agent' (see backend/app/db/models/audit_log.py). The 'kind' enum is intentionally disjoint from install-report.status — kind classifies the event, status classifies the terminal outcome of one install attempt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent_id", "kind", "occurred_at", "severity"],
+  "properties": {
+    "agent_id": { "type": "string", "format": "uuid" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "enrollment",
+        "install",
+        "uninstall",
+        "run",
+        "stop",
+        "rollback",
+        "av_block",
+        "sha256_mismatch",
+        "download_failed",
+        "policy_denied",
+        "heartbeat"
+      ],
+      "description": "Event class. Note: 'install' here means 'an install was attempted/observed'; the granular outcome (success|failed|...) belongs in install-report.status."
+    },
+    "app_id": {
+      "type": ["string", "null"],
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "version": {
+      "type": ["string", "null"],
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "warn", "error"]
+    },
+    "payload": {
+      "type": "object",
+      "description": "Free-form, kind-specific context (e.g. AV product name for av_block, sha256 actual/expected for sha256_mismatch). Hub stores as JSONB and does not interpret beyond logging."
+    },
+    "client_meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "os": { "type": "string", "examples": ["windows"] },
+        "os_version": { "type": "string", "examples": ["10.0.19045"] },
+        "agent_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+        "hostname": { "type": "string", "maxLength": 256 }
+      }
+    }
+  }
+}

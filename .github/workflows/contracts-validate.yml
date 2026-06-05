@@ -1,0 +1,70 @@
+name: contracts-validate
+
+# HWAXAgent 와 공유하는 contracts/schemas 변경을 PR 단계에서 검증.
+# 협업 규약: docs/hwax-agent-pr-protocol.md
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - 'schemas/**'
+      - '.github/workflows/contracts-validate.yml'
+      - '.github/workflows/scripts/**'
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - 'schemas/**'
+
+jobs:
+  validate:
+    name: Validate contracts and schemas
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install validators
+        run: |
+          python -m pip install --upgrade pip
+          pip install jsonschema==4.* openapi-spec-validator==0.7.* pyyaml==6.*
+
+      - name: Validate JSON schemas
+        run: python3 .github/workflows/scripts/validate-contracts.py
+
+      - name: Validate OpenAPI specs
+        run: python3 .github/workflows/scripts/validate-openapi.py
+
+      - name: Require CHANGELOG bump when contracts change
+        # bypass-contracts 라벨이 붙은 PR 은 CHANGELOG 강제 검사를 건너뜁니다.
+        # 협업 규약 docs/hwax-agent-pr-protocol.md §7 참조.
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'bypass-contracts')
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          changed=$(git diff --name-only "$base_sha" "$head_sha")
+          echo "Changed files:"
+          echo "$changed"
+          touched_contracts=$(echo "$changed" | grep -E '^(contracts|schemas)/' || true)
+          if [ -z "$touched_contracts" ]; then
+            echo "No contracts/schemas changes; CHANGELOG check skipped."
+            exit 0
+          fi
+          if echo "$changed" | grep -qE '^contracts/CHANGELOG\.md$'; then
+            echo "contracts/CHANGELOG.md updated."
+            exit 0
+          fi
+          if echo "$changed" | grep -qE '^schemas/CHANGELOG\.md$'; then
+            echo "schemas/CHANGELOG.md updated."
+            exit 0
+          fi
+          echo "::error::contracts/ 또는 schemas/ 변경에 CHANGELOG bump 가 누락되었습니다. 협업 규약 §6 참고."
+          exit 1

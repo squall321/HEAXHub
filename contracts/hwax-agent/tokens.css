@@ -1,0 +1,19 @@
+/*
+ * HWAXAgent design tokens — dark base + amber accent.
+ * Consumed by:
+ *   - HEAXHub admin UI (HWAXAgent admin pages)
+ *   - HWAXAgent WinUI3 launcher (parsed into XAML resource dictionary at build)
+ * Keep this file the single source of truth for the launcher palette.
+ */
+:root {
+  --hwax-bg-base: #0a0a0a;
+  --hwax-bg-elevated: #161618;
+  --hwax-accent: #f59e0b;
+  --hwax-accent-hover: #fbbf24;
+  --hwax-text-primary: #fafafa;
+  --hwax-text-muted: #a3a3a3;
+  --hwax-border: #27272a;
+  --hwax-radius-md: 8px;
+  --hwax-radius-lg: 12px;
+  --hwax-font: 'Pretendard Variable', system-ui, sans-serif;
+}

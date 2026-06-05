@@ -1,0 +1,25 @@
+# HEAXHub CODEOWNERS
+# 협업 규약: docs/hwax-agent-pr-protocol.md
+#
+# 매칭은 마지막 일치 규칙이 우선합니다.
+
+# 기본값: 별도 지정 없는 모든 경로는 koopark 가 1차 리뷰어
+*                                   @koopark
+
+# HWAXAgent 와 공유하는 계약(contracts) — 변경 시 반드시 검토
+/contracts/hwax-agent/              @koopark
+/contracts/hwax-agent/*             @koopark
+/contracts/SECURITY.md              @koopark
+/contracts/CHANGELOG.md             @koopark
+/contracts/VERSION                  @koopark
+
+# HWAXAgent 관련 문서
+/docs/hwax-agent-*.md               @koopark
+
+# Schemas (manifest, result 등) — contracts 와 함께 관리
+/schemas/manifest.schema.json       @koopark
+/schemas/manifest.schema.v2.json    @koopark
+/schemas/result.schema.json         @koopark
+
+# 워크플로우 변경은 보수적으로 검토
+/.github/workflows/                 @koopark

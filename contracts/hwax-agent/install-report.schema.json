@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://heaxhub.local/contracts/hwax-agent/install-report.schema.json",
+  "title": "HWAXAgentInstallReport",
+  "description": "POSTed by the agent to /api/v1/agents/installs once an install attempt completes (success or failure). The hub persists each report to a dedicated install_reports table (Phase 2 migration) so admins can see per-agent install health. Status is mutually exclusive with audit-event.kind — status describes the terminal outcome of one install, kind in audit-event describes an event class.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent_id",
+    "app_id",
+    "version",
+    "status",
+    "started_at",
+    "finished_at"
+  ],
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "WindowsAgent.id — must match the subject (sub) of the access_token used."
+    },
+    "app_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["success", "failed", "rolled_back", "partial"],
+      "description": "Terminal status of this single install attempt. 'partial' = installer exited 0 but post_install_check failed and rollback was not requested."
+    },
+    "exit_code": {
+      "type": ["integer", "null"],
+      "minimum": -2147483648,
+      "maximum": 2147483647
+    },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "sha256_verified": {
+      "type": "boolean",
+      "description": "True iff the agent computed SHA-256 over the downloaded bytes and it matched the manifest. The hub treats false as a hard failure even if the rest of the install succeeded."
+    },
+    "error": {
+      "type": ["string", "null"],
+      "maxLength": 2048,
+      "description": "Short, human-readable error summary. Long traces should go to log_excerpt."
+    },
+    "log_excerpt": {
+      "type": ["string", "null"],
+      "maxLength": 16384,
+      "description": "Last N KB of installer stdout/stderr. The hub truncates above 16 KB."
+    },
+    "previous_version": {
+      "type": ["string", "null"],
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "description": "Version the agent rolled back TO (only meaningful when status=rolled_back)."
+    }
+  }
+}

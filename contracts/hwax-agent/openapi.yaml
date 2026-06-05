@@ -1,0 +1,238 @@
+openapi: 3.1.0
+info:
+  title: HEAXHub HWAXAgent API
+  version: 0.2.0
+  description: |
+    The HWAX (Heax Windows Agent eXecutor) surface — endpoints that the
+    HWAXAgent (Windows tray launcher) calls against HEAXHub. All endpoints
+    except /enroll require a bearer access_token whose audience claim is
+    "hwax-agent" and whose subject (sub) is the WindowsAgent.id (UUID).
+
+    All launcher endpoints live under the prefix /api/v1/launcher-agents/
+    to avoid colliding with the pre-existing service-agent (polling)
+    endpoints under /api/v1/agents/, which use a different request body
+    (e.g. POST /api/v1/agents/heartbeat takes { status, agent_version? }).
+    Do not register launcher routes on the bare /api/v1/agents/ prefix.
+
+    Token lifecycle (see backend/app/services/agent_service.py):
+      - enrollment_token : single-use, issued by an operator from the admin UI
+      - access_token     : 3600 s, audience=hwax-agent
+      - refresh_token    : 2592000 s (30 d), rotated on every refresh
+                           stored in a sibling table `agent_refresh_tokens`,
+                           NOT in the existing `refresh_tokens` table.
+
+    This document is the source of truth for the agent's HTTP client and
+    is consumed by the build pipeline to regenerate the C# DTOs in
+    HWAXAgent/src/Heax.Agent.Api.
+servers:
+  - url: https://heaxhub.local
+    description: On-prem deployment
+
+tags:
+  - name: hwax-agent
+    description: Endpoints called by the HWAXAgent Windows launcher.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/launcher-agents/enroll:
+    post:
+      tags: [hwax-agent]
+      summary: Exchange an enrollment token for a device JWT pair.
+      security: []  # enrollment is the bootstrap, no bearer yet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enrollment_token]
+              properties:
+                enrollment_token:
+                  type: string
+                  description: Single-use token issued by an operator via POST /api/v1/admin/agents.
+                hostname:
+                  type: string
+                agent_version:
+                  type: string
+      responses:
+        "200":
+          description: Enrollment accepted; agent identity established.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentResult"
+        "401":
+          description: enrollment_token unknown, expired, or already redeemed.
+
+  /api/v1/launcher-agents/refresh:
+    post:
+      tags: [hwax-agent]
+      summary: Rotate the refresh_token and obtain a fresh access_token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: New access_token (and rotated refresh_token).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResult"
+
+  /api/v1/launcher-agents/manifest:
+    get:
+      tags: [hwax-agent]
+      summary: Get the program catalog visible to this agent.
+      responses:
+        "200":
+          description: Manifest payload conforming to HWAXAgentManifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HWAXAgentManifest"
+
+  /api/v1/launcher-agents/installs:
+    post:
+      tags: [hwax-agent]
+      summary: Report the outcome of one install attempt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HWAXAgentInstallReport"
+      responses:
+        "202":
+          description: Report accepted.
+
+  /api/v1/launcher-agents/audit:
+    post:
+      tags: [hwax-agent]
+      summary: Submit a single audit event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HWAXAgentAuditEvent"
+      responses:
+        "202":
+          description: Audit event accepted.
+
+  /api/v1/launcher-agents/heartbeat:
+    post:
+      tags: [hwax-agent]
+      summary: 30-minute alive ping; also updates WindowsAgent.last_seen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [agent_version]
+              properties:
+                agent_version:
+                  type: string
+                  pattern: "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
+                hostname:
+                  type: string
+                modules:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [id, version]
+                    properties:
+                      id:
+                        type: string
+                      version:
+                        type: string
+      responses:
+        "204":
+          description: Heartbeat recorded; no body.
+
+  /api/v1/installers/{id}/download:
+    get:
+      tags: [hwax-agent]
+      summary: Download the installer payload for an InstallerPackage row.
+      description: |
+        Returns 302 to a presigned object-storage URL. The agent MUST follow the
+        redirect and then verify SHA-256 against manifest.programs[].package.sha256.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "302":
+          description: Redirect to presigned URL.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "404":
+          description: InstallerPackage not found or not visible to this agent.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    EnrollmentResult:
+      type: object
+      additionalProperties: false
+      required: [agent_id, access_token, refresh_token, expires_in]
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Lifetime of access_token, in seconds.
+          example: 3600
+
+    RefreshResult:
+      type: object
+      additionalProperties: false
+      required: [access_token, expires_in]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+          description: Present when rotation occurred (always, in Phase 1).
+        expires_in:
+          type: integer
+          example: 3600
+
+    # The three large schemas below are imported by $ref from sibling
+    # files. JSON Schema Draft 2020-12 is OpenAPI 3.1 compatible.
+    HWAXAgentManifest:
+      $ref: "./manifest.schema.json"
+    HWAXAgentInstallReport:
+      $ref: "./install-report.schema.json"
+    HWAXAgentAuditEvent:
+      $ref: "./audit-event.schema.json"

@@ -160,7 +160,7 @@ function useHealth(): HealthSnapshot {
 
   useEffect(() => {
     let cancelled = false;
-    const base = import.meta.env.VITE_API_BASE ?? "/api/v1";
+    const base = import.meta.env.VITE_API_BASE ?? `${import.meta.env.BASE_URL}api/v1`;
     // Backend exposes /health at the app root (not under /api/v1). Try both.
     const candidates = ["/health", `${base}/health`];
 

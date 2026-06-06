@@ -20,7 +20,7 @@ export const jobsApi = {
       `/jobs/${jobId}/files`,
     ),
   fileUrl: (jobId: string, path: string) =>
-    `${import.meta.env.VITE_API_BASE ?? "/api/v1"}/jobs/${jobId}/files/${encodeURIComponent(path)}`,
+    `${import.meta.env.VITE_API_BASE ?? `${import.meta.env.BASE_URL}api/v1`}/jobs/${jobId}/files/${encodeURIComponent(path)}`,
   cancel: (jobId: string) => api.post<{ ok: true }>(`/jobs/${jobId}/cancel`),
   rerun: (jobId: string) => api.post<{ job_id: string }>(`/jobs/${jobId}/rerun`),
 };

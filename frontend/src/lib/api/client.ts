@@ -1,7 +1,9 @@
 import { useAuthStore } from "@/lib/auth/store";
 import { ApiError } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
+// Default follows the app's base path so it works both standalone (base "/") and behind the
+// HWAX portal sub-path (base "/heax-hub/" → "/heax-hub/api/v1"). Override with VITE_API_BASE.
+const API_BASE = import.meta.env.VITE_API_BASE ?? `${import.meta.env.BASE_URL}api/v1`;
 
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;

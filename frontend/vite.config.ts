@@ -3,7 +3,15 @@ import { TanStackRouterVite } from "@tanstack/router-vite-plugin";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+// Served at the root by default; behind the HWAX portal it's reverse-proxied under a sub-path,
+// so set VITE_BASE_PATH=/heax-hub/ (build AND dev) → assets/router/api all sit under it.
+const BASE = process.env.VITE_BASE_PATH || "/";
+const API_PREFIX = `${BASE}api`.replace(/\/{2,}/g, "/");
+const WS_PREFIX = `${BASE}ws`.replace(/\/{2,}/g, "/");
+const stripBase = (p: string) => p.replace(new RegExp(`^${BASE}`), "/");
+
 export default defineConfig({
+  base: BASE,
   plugins: [
     TanStackRouterVite({
       routesDirectory: "./src/routes",
@@ -22,14 +30,18 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      "/api": {
+      // Match the base-prefixed paths (e.g. /heax-hub/api) and strip the base back to /api|/ws
+      // before forwarding, so the backend (which serves /api, /ws) is reached either way.
+      [API_PREFIX]: {
         target: "http://localhost:4040",
         changeOrigin: true,
+        rewrite: stripBase,
       },
-      "/ws": {
+      [WS_PREFIX]: {
         target: "ws://localhost:4040",
         ws: true,
         changeOrigin: true,
+        rewrite: stripBase,
       },
     },
   },

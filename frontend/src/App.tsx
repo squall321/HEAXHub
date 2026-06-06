@@ -21,6 +21,9 @@ const queryClient = new QueryClient({
 
 const router = createRouter({
   routeTree,
+  // Behind the HWAX portal the app is served under a sub-path; BASE_URL is "/" standalone or
+  // "/heax-hub/" there. TanStack wants the basepath WITHOUT the trailing slash.
+  basepath: import.meta.env.BASE_URL.replace(/\/$/, "") || "/",
   defaultPreload: "intent",
   context: { queryClient },
 });

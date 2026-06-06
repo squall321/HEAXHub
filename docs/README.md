@@ -29,8 +29,8 @@
 
 | 문서 | 상태 | 비고 |
 | --- | --- | --- |
-| [hwax-launcher-plan.md](hwax-launcher-plan.md) | **SUPERSEDED** | 1차 Tauri 안. "패널 카탈로그" 방향. v2 로 재초점화됨. |
-| [hwax-launcher-plan-winui3.md](hwax-launcher-plan-winui3.md) | **DEPRECATED** | WinUI 3 대안. 결정 과정 비교용으로만 보존. 구현 금지. |
+| [archive/hwax-launcher-plan-v1-superseded.md](archive/hwax-launcher-plan-v1-superseded.md) | **SUPERSEDED** | 1차 Tauri 안. "패널 카탈로그" 방향. v2 로 재초점화됨. |
+| [archive/hwax-launcher-plan-winui3-deprecated.md](archive/hwax-launcher-plan-winui3-deprecated.md) | **DEPRECATED** | WinUI 3 대안. 결정 과정 비교용으로만 보존. 구현 금지. |
 
 > 위 두 문서 안의 어떤 결정도 v2 와 충돌 시 **v2 우선**. 헷갈리면 항상 v2.
 

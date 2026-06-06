@@ -8,7 +8,7 @@
 
 ## §1. 결정 요약 (5줄)
 
-1. HWAXAgent 는 별도 GitHub 레포에서 Windows 전용으로 개발한다. **Tauri 2 (Rust core) + React + TypeScript** 가 확정된 단일 스택이다. WinUI 3 / WPF / .NET 8 / C# / XAML 안은 명시적으로 탈락 (`docs/hwax-launcher-plan-winui3.md` DEPRECATED 배너 참고).
+1. HWAXAgent 는 별도 GitHub 레포에서 Windows 전용으로 개발한다. **Tauri 2 (Rust core) + React + TypeScript** 가 확정된 단일 스택이다. WinUI 3 / WPF / .NET 8 / C# / XAML 안은 명시적으로 탈락 (`docs/archive/hwax-launcher-plan-winui3-deprecated.md` DEPRECATED 배너 참고).
 2. HEAXHub(이 레포) 는 서버 통합 인터페이스 — REST/WS, DB, 매니페스트, installer URL 발급 — 만 책임진다.
 3. 본 Linux 환경에서는 윈도우 측 코드·스크립트(Tauri config, Cargo.toml, GitHub Actions Windows runner yml, .ps1 등)를 만들지 않는다. 윈도우 PC 에서 직접 부트스트랩 한다.
 4. 두 레포는 `contracts/hwax-agent/` 단일 디렉터리(이 HEAXHub 레포가 소유)를 통해 계약 — JSON Schema, OpenAPI fragment, design token — 만 공유한다.

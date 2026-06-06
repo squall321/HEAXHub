@@ -4,8 +4,8 @@
 >
 > 스택: **Tauri 2 (Rust core) + React 18 + TypeScript + Vite + Tailwind**.
 > WinUI 3 / WPF / .NET 8 / C# / XAML 안은 **명시적으로 탈락**했습니다
-> ([hwax-launcher-plan-winui3.md](hwax-launcher-plan-winui3.md) 참고 — 결정 이력 보존용).
-> 1차 안 [hwax-launcher-plan.md](hwax-launcher-plan.md) 는 "패널 카탈로그" 방향이라
+> ([archive/hwax-launcher-plan-winui3-deprecated.md](archive/hwax-launcher-plan-winui3-deprecated.md) 참고 — 결정 이력 보존용).
+> 1차 안 [archive/hwax-launcher-plan-v1-superseded.md](archive/hwax-launcher-plan-v1-superseded.md) 는 "패널 카탈로그" 방향이라
 > v2 로 superseded 되었습니다. v2 와 충돌 시 v2 우선.
 
 HEAXHub 자매 프로젝트. 개발실 내부 사용자가 윈도우 데스크탑에서 사내 CAE/전처리/플러그인 모듈을 **트레이 상주 에이전트**를 통해 받고, 검증하고, 실행하는 단일 진입점.

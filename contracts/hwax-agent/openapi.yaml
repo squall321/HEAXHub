@@ -21,9 +21,10 @@ info:
                            stored in a sibling table `agent_refresh_tokens`,
                            NOT in the existing `refresh_tokens` table.
 
-    This document is the source of truth for the agent's HTTP client and
-    is consumed by the build pipeline to regenerate the C# DTOs in
-    HWAXAgent/src/Heax.Agent.Api.
+    This document is the source of truth for the agent's HTTP client — a Rust
+    `reqwest` client in apps/agent/src-tauri plus TypeScript types, both derived
+    from these JSON Schemas. (The agent is Tauri 2 + Rust + React; there is no
+    C#/.NET/WinUI3 — see docs/hwax-launcher-plan-v2.md.)
 servers:
   - url: https://heaxhub.local
     description: On-prem deployment
@@ -189,6 +190,34 @@ paths:
         "404":
           description: InstallerPackage not found or not visible to this agent.
 
+  /api/v1/installers/{app_id}/latest:
+    get:
+      tags: [hwax-agent]
+      summary: Tauri updater feed for the HWAX Agent itself (v2 plan §18).
+      description: |
+        The static-JSON updater manifest the agent's tauri-plugin-updater polls
+        (its endpoint + Ed25519 pubkey are pinned in tauri.conf.json). The agent
+        verifies the per-platform `signature` against its embedded pubkey before
+        installing. Used with app_id = "hwax-agent". NOT bearer-auth'd: the feed
+        is public and integrity comes from the signature, not the transport.
+      security: []
+      parameters:
+        - in: path
+          name: app_id
+          required: true
+          schema:
+            type: string
+            example: hwax-agent
+      responses:
+        "200":
+          description: Latest build available (Tauri v2 static-JSON shape).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TauriUpdaterManifest"
+        "204":
+          description: No update available — the agent is already current.
+
 components:
   securitySchemes:
     bearerAuth:
@@ -236,3 +265,31 @@ components:
       $ref: "./install-report.schema.json"
     HWAXAgentAuditEvent:
       $ref: "./audit-event.schema.json"
+
+    TauriUpdaterManifest:
+      type: object
+      additionalProperties: false
+      required: [version, platforms]
+      properties:
+        version:
+          type: string
+          description: SemVer of the latest published agent build.
+        notes:
+          type: string
+        pub_date:
+          type: string
+          format: date-time
+        platforms:
+          type: object
+          description: Keyed by Tauri target triple, e.g. "windows-x86_64".
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            required: [signature, url]
+            properties:
+              signature:
+                type: string
+                description: Base64 Ed25519 (minisign) signature of the installer bytes.
+              url:
+                type: string
+                format: uri

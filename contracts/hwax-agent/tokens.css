@@ -2,7 +2,7 @@
  * HWAXAgent design tokens — dark base + amber accent.
  * Consumed by:
  *   - HEAXHub admin UI (HWAXAgent admin pages)
- *   - HWAXAgent WinUI3 launcher (parsed into XAML resource dictionary at build)
+ *   - HWAXAgent launcher (Tauri 2 + React) — mirrored into Tailwind/CSS tokens at build
  * Keep this file the single source of truth for the launcher palette.
  */
 :root {

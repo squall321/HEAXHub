@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://heaxhub.local/contracts/hwax-agent/install-report.schema.json",
   "title": "HWAXAgentInstallReport",
-  "description": "POSTed by the agent to /api/v1/agents/installs once an install attempt completes (success or failure). The hub persists each report to a dedicated install_reports table (Phase 2 migration) so admins can see per-agent install health. Status is mutually exclusive with audit-event.kind — status describes the terminal outcome of one install, kind in audit-event describes an event class.",
+  "description": "POSTed by the agent to /api/v1/launcher-agents/installs once an install attempt completes (success or failure). The hub persists each report to a dedicated install_reports table (Phase 2 migration) so admins can see per-agent install health. Status is mutually exclusive with audit-event.kind — status describes the terminal outcome of one install, kind in audit-event describes an event class.",
   "type": "object",
   "additionalProperties": false,
   "required": [

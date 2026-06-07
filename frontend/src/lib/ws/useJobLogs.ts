@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/lib/auth/store";
 
-const WS_BASE = import.meta.env.VITE_WS_BASE ?? "/ws";
+// Follow the app's base path so the WS URL sits under the portal sub-path too
+// ("/ws" standalone, "/heax-hub/ws" behind the portal). Override with VITE_WS_BASE.
+const WS_BASE = import.meta.env.VITE_WS_BASE ?? `${import.meta.env.BASE_URL}ws`;
 
 export interface UseJobLogsResult {
   lines: string[];

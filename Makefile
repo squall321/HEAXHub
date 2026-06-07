@@ -84,7 +84,7 @@ format:
 	cd frontend && pnpm format
 
 build:
-	cd frontend && pnpm build
+	cd frontend && VITE_BASE_PATH="$(or $(HEAX_BASE_PATH),/)" pnpm build
 
 docker-up:
 	docker compose -f deploy/dev-host/docker-compose.yml up -d

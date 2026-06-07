@@ -49,7 +49,7 @@ export function Footer() {
             <FooterLink to="/jobs">실행 이력</FooterLink>
             <li>
               <a
-                href="/docs"
+                href={`${import.meta.env.BASE_URL}docs`}
                 className="text-muted-foreground transition-colors hover:text-foreground"
               >
                 시작 가이드

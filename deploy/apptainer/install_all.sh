@@ -119,8 +119,12 @@ if [[ -f "$FRONTEND_DIR/dist/index.html" ]]; then
 elif [[ $SKIP_FE -eq 1 ]]; then
   warn "--skip-build-frontend — dist 없는 상태로 진행 (Caddy 가 빈 SPA 응답)"
 elif command -v pnpm >/dev/null 2>&1; then
-  ok "pnpm install + build"
-  ( cd "$FRONTEND_DIR" && pnpm install --frozen-lockfile && pnpm build )
+  # HEAX_BASE_PATH=/heax-hub/ → build the SPA for the HWAX portal sub-path (assets/router/api/ws
+  # under the prefix). Empty → root (standalone), unchanged.
+  # Read HEAX_BASE_PATH from .env (set HEAX_BASE_PATH=/heax-hub/ to build for the portal sub-path).
+  [ -f "$ROOT_DIR/.env" ] && { set -a; . "$ROOT_DIR/.env"; set +a; }
+  ok "pnpm install + build${HEAX_BASE_PATH:+ (base ${HEAX_BASE_PATH})}"
+  ( cd "$FRONTEND_DIR" && pnpm install --frozen-lockfile && VITE_BASE_PATH="${HEAX_BASE_PATH:-/}" pnpm build )
 else
   warn "pnpm 없음 — bundle 에 포함된 dist 가 있어야 합니다."
 fi

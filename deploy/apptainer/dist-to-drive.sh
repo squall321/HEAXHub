@@ -31,11 +31,15 @@ TS="$(date -u +%Y%m%d-%H%M%SZ)"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 ( cd frontend && tar -czf "$STAGE/frontend-dist.tar.gz" dist )
 
-# Optionally also ship the caddy SIF (cae00 can't `apptainer pull docker://caddy`). Ship once with
-# HEAX_DRIVE_WITH_CADDY=1; it rarely changes.
-CADDY_SIF="${SIF_DIR:-$HOME/serviceApptainers}/heaxhub_caddy.sif"
-if [ "${HEAX_DRIVE_WITH_CADDY:-0}" = "1" ] && [ -f "$CADDY_SIF" ]; then
-  cp "$CADDY_SIF" "$STAGE/heaxhub_caddy.sif"; echo "  · including caddy SIF"
+# Ship the service SIFs too (cae00 can't `apptainer pull docker://...` or build them). They change
+# rarely, so ship them ONCE with HEAX_DRIVE_WITH_SIFS=1 (or HEAX_DRIVE_WITH_CADDY=1 for caddy only).
+SIFDIR="${SIF_DIR:-$HOME/serviceApptainers}"
+if [ "${HEAX_DRIVE_WITH_SIFS:-0}" = "1" ]; then
+  for s in heaxhub_postgres heaxhub_redis heaxhub_caddy heaxhub_mailhog; do
+    [ -f "$SIFDIR/$s.sif" ] && { cp "$SIFDIR/$s.sif" "$STAGE/"; echo "  · including $s.sif"; }
+  done
+elif [ "${HEAX_DRIVE_WITH_CADDY:-0}" = "1" ] && [ -f "$SIFDIR/heaxhub_caddy.sif" ]; then
+  cp "$SIFDIR/heaxhub_caddy.sif" "$STAGE/heaxhub_caddy.sif"; echo "  · including caddy SIF"
 fi
 
 ( cd "$STAGE" && sha256sum ./* > SHA256SUMS )

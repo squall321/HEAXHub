@@ -34,12 +34,16 @@ rclone copy --progress "$SRC/" "$STAGE/"
 ( cd "$ROOT_DIR/frontend" && tar -xzf "$STAGE/frontend-dist.tar.gz" )
 echo "  ✓ extracted frontend/dist"
 
-# Optional caddy SIF
-if [ -f "$STAGE/heaxhub_caddy.sif" ]; then
-  mkdir -p "${SIF_DIR:-$HOME/serviceApptainers}"
-  cp "$STAGE/heaxhub_caddy.sif" "${SIF_DIR:-$HOME/serviceApptainers}/heaxhub_caddy.sif"
-  echo "  ✓ staged caddy SIF → ${SIF_DIR:-$HOME/serviceApptainers}"
+# Service SIFs (postgres/redis/caddy/mailhog) — cae00 can't pull/build them, so stage whatever was
+# shipped into ~/serviceApptainers (create the dir; start.sh expects it there).
+SIFDIR="${SIF_DIR:-$HOME/serviceApptainers}"
+shopt -s nullglob
+sifs=("$STAGE"/heaxhub_*.sif)
+if [ ${#sifs[@]} -gt 0 ]; then
+  mkdir -p "$SIFDIR"
+  for s in "${sifs[@]}"; do cp "$s" "$SIFDIR/"; echo "  ✓ staged $(basename "$s") → $SIFDIR"; done
 fi
+shopt -u nullglob
 
 echo
 echo "✓ dist ready — now run:  bash deploy/apptainer/start.sh   (Caddy serves it; no build)"

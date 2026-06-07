@@ -53,6 +53,26 @@ bash deploy/apptainer/install_all.sh   # rebuilds frontend/dist with base /heax-
 bash deploy/apptainer/start.sh         # Caddy serves dist (unchanged) on :4180
 ```
 
+## Deploying to cae00 (corporate network — NO npm, NO Docker Hub)
+
+cae00 cannot reach npm (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`) or Docker Hub, so it must NOT build.
+Build the dist ONLINE and ship it via Google Drive (rclone), exactly like HWAXPortal ships its sifs:
+
+```bash
+# ONLINE host (can reach npm):
+HEAX_BASE_PATH=/heax-hub/ pnpm --dir frontend build      # base baked into frontend/dist
+./deploy/apptainer/dist-to-drive.sh                      # → HEAX_DRIVE_REMOTE (+ HEAX_DRIVE_WITH_CADDY=1 once)
+
+# cae00 (no build):
+#   .env:  HEAX_DRIVE_REMOTE=HeaxDrive:HEAXHub/dist,  HEAX_NO_BUILD=1
+./deploy/apptainer/dist-from-drive.sh                    # pulls frontend/dist (+ caddy sif), sha256-verified
+bash deploy/apptainer/start.sh                           # Caddy serves dist; install_all sees dist → skips build
+```
+
+`HEAX_NO_BUILD=1` makes `install_all.sh` refuse to attempt a pnpm build (fails with instructions)
+so cae00 can never accidentally hit npm. Caddy serves the pulled `frontend/dist` unchanged; the
+portal strips `/heax-hub/` and Caddy serves at root.
+
 The portal reverse-proxies `https://hwax.sec.samsung.net/heax-hub/` → `127.0.0.1:4180` **with the
 prefix stripped** (in the portal's `routes.env`: `heax-hub=http://localhost:4180/` — trailing slash).
 

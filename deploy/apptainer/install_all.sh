@@ -118,6 +118,12 @@ if [[ -f "$FRONTEND_DIR/dist/index.html" ]]; then
   ok "기존 dist 사용: $FRONTEND_DIR/dist/index.html"
 elif [[ $SKIP_FE -eq 1 ]]; then
   warn "--skip-build-frontend — dist 없는 상태로 진행 (Caddy 가 빈 SPA 응답)"
+elif [[ "${HEAX_NO_BUILD:-0}" == "1" ]]; then
+  # cae00 등 npm 불가 환경: 빌드하지 말고 Drive 에서 받으라고 안내.
+  err "dist 없음 + HEAX_NO_BUILD=1 — 온라인에서 빌드 후 Drive 로 받으세요:"
+  echo "    (online)  HEAX_BASE_PATH=/heax-hub/ pnpm --dir frontend build && ./deploy/apptainer/dist-to-drive.sh"
+  echo "    (cae00 )  ./deploy/apptainer/dist-from-drive.sh"
+  exit 1
 elif command -v pnpm >/dev/null 2>&1; then
   # HEAX_BASE_PATH=/heax-hub/ → build the SPA for the HWAX portal sub-path (assets/router/api/ws
   # under the prefix). Empty → root (standalone), unchanged.

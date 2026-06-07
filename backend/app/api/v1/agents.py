@@ -12,7 +12,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -69,6 +69,9 @@ class AgentRegisterIn(BaseModel):
     pool: str
     hostname: str | None = None
     capabilities: dict[str, Any] | None = None
+    # 'launcher' = HWAXAgent (JWT launcher); 'service' = polling worker. Omitted
+    # ⇒ NULL, preserving the existing service-agent registration flow.
+    device_kind: Literal["launcher", "service"] | None = None
 
 
 class AgentOut(BaseModel):
@@ -80,6 +83,7 @@ class AgentOut(BaseModel):
     status: str
     last_seen: str | None
     disabled: bool
+    device_kind: str | None = None
     capabilities: dict[str, Any] | None
     created_at: str | None
 
@@ -94,6 +98,7 @@ class AgentOut(BaseModel):
             status=row.status,
             last_seen=row.last_seen.isoformat() if row.last_seen else None,
             disabled=row.disabled,
+            device_kind=row.device_kind,
             capabilities=row.capabilities,
             created_at=row.created_at.isoformat() if row.created_at else None,
         )
@@ -276,6 +281,7 @@ def admin_register_agent(
         pool=payload.pool,
         hostname=payload.hostname,
         capabilities=payload.capabilities,
+        device_kind=payload.device_kind,
     )
     audit_service.safe_log(
         db,
@@ -283,7 +289,12 @@ def admin_register_agent(
         action="agent.create",
         target_type="agent",
         target_id=str(agent.id),
-        meta={"name": agent.name, "pool": agent.pool, "hostname": agent.hostname},
+        meta={
+            "name": agent.name,
+            "pool": agent.pool,
+            "hostname": agent.hostname,
+            "device_kind": agent.device_kind,
+        },
     )
     return AgentRegisterOut(agent=AgentOut.from_row(agent), token=token)
 

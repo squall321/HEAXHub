@@ -4,6 +4,35 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+# Rootless apptainer derives the cgroup/instance owner from XDG_RUNTIME_DIR; on bare SSH sessions
+# it can be unset → "could not detect the OwnerUID" on instance start. Provide a sane default.
+if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR:-/nonexistent}" ]; then
+  if [ -d "/run/user/$(id -u)" ]; then export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  else export XDG_RUNTIME_DIR="${TMPDIR:-/tmp}/xdg-$(id -u)"; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"; fi
+fi
+
+# Prefer a LOCAL (extracted) apptainer over the system one. The system apptainer (e.g. 1.5.0) forces
+# a rootless cgroup manager via a user D-Bus session ("failed to connect to dbus") and its root-owned
+# conf can't be relaxed without sudo. An extracted apptainer's conf has `systemd cgroups = no`, so
+# instances start with no D-Bus. Resolution order:
+#   $HEAX_APPTAINER  →  HEAXHub's own infra/apptainer/bin-*/  →  the HWAX portal's extracted one
+#   (siblings / ~/Projects / ~/claude)  →  system `apptainer`.
+APPTAINER="${HEAX_APPTAINER:-}"
+if [ -z "$APPTAINER" ]; then
+  for c in "$ROOT"/infra/apptainer/bin-*/usr/bin/apptainer \
+           "$ROOT"/../HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer \
+           "$HOME"/Projects/HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer \
+           "$HOME"/claude/HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer; do
+    [ -x "$c" ] && { APPTAINER="$c"; break; }
+  done
+fi
+: "${APPTAINER:=apptainer}"
+# Make sure THIS apptainer's conf disables systemd cgroups (idempotent; only if user-owned).
+_conf="$(dirname "$(dirname "$(dirname "$APPTAINER")")")/etc/apptainer/apptainer.conf"
+[ -w "$_conf" ] && grep -qiE '^systemd cgroups = yes' "$_conf" 2>/dev/null \
+  && sed -i 's/^systemd cgroups = yes/systemd cgroups = no/' "$_conf" 2>/dev/null || true
+echo "ℹ apptainer: $APPTAINER ($("$APPTAINER" --version 2>/dev/null | head -1))"
+
 SIF_DIR="${HOME}/serviceApptainers"
 PG_SIF="${SIF_DIR}/heaxhub_postgres.sif"
 REDIS_SIF="${SIF_DIR}/heaxhub_redis.sif"
@@ -22,36 +51,36 @@ CADDY_HTTP_PORT=4180
 mkdir -p var/{pg,redis,mailhog,logs,pg_run,caddy}
 
 # ── 1. Postgres ───────────────────────────────────────────────
-if ! apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-pg; then
+if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-pg; then
   echo "→ start heax-pg"
-  apptainer instance start \
+  "$APPTAINER" instance start \
     --bind "$PWD/var/pg:/var/lib/postgresql/data" \
     --bind "$PWD/var/pg_run:/var/run/postgresql" \
     "$PG_SIF" heax-pg >> var/logs/postgres-start.log 2>&1
   # First-time init if empty
   if [ ! -d var/pg/pgdata ]; then
-    apptainer exec instance://heax-pg sh -c '
+    "$APPTAINER" exec instance://heax-pg sh -c '
       echo heaxhub > /tmp/pw
       initdb -D /var/lib/postgresql/data/pgdata -U heaxhub --pwfile=/tmp/pw -A scram-sha-256 -E UTF8
     '
   fi
   # setsid + nohup so postgres detaches from the exec parent. Without this,
-  # the apptainer exec wrapper returning makes the child get SIGHUP a few
+  # the "$APPTAINER" exec wrapper returning makes the child get SIGHUP a few
   # seconds later and the daemon dies. Watchdog also picks it up but starting
   # cleanly avoids the flap.
-  apptainer exec instance://heax-pg sh -c "
+  "$APPTAINER" exec instance://heax-pg sh -c "
     setsid nohup postgres -D /var/lib/postgresql/data/pgdata -p $PG_PORT -h 0.0.0.0 > /tmp/postgres.log 2>&1 < /dev/null &
   " > /dev/null 2>&1
   sleep 1
   # wait
   for i in $(seq 1 60); do
-    apptainer exec instance://heax-pg pg_isready -h 127.0.0.1 -p $PG_PORT -U heaxhub >/dev/null 2>&1 && break
+    "$APPTAINER" exec instance://heax-pg pg_isready -h 127.0.0.1 -p $PG_PORT -U heaxhub >/dev/null 2>&1 && break
     sleep 1
   done
   # create db if missing
-  if ! apptainer exec instance://heax-pg env PGPASSWORD=heaxhub \
+  if ! "$APPTAINER" exec instance://heax-pg env PGPASSWORD=heaxhub \
         psql -h 127.0.0.1 -p $PG_PORT -U heaxhub -d heaxhub -tAc "SELECT 1" >/dev/null 2>&1; then
-    apptainer exec instance://heax-pg env PGPASSWORD=heaxhub \
+    "$APPTAINER" exec instance://heax-pg env PGPASSWORD=heaxhub \
       psql -h 127.0.0.1 -p $PG_PORT -U heaxhub -d postgres -tAc 'CREATE DATABASE heaxhub OWNER heaxhub;'
   fi
   echo "  ✓ postgres on $PG_PORT"
@@ -60,13 +89,13 @@ else
 fi
 
 # ── 2. Redis ──────────────────────────────────────────────────
-if ! apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-redis; then
+if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-redis; then
   echo "→ start heax-redis"
-  apptainer instance start --writable-tmpfs \
+  "$APPTAINER" instance start --writable-tmpfs \
     --bind "$PWD/var/redis:/data" \
     "$REDIS_SIF" heax-redis
   # redis 자체가 --daemonize yes 로 detach 됨. 추가 setsid 불필요.
-  apptainer exec instance://heax-redis sh -c \
+  "$APPTAINER" exec instance://heax-redis sh -c \
     "redis-server --bind 0.0.0.0 --port $REDIS_PORT --dir /data --daemonize yes"
   sleep 1
   echo "  ✓ redis on $REDIS_PORT"
@@ -75,10 +104,10 @@ else
 fi
 
 # ── 3. MailHog ────────────────────────────────────────────────
-if ! apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-mailhog; then
+if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-mailhog; then
   echo "→ start heax-mailhog"
-  apptainer instance start --writable-tmpfs "$MAIL_SIF" heax-mailhog
-  apptainer exec instance://heax-mailhog sh -c \
+  "$APPTAINER" instance start --writable-tmpfs "$MAIL_SIF" heax-mailhog
+  "$APPTAINER" exec instance://heax-mailhog sh -c \
     "setsid nohup MailHog -smtp-bind-addr 0.0.0.0:$SMTP_PORT -ui-bind-addr 0.0.0.0:$MAIL_UI_PORT -api-bind-addr 0.0.0.0:$MAIL_UI_PORT > /tmp/mailhog.log 2>&1 < /dev/null &" \
     > /dev/null 2>&1
   sleep 1
@@ -92,7 +121,7 @@ fi
 if [ ! -f "$CADDY_SIF" ]; then
   echo "→ pull caddy SIF (docker://caddy:2-alpine)"
   mkdir -p "$SIF_DIR"
-  apptainer pull --force "$CADDY_SIF" docker://caddy:2-alpine \
+  "$APPTAINER" pull --force "$CADDY_SIF" docker://caddy:2-alpine \
     >> var/logs/caddy-pull.log 2>&1
 fi
 
@@ -105,16 +134,16 @@ if [ ! -f "$FRONTEND_DIST/index.html" ]; then
   echo "  ! frontend/dist/index.html 없음 — pnpm build 먼저 실행해야 :$CADDY_HTTP_PORT 가 UI 를 보냅니다"
 fi
 
-if ! apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-caddy; then
+if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-caddy; then
   echo "→ start heax-caddy"
-  apptainer instance start \
+  "$APPTAINER" instance start \
     --bind "$BOOTSTRAP_DST:/etc/caddy/bootstrap.json:ro" \
     --bind "$FRONTEND_DIST:/srv/web:ro" \
     --bind "$PWD/var/caddy:/data" \
     "$CADDY_SIF" heax-caddy >> var/logs/caddy-start.log 2>&1
   # Caddy in the instance: run with our bootstrap config, fully detached.
   # Caddy 2.x defaults to JSON for *.json — don't pass --adapter json (invalid).
-  apptainer exec instance://heax-caddy sh -c "
+  "$APPTAINER" exec instance://heax-caddy sh -c "
     setsid nohup caddy run --config /etc/caddy/bootstrap.json \
       > /data/caddy.log 2>&1 < /dev/null &
   " > /dev/null 2>&1

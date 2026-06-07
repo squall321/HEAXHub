@@ -292,7 +292,11 @@ LauncherAuth = Annotated[WindowsAgent, Depends(get_launcher_agent)]
 
 ## §5. HWAXAgent 측 진행 상태 추적
 
-별도 GitHub 레포 (`koopark/HWAXAgent`) 에서 진행 중. 현재 Tauri 2 부트스트랩 단계.
+별도 GitHub 레포 (**`squall321/HWAXLauncher`**) 에서 개발. **현황(2026-06-07): 빌드·패키징·
+실행검증 완료** — 14 커밋, Tauri 2 + Rust + React, 코어 40 테스트 통과, 실제 NSIS 설치파일 생성 +
+트레이 기동 실행검증 완료. 실서버 페어링/설치 1사이클만 **서버측 P0 대기**(런처 결함 아님).
+빌드된 클라이언트가 실제 호출하는 엔드포인트 인벤토리 + 현 플랜에 없는 갭(updater feed `/latest`,
+WS 푸시 메시지 스키마, installer publish)은 `docs/hwax-agent-client-status-and-server-gaps.md` 참고.
 
 ### 본 레포가 받는 신호
 - GitHub Issue 라벨: `hwax-agent`, `needs-heaxhub-change`, `contracts`.

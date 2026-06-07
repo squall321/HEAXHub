@@ -7,7 +7,11 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
-[ -f .env ] && { set -a; . ./.env; set +a; }
+# Read ONLY the keys we need from .env (don't `source` it — a value with an unquoted space would
+# run as a command, e.g. `Admin: command not found`).
+env_get() { [ -f .env ] && sed -n "s/^$1=//p" .env | tail -1 | sed 's/^["'"'"']//; s/["'"'"']$//'; }
+HEAX_DRIVE_REMOTE="${HEAX_DRIVE_REMOTE:-$(env_get HEAX_DRIVE_REMOTE)}"
+SIF_DIR="${SIF_DIR:-$(env_get SIF_DIR)}"
 
 command -v rclone >/dev/null 2>&1 || { echo "✗ rclone not installed (https://rclone.org/install/)"; exit 1; }
 REMOTE="${HEAX_DRIVE_REMOTE:-}"

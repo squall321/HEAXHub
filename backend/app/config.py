@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # HWAXAgent launcher refresh token lives longer than a user session (30 days)
     # so a tray agent offline for a while can still refresh (contract v0.2.0).
     agent_refresh_token_ttl_seconds: int = 2592000
+    # Public base URL the launcher reaches us at, used to build absolute installer
+    # download URLs in the manifest. Empty ⇒ derive from the request's
+    # X-Forwarded-Proto/Host/Prefix headers (correct when the HWAX portal proxies
+    # us under /heax-hub and sets those). Set explicitly (e.g.
+    # "https://hwax.sec.samsung.net/heax-hub") if the proxy does not forward the
+    # prefix. No trailing slash.
+    agent_public_base_url: str = ""
     password_min_length: int = 10
     email_verify_token_ttl_hours: int = 24
     password_reset_token_ttl_hours: int = 2

@@ -58,6 +58,18 @@ _PACKAGE_TYPE_BY_SUFFIX = (
 )
 _VALID_PACKAGE_TYPES = frozenset({"zip", "exe", "msi", "msix"})
 
+
+def is_servable_installer_app(app: App) -> bool:
+    """Whether an app's installer may be served to a launcher.
+
+    Mirrors the manifest's status gate (not DRAFT / not ARCHIVED) so a draft or
+    retired installer id can't be pulled out-of-band through the download
+    endpoint. ``app_type`` is deliberately NOT checked: the agent self-update
+    download goes through the same endpoint and the "hwax-agent" app need not be
+    windows_gui.
+    """
+    return app.status not in _HIDDEN_STATUSES
+
 _CACHE_TTL_SECONDS = 30.0
 _manifest_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 

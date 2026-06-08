@@ -23,7 +23,7 @@ from app.core.errors import GoneError, NotFoundError
 from app.db.models.app import App
 from app.db.models.installer_package import InstallerPackage
 from app.deps import AdminUser, CurrentUser, DbSession, get_app_or_404
-from app.services import custom_protocol, installer_packages
+from app.services import agent_manifest_builder, custom_protocol, installer_packages
 
 # HEAXHub OS slug for the agent's own build; mapped to the Tauri target-triple
 # key "windows-x86_64" in the updater feed.
@@ -257,6 +257,13 @@ def download_installer_by_id(
     """
     row = db.get(InstallerPackage, installer_id)
     if row is None:
+        raise NotFoundError("Installer not found")
+
+    # Least privilege: don't serve installers for DRAFT (unreleased) or ARCHIVED
+    # (retired) apps, even to a valid launcher JWT that guesses/learns the id —
+    # mirror the manifest's status gate. 404 (not 403) so we don't confirm the id.
+    app = db.get(App, row.app_id)
+    if app is None or not agent_manifest_builder.is_servable_installer_app(app):
         raise NotFoundError("Installer not found")
 
     url = (row.installer_url or "").strip()

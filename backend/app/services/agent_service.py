@@ -32,7 +32,7 @@ from app.core import security
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.db.models.agent_refresh_token import AgentRefreshToken
 from app.db.models.windows_agent import WindowsAgent
-from app.services import agent_registry
+from app.services import agent_registry, audit_service
 
 # Access tokens minted for launchers carry this audience; user tokens carry none.
 AGENT_AUDIENCE = "hwax-agent"
@@ -141,6 +141,23 @@ def redeem_enrollment_token(
 
     db.commit()
     db.refresh(agent)
+    # A device going live is a first-class compliance event; record it (and the
+    # client identity) so it shows up in the per-agent admin audit view.
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action="agent.enroll",
+        target_type="windows_agent",
+        target_id=str(agent.id),
+        meta={
+            "actor": "system:hwax-agent",
+            "severity": "info",
+            "hostname": agent.hostname,
+            "agent_version": agent.agent_version,
+            "user_agent": user_agent,
+        },
+        ip_address=ip_address,
+    )
     return EnrollmentResult(
         agent=agent,
         access_token=access_token,
@@ -181,6 +198,25 @@ def rotate_refresh(
         # A rotated (already-replaced) token is being replayed → revoke the chain.
         _revoke_all_active(db, record.agent_id)
         db.commit()
+        # Refresh-token reuse is the fleet's primary token-theft signal — record
+        # it (severity error) so an operator/SOC can actually see the chain revoke
+        # instead of it happening silently. (Routine rotations are intentionally
+        # NOT audited — too high-volume to be useful.)
+        audit_service.safe_log(
+            db,
+            actor_user_id=None,
+            action="agent.refresh.reuse_detected",
+            target_type="windows_agent",
+            target_id=str(record.agent_id),
+            meta={
+                "actor": "system:hwax-agent",
+                "severity": "error",
+                "jti": jti,
+                "detail": "rotated refresh token replayed; whole chain revoked",
+                "user_agent": user_agent,
+            },
+            ip_address=ip_address,
+        )
         raise UnauthorizedError("Refresh token reuse detected")
     if not record.is_active:
         raise UnauthorizedError("Refresh token expired")

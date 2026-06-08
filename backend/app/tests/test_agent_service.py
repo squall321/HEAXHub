@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core import security
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.db.models.agent_refresh_token import AgentRefreshToken
+from app.db.models.audit_log import AuditLog
 from app.db.session import engine
 from app.services import agent_registry, agent_service
 
@@ -181,3 +182,41 @@ def test_rotate_rejects_disabled_agent(db: Session) -> None:
     agent_registry.disable(db, agent.id)
     with pytest.raises(UnauthorizedError):
         agent_service.rotate_refresh(db, refresh_token=first.refresh_token)
+
+
+# ── audit lifecycle (enroll + reuse) ─────────────────────────────────────────────
+
+
+def _agent_audit(db: Session, agent_id, action: str) -> list[AuditLog]:
+    return list(
+        db.execute(
+            select(AuditLog).where(
+                AuditLog.target_type == "windows_agent",
+                AuditLog.target_id == str(agent_id),
+                AuditLog.action == action,
+            )
+        ).scalars().all()
+    )
+
+
+def test_enroll_writes_audit(db: Session) -> None:
+    token, agent = _enroll_launcher(db, "svc-audit-enroll")
+    agent_service.redeem_enrollment_token(
+        db, enrollment_token=token, hostname="ws-9", ip_address="1.2.3.4"
+    )
+    rows = _agent_audit(db, agent.id, "agent.enroll")
+    assert len(rows) == 1
+    assert rows[0].actor_user_id is None
+    assert rows[0].meta["actor"] == "system:hwax-agent"
+    assert rows[0].ip_address == "1.2.3.4"
+
+
+def test_reuse_writes_audit(db: Session) -> None:
+    token, agent = _enroll_launcher(db, "svc-audit-reuse")
+    first = agent_service.redeem_enrollment_token(db, enrollment_token=token)
+    agent_service.rotate_refresh(db, refresh_token=first.refresh_token)  # rotate once
+    with pytest.raises(UnauthorizedError):
+        agent_service.rotate_refresh(db, refresh_token=first.refresh_token)  # replay
+    rows = _agent_audit(db, agent.id, "agent.refresh.reuse_detected")
+    assert len(rows) == 1
+    assert rows[0].meta["severity"] == "error"

@@ -184,21 +184,4 @@ def test_launcher_token_rejected_on_user_route_401(ctx) -> None:
     assert resp.status_code == 401, resp.text
 
 
-# ── Phase 2 stubs ────────────────────────────────────────────────────────────────
-
-
-def test_stub_endpoints_501_when_authed(ctx) -> None:
-    session, client = ctx
-    token = _register_launcher(session, "router-stub-1")
-    body = _enroll(client, token)
-    headers = {"Authorization": f"Bearer {body['access_token']}"}
-    for path in ("installs", "audit", "heartbeat"):
-        resp = client.post(f"/api/v1/launcher-agents/{path}", headers=headers, json={})
-        assert resp.status_code == 501, f"{path}: {resp.text}"
-
-
-def test_stub_endpoints_require_auth_401(ctx) -> None:
-    _session, client = ctx
-    for path in ("installs", "audit", "heartbeat"):
-        resp = client.post(f"/api/v1/launcher-agents/{path}", json={})
-        assert resp.status_code == 401, f"{path}: {resp.text}"
+# installs / audit / heartbeat are now real endpoints — see test_launcher_reports.py.

@@ -15,16 +15,19 @@ Phase 1 surface (contract ``contracts/hwax-agent/openapi.yaml`` v0.2.0):
 """
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
-from app.core.errors import UnauthorizedError
+from app.core.errors import ForbiddenError, UnauthorizedError
+from app.db.models.install_report import InstallReport
 from app.db.models.windows_agent import WindowsAgent
 from app.deps import DbSession
-from app.services import agent_manifest_builder, agent_service
+from app.services import agent_manifest_builder, agent_service, audit_service
 
 router = APIRouter(prefix="/launcher-agents", tags=["hwax-agent"])
 
@@ -79,6 +82,62 @@ class RefreshOut(BaseModel):
     access_token: str
     refresh_token: str
     expires_in: int
+
+
+# Phase 2 reporting bodies — mirror the contract JSON Schemas (so FastAPI gives a
+# native 422 on a malformed body; no jsonschema dependency needed).
+
+
+class InstallReportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # install-report.schema.json
+    agent_id: str
+    app_id: str
+    version: str
+    status: Literal["success", "failed", "rolled_back", "partial"]
+    started_at: datetime
+    finished_at: datetime
+    exit_code: int | None = None
+    sha256_verified: bool | None = None
+    error: str | None = None
+    log_excerpt: str | None = None
+    previous_version: str | None = None
+
+
+class AuditClientMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    os: str | None = None
+    os_version: str | None = None
+    agent_version: str | None = None
+    hostname: str | None = None
+
+
+class AuditEventIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # audit-event.schema.json
+    agent_id: str
+    kind: Literal[
+        "enrollment", "install", "uninstall", "run", "stop", "rollback",
+        "av_block", "sha256_mismatch", "download_failed", "policy_denied",
+        "heartbeat",
+    ]
+    occurred_at: datetime
+    severity: Literal["info", "warn", "error"]
+    app_id: str | None = None
+    version: str | None = None
+    payload: dict[str, Any] | None = None
+    client_meta: AuditClientMeta | None = None
+
+
+class HeartbeatModule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    version: str
+
+
+class HeartbeatIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # openapi heartbeat body
+    agent_version: str
+    hostname: str | None = None
+    modules: list[HeartbeatModule] | None = None
 
 
 # ─────────────────────────── helpers ───────────────────────────────────────────
@@ -161,26 +220,88 @@ def manifest(db: DbSession, request: Request, _agent: LauncherAuth) -> dict:
     )
 
 
-# ─────────────────────────── Phase 2 stubs (501) ───────────────────────────────
+# ─────────────────────────── reporting endpoints (§3.1) ────────────────────────
 
+# A report/event/heartbeat may only be filed for the authenticated agent itself.
+_AGENT_MISMATCH = "agent_id does not match the authenticated launcher"
 
-def _not_implemented() -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Not implemented in Phase 1 (NEXT_STEPS §3.1)",
-    )
+# Contract truncation limits (the hub truncates rather than rejecting oversize).
+_ERROR_MAX = 2048
+_LOG_EXCERPT_MAX = 16384
 
 
 @router.post("/installs", status_code=status.HTTP_202_ACCEPTED)
-def installs(_agent: LauncherAuth) -> None:
-    raise _not_implemented()
+def installs(payload: InstallReportIn, db: DbSession, agent: LauncherAuth) -> dict:
+    """Persist one install-attempt outcome (contract HWAXAgentInstallReport)."""
+    if payload.agent_id != str(agent.id):
+        raise ForbiddenError(_AGENT_MISMATCH)
+    report = InstallReport(
+        agent_id=agent.id,
+        app_id=payload.app_id,
+        version=payload.version,
+        status=payload.status,
+        exit_code=payload.exit_code,
+        started_at=payload.started_at,
+        finished_at=payload.finished_at,
+        sha256_verified=payload.sha256_verified,
+        error=payload.error[:_ERROR_MAX] if payload.error else None,
+        log_excerpt=payload.log_excerpt[:_LOG_EXCERPT_MAX] if payload.log_excerpt else None,
+        previous_version=payload.previous_version,
+    )
+    db.add(report)
+    db.commit()
+    return {"detail": "accepted", "id": str(report.id)}
 
 
 @router.post("/audit", status_code=status.HTTP_202_ACCEPTED)
-def audit(_agent: LauncherAuth) -> None:
-    raise _not_implemented()
+def audit(payload: AuditEventIn, db: DbSession, agent: LauncherAuth) -> dict:
+    """Record one launcher audit event in the shared audit_log table.
+
+    Launcher events have ``actor_user_id=NULL`` and carry their identity in
+    ``meta`` (actor="system:hwax-agent"), targeting the windows_agent.
+    """
+    if payload.agent_id != str(agent.id):
+        raise ForbiddenError(_AGENT_MISMATCH)
+    meta: dict[str, Any] = {
+        "agent_id": str(agent.id),
+        "actor": "system:hwax-agent",
+        "kind": payload.kind,
+        "severity": payload.severity,
+        "occurred_at": payload.occurred_at.isoformat(),
+    }
+    if payload.app_id:
+        meta["app_id"] = payload.app_id
+    if payload.version:
+        meta["version"] = payload.version
+    if payload.payload is not None:
+        meta["payload"] = payload.payload
+    if payload.client_meta is not None:
+        meta["client_meta"] = payload.client_meta.model_dump(exclude_none=True)
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action=f"agent.{payload.kind}",
+        target_type="windows_agent",
+        target_id=str(agent.id),
+        meta=meta,
+    )
+    return {"detail": "accepted"}
 
 
 @router.post("/heartbeat", status_code=status.HTTP_204_NO_CONTENT)
-def heartbeat(_agent: LauncherAuth) -> None:
-    raise _not_implemented()
+def heartbeat(payload: HeartbeatIn, db: DbSession, agent: LauncherAuth) -> Response:
+    """30-minute alive ping: refresh last_seen (+ version/hostname/modules)."""
+    agent.last_seen = datetime.now(timezone.utc)
+    if payload.agent_version:
+        agent.agent_version = payload.agent_version
+    if payload.hostname:
+        agent.hostname = payload.hostname
+    if payload.modules is not None:
+        # Merge installed-module versions into capabilities for the fleet view
+        # (reassign so SQLAlchemy detects the JSON change). Status is left
+        # untouched: a launcher is not a job-dispatch target like a service agent.
+        caps = dict(agent.capabilities or {})
+        caps["modules"] = {m.id: m.version for m in payload.modules}
+        agent.capabilities = caps
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

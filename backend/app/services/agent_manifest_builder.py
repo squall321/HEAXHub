@@ -24,6 +24,8 @@ through the portal's ``/heax-hub`` sub-path).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -217,6 +219,19 @@ def build_manifest(
         "generated_at": _isoformat(gen),
         "programs": programs,
     }
+
+
+def manifest_etag(manifest: dict[str, Any]) -> str:
+    """Strong ETag over the ``programs`` list only.
+
+    Excludes ``generated_at`` (which moves on every rebuild even when the catalog
+    is unchanged), so an identical catalog yields a stable ETag and the launcher's
+    conditional GET collapses to a 304. Returned in quoted HTTP-ETag form.
+    """
+    payload = json.dumps(
+        manifest.get("programs", []), sort_keys=True, separators=(",", ":")
+    )
+    return '"' + hashlib.sha256(payload.encode("utf-8")).hexdigest() + '"'
 
 
 def cached_manifest(db: Session, *, base_url: str) -> dict[str, Any]:

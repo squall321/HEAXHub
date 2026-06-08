@@ -20,6 +20,7 @@ from typing import Annotated, Any, Literal
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
@@ -213,11 +214,22 @@ def refresh(payload: RefreshIn, db: DbSession, request: Request) -> RefreshOut:
 
 
 @router.get("/manifest")
-def manifest(db: DbSession, request: Request, _agent: LauncherAuth) -> dict:
-    """Program catalog for this launcher (contract HWAXAgentManifest)."""
-    return agent_manifest_builder.cached_manifest(
-        db, base_url=_public_base_url(request)
-    )
+def manifest(
+    db: DbSession,
+    request: Request,
+    _agent: LauncherAuth,
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> Response:
+    """Program catalog for this launcher (contract HWAXAgentManifest).
+
+    Sets a strong ETag over the catalog content; an unchanged catalog returns
+    304 (no body) on a matching ``If-None-Match`` so fleet-wide polls stay cheap.
+    """
+    body = agent_manifest_builder.cached_manifest(db, base_url=_public_base_url(request))
+    etag = agent_manifest_builder.manifest_etag(body)
+    if if_none_match is not None and if_none_match.strip() == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+    return JSONResponse(content=body, headers={"ETag": etag})
 
 
 # ─────────────────────────── reporting endpoints (§3.1) ────────────────────────

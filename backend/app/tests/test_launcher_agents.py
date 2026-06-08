@@ -184,4 +184,24 @@ def test_launcher_token_rejected_on_user_route_401(ctx) -> None:
     assert resp.status_code == 401, resp.text
 
 
+# ── conditional GET (ETag / 304) ──────────────────────────────────────────────
+
+
+def test_manifest_etag_then_304(ctx) -> None:
+    session, client = ctx
+    token = _register_launcher(session, "router-etag-1")
+    body = _enroll(client, token)
+    h = {"Authorization": f"Bearer {body['access_token']}"}
+
+    first = client.get(MANIFEST, headers=h)
+    assert first.status_code == 200, first.text
+    etag = first.headers.get("etag")
+    assert etag, "manifest must set an ETag"
+
+    # Unchanged catalog + matching If-None-Match → 304, no body.
+    second = client.get(MANIFEST, headers={**h, "If-None-Match": etag})
+    assert second.status_code == 304, second.text
+    assert second.content == b""
+
+
 # installs / audit / heartbeat are now real endpoints — see test_launcher_reports.py.

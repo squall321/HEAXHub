@@ -130,6 +130,29 @@ def disable(db: Session, agent_id: Any) -> WindowsAgent | None:
     return agent
 
 
+def rotate_enrollment_token(
+    db: Session, agent_id: Any
+) -> tuple[WindowsAgent, str] | None:
+    """Mint a fresh one-time enrollment token for an existing agent.
+
+    Returns ``(agent, plaintext_token)`` (shown once) or ``None`` if the agent
+    doesn't exist. Re-enables a disabled agent so a re-imaged/wiped workstation
+    can re-enroll without a name-collision (``WindowsAgent.name`` is UNIQUE, so
+    you can't just re-create it). The previous bearer hash is overwritten, so any
+    un-redeemed old enrollment token immediately stops working; the caller should
+    also revoke the JWT chain (see ``agent_service.revoke_refresh_chain``).
+    """
+    agent = db.get(WindowsAgent, agent_id)
+    if agent is None:
+        return None
+    token = _generate_token()
+    agent.auth_token_hash = _hash_token(token)
+    agent.disabled = False
+    db.commit()
+    db.refresh(agent)
+    return agent, token
+
+
 def dispatch_job_to_pool(
     db: Session, *, job: Job, pool: str
 ) -> WindowsAgent | None:

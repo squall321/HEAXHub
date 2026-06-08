@@ -35,7 +35,7 @@ from app.db.models.job import Job, JobStatus
 from app.db.models.windows_agent import WindowsAgent
 from app.deps import AdminUser, DbSession
 from app.runners import windows_agent_client
-from app.services import agent_registry, audit_service
+from app.services import agent_registry, agent_service, audit_service
 
 router = APIRouter(tags=["agents"])
 
@@ -352,6 +352,34 @@ def admin_register_agent(
             "hostname": agent.hostname,
             "device_kind": agent.device_kind,
         },
+    )
+    return AgentRegisterOut(agent=AgentOut.from_row(agent), token=token)
+
+
+@admin_router.post("/{agent_id}/rotate-token", response_model=AgentRegisterOut)
+def admin_rotate_token(
+    agent_id: uuid.UUID,
+    db: DbSession,
+    _admin: AdminUser,
+) -> AgentRegisterOut:
+    """Mint a fresh one-time enrollment token for an existing agent.
+
+    For a lost/leaked token or a re-imaged workstation: the old enrollment token
+    stops working, the agent (if disabled) is re-enabled so it can re-enroll
+    without a name collision, and the old device's JWT chain is revoked.
+    """
+    result = agent_registry.rotate_enrollment_token(db, agent_id)
+    if result is None:
+        raise NotFoundError("Agent not found")
+    agent, token = result
+    agent_service.revoke_refresh_chain(db, agent.id)
+    audit_service.safe_log(
+        db,
+        actor_user_id=_admin.id,
+        action="agent.token.rotated",
+        target_type="agent",
+        target_id=str(agent.id),
+        meta={"name": agent.name, "device_kind": agent.device_kind},
     )
     return AgentRegisterOut(agent=AgentOut.from_row(agent), token=token)
 

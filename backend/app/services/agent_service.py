@@ -263,3 +263,13 @@ def _revoke_all_active(db: Session, agent_id: uuid.UUID) -> None:
     for row in rows:
         if row.revoked_at is None:
             row.revoked_at = now
+
+
+def revoke_refresh_chain(db: Session, agent_id: uuid.UUID) -> None:
+    """Revoke every active refresh token for an agent and commit.
+
+    Used when an operator rotates the enrollment token: re-issuing means the old
+    device's JWT chain should stop working immediately.
+    """
+    _revoke_all_active(db, agent_id)
+    db.commit()

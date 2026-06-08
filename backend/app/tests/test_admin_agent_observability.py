@@ -167,3 +167,45 @@ def test_unknown_agent_404(ctx) -> None:
     assert client.get(f"/api/v1/admin/agents/{missing}", headers=_admin(admin)).status_code == 404
     assert client.get(f"/api/v1/admin/agents/{missing}/installs", headers=_admin(admin)).status_code == 404
     assert client.get(f"/api/v1/admin/agents/{missing}/audit", headers=_admin(admin)).status_code == 404
+
+
+# ── rotate enrollment token ───────────────────────────────────────────────────
+
+
+def test_rotate_token_mints_usable_token(ctx) -> None:
+    session, client = ctx
+    admin = _user(session, role=UserRole.ADMIN, email="obs-rotate-1@example.com")
+    agent = _launcher(session, "obs-rotate-1")
+    aid = str(agent.id)
+
+    resp = client.post(f"/api/v1/admin/agents/{aid}/rotate-token", headers=_admin(admin))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["token"]
+    assert body["agent"]["id"] == aid
+    # The freshly-minted token actually works for enrollment.
+    enr = client.post(
+        "/api/v1/launcher-agents/enroll", json={"enrollment_token": body["token"]}
+    )
+    assert enr.status_code == 200, enr.text
+
+
+def test_rotate_token_re_enables_disabled(ctx) -> None:
+    session, client = ctx
+    admin = _user(session, role=UserRole.ADMIN, email="obs-rotate-2@example.com")
+    agent = _launcher(session, "obs-rotate-2")
+    agent_registry.disable(session, agent.id)
+    resp = client.post(
+        f"/api/v1/admin/agents/{agent.id}/rotate-token", headers=_admin(admin)
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["agent"]["disabled"] is False  # re-enabled for re-enroll
+
+
+def test_rotate_token_unknown_404(ctx) -> None:
+    session, client = ctx
+    admin = _user(session, role=UserRole.ADMIN, email="obs-rotate-3@example.com")
+    resp = client.post(
+        f"/api/v1/admin/agents/{uuid.uuid4()}/rotate-token", headers=_admin(admin)
+    )
+    assert resp.status_code == 404, resp.text

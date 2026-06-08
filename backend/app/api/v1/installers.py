@@ -10,18 +10,26 @@ Mounted under the existing ``/apps`` prefix so URLs match installer_url:
 from __future__ import annotations
 
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 
+from app.api.v1.launcher_agents import LauncherAuth
 from app.core.errors import GoneError, NotFoundError
 from app.db.models.app import App
+from app.db.models.installer_package import InstallerPackage
 from app.deps import AdminUser, CurrentUser, DbSession, get_app_or_404
 from app.services import custom_protocol, installer_packages
 
 router = APIRouter(prefix="/apps", tags=["installers"])
+
+# Launcher-facing download router, mounted on its own /installers prefix and
+# secured by the launcher JWT (aud=hwax-agent) — NOT user auth. This is the
+# endpoint the manifest's package.url points at (§2.3 / §2.5).
+download_router = APIRouter(prefix="/installers", tags=["hwax-agent"])
 
 
 # ───────────────────────────── upload ──────────────────────────────────────────
@@ -183,5 +191,54 @@ def download_protocol_reg(
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": f'attachment; filename="{app_id}.reg"',
+        },
+    )
+
+
+# ───────────────────────────── launcher download-by-id ──────────────────────────
+
+
+@download_router.get("/{installer_id}/download")
+def download_installer_by_id(
+    installer_id: uuid.UUID,
+    db: DbSession,
+    _agent: LauncherAuth,
+):
+    """Serve the installer payload for an ``InstallerPackage`` id to a launcher.
+
+    This is the endpoint the manifest's ``package.url`` points at (§2.3). Two
+    cases, decided by the stored ``installer_url``:
+
+    * **Absolute URL** (``http(s)://…``) — object storage / presigned. We 302
+      to it (the agent follows the redirect, then verifies SHA-256). This is the
+      shape the contract documents.
+    * **Internal relative URL** (the current deployment — files live on local
+      disk under ``installer_storage_root``) — we stream the bytes directly
+      (200, ``application/octet-stream``) since there is nothing to redirect to.
+      The SHA-256 is echoed in ``X-Installer-SHA256`` for convenience; the agent
+      verifies against ``manifest.programs[].package.sha256`` regardless.
+
+    Either way the agent treats this as "GET → installer bytes" and must verify
+    the hash. (Auth: launcher JWT only — a user token is rejected.)
+    """
+    row = db.get(InstallerPackage, installer_id)
+    if row is None:
+        raise NotFoundError("Installer not found")
+
+    url = (row.installer_url or "").strip()
+    if url.startswith("http://") or url.startswith("https://"):
+        return RedirectResponse(url=url, status_code=302)
+
+    # Internal disk storage: stream the file located by (app_id, os, version).
+    file_path = installer_packages.installer_path(row.app_id, row.os, row.version)
+    if not file_path.exists():
+        raise GoneError("Installer file missing on disk")
+    return FileResponse(
+        path=str(file_path),
+        media_type="application/octet-stream",
+        filename=f"{row.app_id}-{row.version}-{row.os}.exe",
+        headers={
+            "X-Installer-SHA256": row.sha256,
+            "X-Installer-Signed": "1" if row.signed else "0",
         },
     )

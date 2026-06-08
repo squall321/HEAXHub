@@ -28,6 +28,18 @@ def _generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def fresh_token_hash() -> str:
+    """Return a SHA256 hash of a fresh random token whose plaintext is discarded.
+
+    Used to *burn* a single-use enrollment token: after a launcher redeems its
+    enrollment token for a JWT pair, we overwrite ``auth_token_hash`` with this
+    so the original enrollment string can never verify again, and — because the
+    plaintext is thrown away — no new bearer token exists either. The launcher
+    authenticates with its JWT pair from then on.
+    """
+    return _hash_token(_generate_token())
+
+
 # ── public api ─────────────────────────────────────────────────────────────────
 
 

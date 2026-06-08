@@ -49,7 +49,16 @@ def _encode(payload: dict[str, Any]) -> str:
 def _decode(token: str) -> dict[str, Any]:
     settings = get_settings()
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        # We do audience validation explicitly in ``decode_token`` (so behaviour
+        # is identical across python-jose versions, which differ on how they
+        # treat an ``aud`` claim when no audience is supplied). Disable jose's
+        # own aud check here; signature / exp / type are still verified.
+        return jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_aud": False},
+        )
     except JWTError as exc:
         raise UnauthorizedError("Invalid or expired token") from exc
 
@@ -68,12 +77,19 @@ def create_access_token(subject: str, *, extra: dict[str, Any] | None = None) ->
     return _encode(payload)
 
 
-def create_refresh_token(subject: str) -> tuple[str, str, datetime]:
-    """Return (token, jti, expires_at) so callers can persist a revocation record."""
+def create_refresh_token(
+    subject: str, *, ttl_seconds: int | None = None
+) -> tuple[str, str, datetime]:
+    """Return (token, jti, expires_at) so callers can persist a revocation record.
+
+    ``ttl_seconds`` overrides the default refresh TTL (the launcher uses a longer
+    one than user sessions); ``None`` keeps the configured default.
+    """
     settings = get_settings()
     now = _now()
     jti = secrets.token_urlsafe(16)
-    expires_at = now + timedelta(seconds=settings.refresh_token_ttl_seconds)
+    ttl = ttl_seconds if ttl_seconds is not None else settings.refresh_token_ttl_seconds
+    expires_at = now + timedelta(seconds=ttl)
     payload = {
         "sub": subject,
         "type": "refresh",
@@ -112,10 +128,27 @@ def create_password_reset_token(subject: str) -> str:
     return _encode(payload)
 
 
-def decode_token(token: str, *, expected_type: TokenKind | None = None) -> dict[str, Any]:
+def decode_token(
+    token: str,
+    *,
+    expected_type: TokenKind | None = None,
+    expected_audience: str | None = None,
+) -> dict[str, Any]:
     payload = _decode(token)
     if expected_type and payload.get("type") != expected_type:
         raise UnauthorizedError(f"Token type mismatch (expected {expected_type})")
+    # Audience isolation (jose's own aud check is disabled in _decode):
+    #   - expected_audience set  -> the token's ``aud`` must equal it.
+    #   - expected_audience None -> reject any audience-scoped token, so a
+    #     launcher token (aud=hwax-agent) cannot authenticate a plain user route.
+    aud = payload.get("aud")
+    if expected_audience is not None:
+        if aud != expected_audience:
+            raise UnauthorizedError(
+                f"Token audience mismatch (expected {expected_audience})"
+            )
+    elif aud is not None:
+        raise UnauthorizedError("Audience-scoped token not accepted here")
     return payload
 
 

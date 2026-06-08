@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_seconds: int = 3600
     refresh_token_ttl_seconds: int = 604800
+    # HWAXAgent launcher refresh token lives longer than a user session (30 days)
+    # so a tray agent offline for a while can still refresh (contract v0.2.0).
+    agent_refresh_token_ttl_seconds: int = 2592000
     password_min_length: int = 10
     email_verify_token_ttl_hours: int = 24
     password_reset_token_ttl_hours: int = 2

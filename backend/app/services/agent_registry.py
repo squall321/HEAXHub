@@ -108,10 +108,14 @@ def heartbeat(
     db.commit()
 
 
-def list_agents(db: Session, pool: str | None = None) -> list[WindowsAgent]:
+def list_agents(
+    db: Session, pool: str | None = None, device_kind: str | None = None
+) -> list[WindowsAgent]:
     stmt = select(WindowsAgent).order_by(WindowsAgent.created_at.desc())
     if pool:
         stmt = stmt.where(WindowsAgent.pool == pool)
+    if device_kind:
+        stmt = stmt.where(WindowsAgent.device_kind == device_kind)
     return list(db.execute(stmt).scalars().all())
 
 

@@ -111,6 +111,7 @@ def _make_pkg(
     url: str = "https://store.example.test/x.exe",
     uploaded_at: datetime | None = None,
     size_bytes: int | None = 1234,
+    package_format: str | None = None,
 ) -> InstallerPackage:
     pkg = InstallerPackage(
         app_id=app_id,
@@ -120,6 +121,7 @@ def _make_pkg(
         sha256=SHA,
         size_bytes=size_bytes,
         uploaded_at=uploaded_at or datetime.now(timezone.utc),
+        package_format=package_format,
     )
     db.add(pkg)
     db.flush()
@@ -216,6 +218,48 @@ def test_package_url_is_download_endpoint_and_type_inferred(db: Session) -> None
     assert program["package"]["type"] == "msi"  # inferred from .msi suffix
     assert program["package"]["sha256"] == SHA
     assert program["package"]["size_bytes"] == 1234
+
+
+def test_package_format_wins_over_url_inference(db: Session) -> None:
+    # The real deployment stores installer_url WITHOUT an extension (".../1.0.0"),
+    # so inference alone would always say "exe". package_format (captured at
+    # upload) is authoritative — here a zip program whose URL ends in .exe must
+    # still report type "zip".
+    owner = _make_owner(db)
+    _make_app(db, owner, "fmt_zip")
+    _make_pkg(
+        db,
+        "fmt_zip",
+        version="1.0.0",
+        url="https://store.example.test/installer.exe",  # misleading suffix
+        package_format="zip",
+    )
+    program = next(
+        p
+        for p in agent_manifest_builder.build_manifest(db, base_url=BASE_URL)["programs"]
+        if p["id"] == "fmt_zip"
+    )
+    assert program["package"]["type"] == "zip"
+
+
+def test_package_type_falls_back_when_format_missing(db: Session) -> None:
+    # Legacy row (package_format NULL) with an extensionless disk URL → falls back
+    # to inference, which defaults to "exe".
+    owner = _make_owner(db)
+    _make_app(db, owner, "fmt_legacy")
+    _make_pkg(
+        db,
+        "fmt_legacy",
+        version="1.0.0",
+        url="/api/v1/apps/fmt_legacy/installers/windows-x64/1.0.0",  # no extension
+        package_format=None,
+    )
+    program = next(
+        p
+        for p in agent_manifest_builder.build_manifest(db, base_url=BASE_URL)["programs"]
+        if p["id"] == "fmt_legacy"
+    )
+    assert program["package"]["type"] == "exe"
 
 
 # ── extra.windows_install enrichment + defaults ──────────────────────────────

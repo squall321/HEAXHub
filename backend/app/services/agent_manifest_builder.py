@@ -56,6 +56,7 @@ _PACKAGE_TYPE_BY_SUFFIX = (
     (".zip", "zip"),
     (".exe", "exe"),
 )
+_VALID_PACKAGE_TYPES = frozenset({"zip", "exe", "msi", "msix"})
 
 _CACHE_TTL_SECONDS = 30.0
 _manifest_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -79,6 +80,16 @@ def _infer_package_type(url: str) -> str:
         if lowered.endswith(suffix):
             return kind
     return "exe"  # safest default: agent runs it as an executable installer
+
+
+def _resolve_package_type(pkg: InstallerPackage) -> str:
+    """Prefer the real ``package_format`` captured at upload; fall back to URL
+    inference for legacy rows (NULL format). Disk-stored installer_urls have no
+    extension, so without ``package_format`` inference always yields 'exe'."""
+    fmt = (pkg.package_format or "").lower()
+    if fmt in _VALID_PACKAGE_TYPES:
+        return fmt
+    return _infer_package_type(pkg.installer_url)
 
 
 def _whitelist(src: Any, keys: Iterable[str]) -> dict[str, Any]:
@@ -106,7 +117,7 @@ def _build_program(app: App, pkg: InstallerPackage, *, base_url: str) -> dict[st
     wi = _windows_install(app)
 
     package: dict[str, Any] = {
-        "type": _infer_package_type(pkg.installer_url),
+        "type": _resolve_package_type(pkg),
         "url": f"{base_url.rstrip('/')}/api/v1/installers/{pkg.id}/download",
         "sha256": pkg.sha256.lower(),
     }

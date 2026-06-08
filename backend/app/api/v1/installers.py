@@ -115,6 +115,9 @@ async def upload_installer(
         sha256=sha,
         signed=signed,
         uploaded_by=admin.id,
+        # Capture the real format from the original upload filename (the on-disk
+        # copy is always named installer.exe, so this is the only honest source).
+        package_format=installer_packages.infer_format(installer.filename),
     )
     return {
         "id": str(row.id),
@@ -125,6 +128,7 @@ async def upload_installer(
         "sha256": row.sha256,
         "size_bytes": row.size_bytes,
         "signed": row.signed,
+        "package_format": row.package_format,
     }
 
 

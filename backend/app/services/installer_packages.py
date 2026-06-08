@@ -70,6 +70,24 @@ def signature_path(app_id: str, os_name: str, version: str) -> Path:
     return installer_dir(app_id, os_name, version) / "installer.exe.sig"
 
 
+_FORMAT_BY_SUFFIX = ((".msix", "msix"), (".msi", "msi"), (".zip", "zip"), (".exe", "exe"))
+
+
+def infer_format(filename: str | None) -> str | None:
+    """Map an uploaded filename to a manifest package type (zip|exe|msi|msix).
+
+    Returns None for an unrecognised/absent extension so the manifest builder
+    can fall back to URL inference.
+    """
+    if not filename:
+        return None
+    lowered = filename.lower()
+    for suffix, fmt in _FORMAT_BY_SUFFIX:
+        if lowered.endswith(suffix):
+            return fmt
+    return None
+
+
 def compute_sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fp:
@@ -91,6 +109,7 @@ def register_installer(
     sha256: str,
     signed: bool,
     uploaded_by: uuid.UUID | None,
+    package_format: str | None = None,
 ) -> InstallerPackage:
     """Create / upsert an installer_packages row for an already-stored file.
 
@@ -123,6 +142,7 @@ def register_installer(
         existing.size_bytes = size_bytes
         existing.signed = signed
         existing.uploaded_by = uploaded_by
+        existing.package_format = package_format
         db.commit()
         db.refresh(existing)
         return existing
@@ -136,6 +156,7 @@ def register_installer(
         size_bytes=size_bytes,
         signed=signed,
         uploaded_by=uploaded_by,
+        package_format=package_format,
     )
     db.add(row)
     db.commit()

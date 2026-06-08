@@ -29,6 +29,10 @@ class InstallerPackage(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     signed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Real installer format (zip|exe|msi|msix), captured from the uploaded
+    # filename. The launcher manifest's package.type uses this; NULL falls back
+    # to inferring from installer_url (legacy rows).
+    package_format: Mapped[str | None] = mapped_column(String(8), nullable=True)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )

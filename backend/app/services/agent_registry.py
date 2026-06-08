@@ -38,10 +38,13 @@ def register_agent(
     pool: str,
     hostname: str | None = None,
     capabilities: dict[str, Any] | None = None,
+    device_kind: str | None = None,
 ) -> tuple[WindowsAgent, str]:
     """Register a new agent and return the (row, plaintext_token).
 
     The plaintext token is shown to the operator once; only SHA256(token) is stored.
+    ``device_kind`` is ``'launcher'`` for the HWAXAgent tray launcher or
+    ``'service'`` for the legacy polling worker; ``None`` leaves it unflagged.
     """
     token = _generate_token()
     agent = WindowsAgent(
@@ -52,6 +55,7 @@ def register_agent(
         auth_token_hash=_hash_token(token),
         status="unknown",
         disabled=False,
+        device_kind=device_kind,
     )
     db.add(agent)
     db.commit()

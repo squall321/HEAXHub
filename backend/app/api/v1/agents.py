@@ -69,6 +69,9 @@ class AgentRegisterIn(BaseModel):
     pool: str
     hostname: str | None = None
     capabilities: dict[str, Any] | None = None
+    # 'launcher' = HWAXAgent Windows tray; 'service' = legacy polling worker.
+    # NULL leaves the row unflagged (admin can backfill later).
+    device_kind: str | None = Field(default=None, pattern=r"^(launcher|service)$")
 
 
 class AgentOut(BaseModel):
@@ -276,6 +279,7 @@ def admin_register_agent(
         pool=payload.pool,
         hostname=payload.hostname,
         capabilities=payload.capabilities,
+        device_kind=payload.device_kind,
     )
     audit_service.safe_log(
         db,
@@ -283,7 +287,12 @@ def admin_register_agent(
         action="agent.create",
         target_type="agent",
         target_id=str(agent.id),
-        meta={"name": agent.name, "pool": agent.pool, "hostname": agent.hostname},
+        meta={
+            "name": agent.name,
+            "pool": agent.pool,
+            "hostname": agent.hostname,
+            "device_kind": agent.device_kind,
+        },
     )
     return AgentRegisterOut(agent=AgentOut.from_row(agent), token=token)
 

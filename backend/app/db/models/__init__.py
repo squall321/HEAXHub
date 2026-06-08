@@ -18,3 +18,4 @@ from app.db.models.gpu_holding import GpuHolding  # noqa: F401
 from app.db.models.service_instance import ServiceInstance  # noqa: F401
 from app.db.models.windows_agent import WindowsAgent  # noqa: F401
 from app.db.models.installer_package import InstallerPackage  # noqa: F401
+from app.db.models.agent_refresh_token import AgentRefreshToken  # noqa: F401

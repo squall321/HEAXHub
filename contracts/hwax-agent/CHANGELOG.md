@@ -6,27 +6,44 @@ from HEAXHub and from HWAXAgent itself, following SemVer.
 
 ## [Unreleased]
 
-Reported from the HWAXAgent side (Tauri 2 launcher) after building the client
-against contracts v0.2.0. See the PR description for the full feedback list.
+- (nothing yet)
 
-### Fixed
-- Removed stale **C# / WinUI3 / .NET** references that contradicted the confirmed
-  stack (**Tauri 2 + Rust + React**, per `docs/hwax-launcher-plan-v2.md`). The
-  agent's client is Rust (`reqwest`) + TS types — never C#/`Heax.Agent.Api`.
-  An HWAXAgent-side LLM was misled by these into starting a WinUI3/.NET build.
-  - `openapi.yaml` (info.description), `README.md`, `tokens.css` comment.
+## [0.3.0] - 2026-06-08 — MINOR
+
+The contract surface is now fully backed by a running HEAXHub backend.
+
+### Backend implementation landed (HEAXHub follow-up)
+- `POST /api/v1/launcher-agents/enroll` — implemented (mints access+refresh).
+- `POST /api/v1/launcher-agents/refresh` — implemented (rotates refresh; reuse → 401).
+- `GET  /api/v1/launcher-agents/manifest` — implemented with **ETag / If-None-Match
+  → 304** support (PR #2 G-line requirement).
+- `POST /api/v1/launcher-agents/installs` — Phase 1 stub (202 Accepted, logged).
+- `POST /api/v1/launcher-agents/audit` — Phase 1 stub (202 Accepted, logged).
+- `POST /api/v1/launcher-agents/heartbeat` — implemented (204; updates last_seen,
+  agent_version, hostname, modules in capabilities JSON).
+- `GET  /api/v1/installers/{id}/download` — implemented (bearer aud='hwax-agent',
+  302 to installer_url + `X-Sha256` header).
+- `GET  /api/v1/installers/{app_id}/latest` — implemented (Tauri updater feed;
+  204 when no installer registered). `signature` emitted as `""` until the
+  Ed25519 signing pipeline is wired (Phase 2 TODO).
+
+### Fixed (rolled up from the previous Unreleased)
+- Removed stale **C# / WinUI3 / .NET** references that contradicted the
+  confirmed stack (Tauri 2 + Rust + React, per `docs/hwax-launcher-plan-v2.md`).
 - `install-report.schema.json` description: corrected `/api/v1/agents/installs`
-  → `/api/v1/launcher-agents/installs` (the v0.2.0 renamed prefix; the bare
-  `/api/v1/agents/*` is the pre-existing service-agent API).
+  → `/api/v1/launcher-agents/installs`.
 
-### Added
-- `openapi.yaml`: `GET /api/v1/installers/{app_id}/latest` — the **Tauri updater
-  feed** (static-JSON manifest with per-platform Ed25519 `signature` + `url`,
-  `204` when current) that the agent's self-update polls (v2 §18). New
-  `TauriUpdaterManifest` schema. **Backend implementation is a HEAXHub follow-up.**
+### Added (rolled up)
+- `openapi.yaml`: `GET /api/v1/installers/{app_id}/latest` schema + new
+  `TauriUpdaterManifest` component.
 
-> SemVer: the de-stale/prefix edits are PATCH (docs only); the new endpoint is
-> MINOR. Final version is the maintainer's call at merge.
+### Migration notes for HEAXHub deployers
+Two new Alembic revisions are required:
+- `0006_windows_agents_device_kind` — adds `windows_agents.device_kind` column
+  (values: `launcher | service | NULL`).
+- `0007_agent_refresh_tokens` — creates the sibling table for launcher refresh
+  tokens (kept separate from the user-FK'd `refresh_tokens`).
+Run `alembic upgrade head` before starting the new backend.
 
 ## [0.2.0] - 2026-06-05 — BREAKING
 

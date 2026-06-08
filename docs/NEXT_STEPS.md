@@ -52,6 +52,12 @@
 
 각 절은 독립 PR 한 건에 대응. PR 제목 prefix 는 `[hwax-agent]` 권장 (`docs/hwax-agent-pr-protocol.md` §3 참고).
 
+> **상태 (2026-06-08): §2.1 ~ §2.6 모두 DONE.** 한 commit 으로 통합 머지됨.
+> PR #2 G1 (Tauri updater feed `/api/v1/installers/{app_id}/latest`) 도 같이 구현.
+> Live smoke: enrollment → JWT → manifest(ETag/304) → refresh rotation → heartbeat(204) →
+> installs/audit(202 stub) → installer download(404 no row) → updater feed(204 no pkg) 13/13 PASS.
+> 15 데모 regression 0 건. Contracts `v0.3.0` MINOR 릴리스 표지로 묶음.
+
 ### §2.1 Alembic 0006 + ORM `device_kind` 동기화 (P0, 0.5d)
 
 #### 변경 대상
@@ -292,11 +298,11 @@ LauncherAuth = Annotated[WindowsAgent, Depends(get_launcher_agent)]
 
 ## §5. HWAXAgent 측 진행 상태 추적
 
-별도 GitHub 레포 (**`squall321/HWAXLauncher`**) 에서 개발. **현황(2026-06-07): 빌드·패키징·
-실행검증 완료** — 14 커밋, Tauri 2 + Rust + React, 코어 40 테스트 통과, 실제 NSIS 설치파일 생성 +
-트레이 기동 실행검증 완료. 실서버 페어링/설치 1사이클만 **서버측 P0 대기**(런처 결함 아님).
-빌드된 클라이언트가 실제 호출하는 엔드포인트 인벤토리 + 현 플랜에 없는 갭(updater feed `/latest`,
-WS 푸시 메시지 스키마, installer publish)은 `docs/hwax-agent-client-status-and-server-gaps.md` 참고.
+별도 GitHub 레포 (**`squall321/HWAXLauncher`**) 에서 개발. **현황(2026-06-08): 빌드·패키징·
+실행검증 완료** — Tauri 2 + Rust + React, 코어 40 테스트 통과, NSIS 설치파일 생성 + 트레이 기동 실행
+검증 완료. **서버측 P0 (§2.1 ~ §2.6) 모두 완료**되어 실서버 페어링/설치 1사이클 차단 해제. 갭 3건
+(`docs/hwax-agent-client-status-and-server-gaps.md`) 중 **G1 (updater feed `/latest`) 완료**, G2
+(WS 푸시 메시지 스키마) + G3 (installer publish) 는 Phase 2/4 로 미룸.
 
 ### 본 레포가 받는 신호
 - GitHub Issue 라벨: `hwax-agent`, `needs-heaxhub-change`, `contracts`.

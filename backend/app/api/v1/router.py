@@ -11,6 +11,8 @@ from app.api.v1 import (
     change_requests,
     installers,
     jobs,
+    launcher_agents,
+    launcher_installers,
     submissions,
     users,
     webhooks,
@@ -28,3 +30,5 @@ api_router.include_router(change_requests.router)
 api_router.include_router(agents.router)
 api_router.include_router(agents.admin_router)
 api_router.include_router(installers.router)
+api_router.include_router(launcher_agents.router)
+api_router.include_router(launcher_installers.router)

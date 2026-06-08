@@ -20,11 +20,20 @@
 - PR 협업 규약 (`docs/hwax-agent-pr-protocol.md`) 정의 완료.
 - 라이브 서비스(통합 데모 15개) 정상 동작 중.
 
-▶ 다음 (이번 스프린트, 1~2주)
-- backend 측 0006 마이그레이션, `agent_service.py`, `agent_manifest_builder.py`, `/api/v1/launcher-agents/*` 라우터, `/api/v1/installers/{id}/download` 추가.
+▶ 진행 (구현 완료, 머지 대기 — stacked PR 체인)
+- §2.1~§2.5 **P0 구현 전부 완료**, 5개 stacked PR 로 제출됨. 순서대로 머지:
+  - PR #4 (§2.1) `windows_agents.device_kind` — base `main`
+  - PR #5 (§2.2) `agent_service.py` + alembic 0007 `agent_refresh_tokens` + audience-aware `decode_token` — base #4
+  - PR #6 (§2.3) `agent_manifest_builder.py` — base #5
+  - PR #7 (§2.4) `launcher_agents.py` 라우터 (enroll/refresh/manifest 실구현 + installs/audit/heartbeat 501 stub) — base #6
+  - PR #8 (§2.5) `GET /api/v1/installers/{id}/download` — base #7
+- **머지 전 메인테이너 필수 검증** (이 환경엔 Postgres 없어 `py_compile` 만 수행함):
+  각 PR 본문의 `alembic upgrade head && downgrade -1 && upgrade head` + `pytest <해당 테스트>`.
+- 남은 P0: **§2.6** (contracts 정식 채택 + git tag) — 위 스택 머지 후 메인테이너 단발 작업.
 
-◇ blocker 없음
+◇ 머지 순서 외 blocker 없음
 - HWAXAgent 측은 별도 윈도우 PC 에서 Tauri 2 부트스트랩 진행 중. 본 레포의 작업은 그쪽 진행과 독립적으로 머지 가능 (계약이 양 레포의 동기점).
+- **확인 필요 (운영)**: 포털/Caddy 가 `X-Forwarded-Prefix: /heax-hub` 를 전달하는지. 전달 안 하면 매니페스트의 인스톨러 다운로드 URL 이 포털 경유 시 깨지므로 `agent_public_base_url` (신규 설정) 을 `https://hwax.sec.samsung.net/heax-hub` 로 지정해야 함 (PR #7 참고).
 
 ---
 
@@ -32,12 +41,12 @@
 
 | # | 작업 | 의존성 | 추정 공수 | 우선순위 | 담당 |
 |---|---|---|---|---|---|
-| 2.1 | Alembic 0006 + ORM `device_kind` 동기화 | — | 0.5d | **P0** | 백엔드 |
-| 2.2 | `agent_service.py` + alembic 0007 (`agent_refresh_tokens`) | 2.1 | 1d | **P0** | 백엔드 |
-| 2.3 | `agent_manifest_builder.py` | 2.1 | 1d | **P0** | 백엔드 |
-| 2.4 | `launcher_agents.py` 라우터 (3 실구현 + 3 stub) | 2.2, 2.3 | 1d | **P0** | 백엔드 |
-| 2.5 | `/api/v1/installers/{id}/download` | 2.2 | 0.5d | **P0** | 백엔드 |
-| 2.6 | contracts 정식 채택 + 첫 git tag | 2.1~2.5 머지 | 0.25d | **P0** | 메인테이너 |
+| 2.1 | Alembic 0006 + ORM `device_kind` 동기화 | — | 0.5d | **P0** | 백엔드 · ✅ PR #4 |
+| 2.2 | `agent_service.py` + alembic 0007 (`agent_refresh_tokens`) | 2.1 | 1d | **P0** | 백엔드 · ✅ PR #5 |
+| 2.3 | `agent_manifest_builder.py` | 2.1 | 1d | **P0** | 백엔드 · ✅ PR #6 |
+| 2.4 | `launcher_agents.py` 라우터 (3 실구현 + 3 stub) | 2.2, 2.3 | 1d | **P0** | 백엔드 · ✅ PR #7 |
+| 2.5 | `/api/v1/installers/{id}/download` | 2.2 | 0.5d | **P0** | 백엔드 · ✅ PR #8 |
+| 2.6 | contracts 정식 채택 + 첫 git tag | 2.1~2.5 머지 | 0.25d | **P0** | 메인테이너 ⏳ |
 | 3.1 | installs / audit / heartbeat 실구현 (alembic 0008) | 2.4 | 2d | P1 | 백엔드 |
 | 3.2 | 매니페스트 schema v2 → v3 마이그레이션 경로 | 3.1 | 1d | P1 | 백엔드 |
 | 3.3 | 운영자 대시보드 "설치 이력" 탭 | 3.1 | 1d | P1 | 풀스택 |

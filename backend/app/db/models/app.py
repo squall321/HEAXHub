@@ -21,6 +21,10 @@ class AppType(str, enum.Enum):
     EXTERNAL_LINK = "external_link"
     SLURM_JOB = "slurm_job"
     CONTAINER_APP = "container_app"
+    # HWAXAgent itself — the launcher we ship from the portal. Hidden from
+    # the agent's program catalog (it would otherwise show itself), surfaced
+    # only by the public download page.
+    DESKTOP_AGENT = "desktop_agent"
 
 
 class ExecutionTarget(str, enum.Enum):

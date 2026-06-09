@@ -57,7 +57,16 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        # ``transaction_per_migration=True`` is required so that 0008
+        # (``ALTER TYPE app_type ADD VALUE 'desktop_agent'``) commits
+        # before 0009 references the new enum value — Postgres rejects
+        # newly added enum values inside the same transaction
+        # (``UnsafeNewEnumValueUsage``).
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            transaction_per_migration=True,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

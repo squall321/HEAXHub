@@ -62,7 +62,12 @@
 > F1 (launcher-agents P0) ✅, F2 (경로 불일치 — `/api/v1/installers/{id}/download` 신규
 > 라우트로 해소) ✅, F3 (updater feed Tauri JSON `/api/v1/installers/{app_id}/latest`) ✅,
 > F5 (installer publish — 기존 `/api/v1/apps/{app_id}/installers` 재사용) ✅.
-> 남은 것: F4 (WS push, Phase 4), §2 포털-에서-런처-설치 SPA 설계, Q1~Q5 의사결정.
+> Q1 (`desktop_agent` 신설) / Q2 (다운로드 공개) / Q3 (updater (a) 유지) 결정 후
+> 포털-설치 백엔드+SPA 도 완료: alembic 0008 (enum) + 0009 (App row seed),
+> `GET /api/v1/installers/{app_id}/public-latest` (메타 JSON) +
+> `GET /api/v1/installers/{app_id}/public-download` (파일 스트림) 신규,
+> `frontend/src/routes/download.tsx` SPA 페이지 추가 (`/heax-hub/download`).
+> 남은 것: F4 (WS push, Phase 4) 만.
 
 ### §2.1 Alembic 0006 + ORM `device_kind` 동기화 (P0, 0.5d)
 

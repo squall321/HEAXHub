@@ -5,34 +5,37 @@ pre-existing service-agent routes under ``/api/v1/agents/`` (which expect a
 different body shape — e.g. ``POST /api/v1/agents/heartbeat`` already takes
 ``{ status, agent_version? }``).
 
-Phase 1 endpoints (this PR):
+Endpoints:
     POST   /enroll      — bootstrap: redeem enrollment_token → JWT pair
     POST   /refresh     — rotate refresh token, return new access (+refresh)
     GET    /manifest    — programs.json (catalog, ETag/If-None-Match aware)
-
-Phase 1 stubs (202 Accepted, body recorded but not yet persisted to a
-dedicated install_reports / audit_log table — that's Phase 2):
-    POST   /installs    — install-report.schema.json
-    POST   /audit       — audit-event.schema.json
-    POST   /heartbeat   — { agent_version, hostname?, modules[] }
+    POST   /installs    — persist one install attempt (install_reports)
+    POST   /audit       — write one audit event (audit_log)
+    POST   /heartbeat   — { agent_version, hostname?, modules[] } → last_seen
 """
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from datetime import datetime, timezone
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Body, Header, Request, Response, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from fastapi import APIRouter, Header, Request, Response, status
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.errors import UnauthorizedError
+from app.core.errors import ForbiddenError, UnauthorizedError
+from app.db.models.install_report import InstallReport
 from app.db.models.windows_agent import WindowsAgent
 from app.deps import DbSession
-from app.services import agent_manifest_builder, agent_service
+from app.services import agent_manifest_builder, agent_service, audit_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/launcher-agents", tags=["hwax-agent"])
+
+# Contract truncation limits (the hub truncates oversize rather than rejecting).
+_ERROR_MAX = 2048
+_LOG_EXCERPT_MAX = 16384
+_AGENT_MISMATCH = "agent_id does not match the authenticated launcher"
 
 
 # ── auth dependency ────────────────────────────────────────────────────────────
@@ -82,6 +85,45 @@ class HeartbeatIn(BaseModel):
     agent_version: str
     hostname: str | None = None
     modules: list[dict[str, Any]] | None = None
+
+
+class InstallReportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # install-report.schema.json
+    agent_id: str
+    app_id: str
+    version: str
+    status: Literal["success", "failed", "rolled_back", "partial"]
+    started_at: datetime
+    finished_at: datetime
+    exit_code: int | None = None
+    sha256_verified: bool | None = None
+    error: str | None = None
+    log_excerpt: str | None = None
+    previous_version: str | None = None
+
+
+class AuditClientMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    os: str | None = None
+    os_version: str | None = None
+    agent_version: str | None = None
+    hostname: str | None = None
+
+
+class AuditEventIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # audit-event.schema.json
+    agent_id: str
+    kind: Literal[
+        "enrollment", "install", "uninstall", "run", "stop", "rollback",
+        "av_block", "sha256_mismatch", "download_failed", "policy_denied",
+        "heartbeat",
+    ]
+    occurred_at: datetime
+    severity: Literal["info", "warn", "error"]
+    app_id: str | None = None
+    version: str | None = None
+    payload: dict[str, Any] | None = None
+    client_meta: AuditClientMeta | None = None
 
 
 # ── endpoints ──────────────────────────────────────────────────────────────────
@@ -143,40 +185,70 @@ def manifest(
     return payload
 
 
-# ── Phase 1 stubs: accept the body but don't persist yet ───────────────────────
-
-
 @router.post("/installs", status_code=status.HTTP_202_ACCEPTED)
 def installs(
-    payload: Annotated[dict[str, Any], Body(...)],
+    payload: InstallReportIn,
     db: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, str]:
-    """Record an install attempt. Phase 1: accepted-and-logged stub."""
+    """Persist one install-attempt outcome (contract HWAXAgentInstallReport)."""
     agent = _current_agent(db, authorization)
-    logger.info(
-        "launcher install report agent=%s app_id=%s version=%s status=%s",
-        agent.id,
-        payload.get("app_id"),
-        payload.get("version"),
-        payload.get("status"),
+    if payload.agent_id != str(agent.id):
+        raise ForbiddenError(_AGENT_MISMATCH)
+    report = InstallReport(
+        agent_id=agent.id,
+        app_id=payload.app_id,
+        version=payload.version,
+        status=payload.status,
+        exit_code=payload.exit_code,
+        started_at=payload.started_at,
+        finished_at=payload.finished_at,
+        sha256_verified=payload.sha256_verified,
+        error=payload.error[:_ERROR_MAX] if payload.error else None,
+        log_excerpt=payload.log_excerpt[:_LOG_EXCERPT_MAX] if payload.log_excerpt else None,
+        previous_version=payload.previous_version,
     )
-    return {"status": "accepted"}
+    db.add(report)
+    db.commit()
+    return {"status": "accepted", "id": str(report.id)}
 
 
 @router.post("/audit", status_code=status.HTTP_202_ACCEPTED)
 def audit(
-    payload: Annotated[dict[str, Any], Body(...)],
+    payload: AuditEventIn,
     db: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, str]:
-    """Submit a single audit event. Phase 1: accepted-and-logged stub."""
+    """Record one launcher audit event in the shared audit_log table.
+
+    Launcher events have ``actor_user_id=NULL`` and carry their identity in
+    ``meta`` (actor='system:hwax-agent'), targeting the windows_agent.
+    """
     agent = _current_agent(db, authorization)
-    logger.info(
-        "launcher audit agent=%s kind=%s severity=%s",
-        agent.id,
-        payload.get("kind"),
-        payload.get("severity"),
+    if payload.agent_id != str(agent.id):
+        raise ForbiddenError(_AGENT_MISMATCH)
+    meta: dict[str, Any] = {
+        "agent_id": str(agent.id),
+        "actor": "system:hwax-agent",
+        "kind": payload.kind,
+        "severity": payload.severity,
+        "occurred_at": payload.occurred_at.isoformat(),
+    }
+    if payload.app_id:
+        meta["app_id"] = payload.app_id
+    if payload.version:
+        meta["version"] = payload.version
+    if payload.payload is not None:
+        meta["payload"] = payload.payload
+    if payload.client_meta is not None:
+        meta["client_meta"] = payload.client_meta.model_dump(exclude_none=True)
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action=f"agent.{payload.kind}",
+        target_type="windows_agent",
+        target_id=str(agent.id),
+        meta=meta,
     )
     return {"status": "accepted"}
 
@@ -188,8 +260,6 @@ def heartbeat(
     authorization: Annotated[str | None, Header()] = None,
 ) -> Response:
     """30-minute alive ping. Updates last_seen + (best-effort) capabilities."""
-    from datetime import datetime, timezone  # noqa: PLC0415
-
     agent = _current_agent(db, authorization)
     agent.last_seen = datetime.now(timezone.utc)
     agent.agent_version = payload.agent_version

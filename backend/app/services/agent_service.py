@@ -262,3 +262,19 @@ def verify_agent_jwt(db: Session, access_token: str) -> WindowsAgent:
     if agent is None or agent.disabled:
         raise UnauthorizedError("Agent unknown or disabled")
     return agent
+
+
+def revoke_refresh_chain(db: Session, agent_id: Any) -> None:
+    """Revoke every still-active refresh token for an agent and commit.
+
+    Used when an operator rotates the enrollment token: re-issuing means the old
+    device's JWT chain should stop working immediately.
+    """
+    now = _now()
+    rows = db.execute(
+        select(AgentRefreshToken).where(AgentRefreshToken.agent_id == agent_id)
+    ).scalars()
+    for row in rows:
+        if row.revoked_at is None:
+            row.revoked_at = now
+    db.commit()

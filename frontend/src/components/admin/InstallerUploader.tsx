@@ -65,7 +65,7 @@ export function InstallerUploader({ appId }: InstallerUploaderProps) {
       return;
     }
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("installer", file); // backend field name (upload_installer)
     fd.append("os", os);
     fd.append("version", version);
     upload.mutate(fd);
@@ -116,7 +116,7 @@ export function InstallerUploader({ appId }: InstallerUploaderProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>파일</TableHead>
+              <TableHead>서명</TableHead>
               <TableHead>OS</TableHead>
               <TableHead>버전</TableHead>
               <TableHead>크기</TableHead>
@@ -128,12 +128,18 @@ export function InstallerUploader({ appId }: InstallerUploaderProps) {
           <TableBody>
             {items.map((p) => (
               <TableRow key={p.id}>
-                <TableCell className="font-mono text-xs">{p.filename}</TableCell>
+                <TableCell>
+                  <Badge variant={p.signed ? "success" : "muted"}>
+                    {p.signed ? "서명됨" : "미서명"}
+                  </Badge>
+                </TableCell>
                 <TableCell>
                   <Badge variant="muted">{p.os}</Badge>
                 </TableCell>
                 <TableCell className="text-xs">{p.version}</TableCell>
-                <TableCell className="text-xs">{formatBytes(p.size_bytes)}</TableCell>
+                <TableCell className="text-xs">
+                  {p.size_bytes != null ? formatBytes(p.size_bytes) : "—"}
+                </TableCell>
                 <TableCell
                   className="max-w-[18ch] truncate font-mono text-[10px] text-muted-foreground"
                   title={p.sha256}
@@ -145,7 +151,7 @@ export function InstallerUploader({ appId }: InstallerUploaderProps) {
                 </TableCell>
                 <TableCell className="text-right">
                   <Button size="icon" variant="ghost" asChild>
-                    <a href={p.download_url} download>
+                    <a href={p.installer_url} download>
                       <Download className="h-3.5 w-3.5" />
                     </a>
                   </Button>

@@ -383,17 +383,17 @@ export interface WindowsAgentIssueResponse {
   token: string;
 }
 
+// Mirrors backend list_installers (app/api/v1/installers.py).
 export interface InstallerPackage {
   id: string;
   app_id: string;
   os: string;
   version: string;
-  filename: string;
-  size_bytes: number;
+  installer_url: string; // relative download path; requires auth
+  size_bytes: number | null;
   sha256: string;
-  download_url: string;
-  uploaded_at: string;
-  uploaded_by?: string | null;
+  signed: boolean;
+  uploaded_at: string | null;
 }
 
 export interface IntegrationConfig {

@@ -10,6 +10,7 @@ Mounted under the existing ``/apps`` prefix so URLs match installer_url:
 from __future__ import annotations
 
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from app.core.errors import GoneError, NotFoundError
 from app.db.models.app import App
 from app.deps import AdminUser, CurrentUser, DbSession, get_app_or_404
-from app.services import custom_protocol, installer_packages
+from app.services import audit_service, custom_protocol, installer_packages
 
 router = APIRouter(prefix="/apps", tags=["installers"])
 
@@ -185,3 +186,29 @@ def download_protocol_reg(
             "Content-Disposition": f'attachment; filename="{app_id}.reg"',
         },
     )
+
+
+@router.delete("/{app_id}/installers/{installer_id}")
+def delete_installer(
+    app_id: str,
+    installer_id: uuid.UUID,
+    db: DbSession,
+    admin: AdminUser,
+) -> dict[str, str]:
+    """Operator-only: remove an installer package (row + on-disk artifact).
+
+    The admin UI's installer list calls this. 404 if the id is unknown or belongs
+    to a different app (so an id from another app can't be deleted via this path).
+    """
+    row = installer_packages.delete_installer(db, installer_id, app_id=app_id)
+    if row is None:
+        raise NotFoundError("Installer not found")
+    audit_service.safe_log(
+        db,
+        actor_user_id=admin.id,
+        action="installer.delete",
+        target_type="app",
+        target_id=app_id,
+        meta={"installer_id": str(installer_id), "version": row.version, "os": row.os},
+    )
+    return {"detail": "deleted"}

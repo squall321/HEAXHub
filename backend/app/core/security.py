@@ -49,7 +49,16 @@ def _encode(payload: dict[str, Any]) -> str:
 def _decode(token: str) -> dict[str, Any]:
     settings = get_settings()
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        # Audience is validated explicitly in ``decode_token`` (python-jose
+        # versions differ on how they treat an ``aud`` claim when no audience is
+        # supplied), so disable jose's own aud check here — signature / exp / type
+        # are still verified. This makes the reverse-guard below deterministic.
+        return jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_aud": False},
+        )
     except JWTError as exc:
         raise UnauthorizedError("Invalid or expired token") from exc
 
@@ -112,10 +121,28 @@ def create_password_reset_token(subject: str) -> str:
     return _encode(payload)
 
 
-def decode_token(token: str, *, expected_type: TokenKind | None = None) -> dict[str, Any]:
+def decode_token(
+    token: str,
+    *,
+    expected_type: TokenKind | None = None,
+    expected_audience: str | None = None,
+) -> dict[str, Any]:
     payload = _decode(token)
     if expected_type and payload.get("type") != expected_type:
         raise UnauthorizedError(f"Token type mismatch (expected {expected_type})")
+    # Audience isolation (jose's own aud check is disabled in _decode):
+    #   - expected_audience set  → the token's ``aud`` must equal it.
+    #   - expected_audience None → REJECT any audience-scoped token, so a launcher
+    #     token (aud='hwax-agent') cannot authenticate a plain user route. (Launcher
+    #     routes decode via agent_service._decode_agent, not this function.)
+    aud = payload.get("aud")
+    if expected_audience is not None:
+        if aud != expected_audience:
+            raise UnauthorizedError(
+                f"Token audience mismatch (expected {expected_audience})"
+            )
+    elif aud is not None:
+        raise UnauthorizedError("Audience-scoped token not accepted here")
     return payload
 
 

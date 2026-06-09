@@ -51,6 +51,14 @@ ROUTE_RULES: list[_Rule] = [
     _Rule("POST", "/api/v1/auth/login",                   "ip", 5,   60),
     _Rule("POST", "/api/v1/auth/register",                "ip", 3,   3600),
     _Rule("POST", "/api/v1/auth/password/reset-request",  "ip", 3,   3600),
+    # Launcher unauthenticated front door — tight per-IP (no bearer yet here).
+    _Rule("POST", "/api/v1/launcher-agents/enroll",       "ip",   10,  60),
+    _Rule("POST", "/api/v1/launcher-agents/refresh",      "ip",   20,  60),
+    # Authenticated launcher traffic — bucket PER AGENT (see _user_key), not by
+    # the shared corporate-NAT IP, so a fleet behind one egress IP doesn't
+    # collectively starve a single IP budget on routine polls/heartbeats.
+    _Rule("*",    "/api/v1/launcher-agents/",             "user", 120, 60),
+    _Rule("GET",  "/api/v1/installers/",                  "user", 60,  60),
     # Match every /apps/{id}/run regardless of app_id by prefix-stripping
     # after the match (see _match_path below).
     _Rule("POST", "/api/v1/apps/",                        "user", 30, 60),
@@ -78,17 +86,33 @@ def _client_ip(request: Request) -> str:
 
 
 def _user_key(request: Request) -> str | None:
-    """Decode the Bearer token without raising; return user sub or None."""
+    """Decode the Bearer token without raising; return a per-identity bucket key.
+
+    Handles plain user tokens AND launcher tokens. A launcher access token carries
+    aud='hwax-agent' and is decoded by agent_service (not the shared decode_token),
+    so we try that too and bucket launchers as ``agent:<sub>`` — otherwise a whole
+    NAT'd fleet would collapse onto the shared IP bucket.
+    """
     auth = request.headers.get("authorization")
     if not auth or not auth.lower().startswith("bearer "):
         return None
     token = auth.split(" ", 1)[1].strip()
     try:
         payload = decode_token(token, expected_type="access")
+        sub = payload.get("sub")
+        if sub:
+            return str(sub)
     except Exception:  # noqa: BLE001
-        return None
-    sub = payload.get("sub")
-    return str(sub) if sub else None
+        pass
+    try:
+        from app.services.agent_service import peek_agent_id  # noqa: PLC0415
+
+        aid = peek_agent_id(token)
+        if aid:
+            return f"agent:{aid}"
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 def _bucket_key(rule: _Rule, request: Request) -> str:

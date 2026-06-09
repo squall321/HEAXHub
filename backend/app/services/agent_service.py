@@ -182,6 +182,25 @@ def redeem_enrollment_token(
     )
     db.commit()
     db.refresh(agent)
+    # A device going live is a first-class compliance event; record it (+ the
+    # client identity) so it shows in the per-agent admin audit view.
+    from app.services import audit_service  # noqa: PLC0415 — avoid import cycle
+
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action="agent.enroll",
+        target_type="windows_agent",
+        target_id=str(agent.id),
+        meta={
+            "actor": "system:hwax-agent",
+            "severity": "info",
+            "hostname": agent.hostname,
+            "agent_version": agent.agent_version,
+            "user_agent": user_agent,
+        },
+        ip_address=ip_address,
+    )
     return {
         "agent_id": str(agent.id),
         "access_token": access,
@@ -211,8 +230,35 @@ def rotate_refresh(
     old = db.execute(
         select(AgentRefreshToken).where(AgentRefreshToken.jti == old_jti)
     ).scalar_one_or_none()
-    if old is None or not old.is_active:
-        raise UnauthorizedError("Refresh token unknown, revoked, or expired")
+    if old is None:
+        raise UnauthorizedError("Refresh token unknown")
+    if old.revoked_at is not None:
+        # A rotated (already-revoked) token is being replayed — the fleet's
+        # primary token-theft signal. Revoke the WHOLE chain and audit it
+        # (severity error) so an operator/SOC can actually see it, instead of
+        # the revoke happening silently. (Routine rotations are NOT audited —
+        # too high-volume.)
+        revoke_refresh_chain(db, old.agent_id)
+        from app.services import audit_service  # noqa: PLC0415
+
+        audit_service.safe_log(
+            db,
+            actor_user_id=None,
+            action="agent.refresh.reuse_detected",
+            target_type="windows_agent",
+            target_id=str(old.agent_id),
+            meta={
+                "actor": "system:hwax-agent",
+                "severity": "error",
+                "jti": old_jti,
+                "detail": "rotated refresh token replayed; whole chain revoked",
+                "user_agent": user_agent,
+            },
+            ip_address=ip_address,
+        )
+        raise UnauthorizedError("Refresh token reuse detected")
+    if not old.is_active:  # not revoked (handled above) ⇒ expired
+        raise UnauthorizedError("Refresh token expired")
 
     agent = db.get(WindowsAgent, old.agent_id)
     if agent is None or agent.disabled:
@@ -278,3 +324,19 @@ def revoke_refresh_chain(db: Session, agent_id: Any) -> None:
         if row.revoked_at is None:
             row.revoked_at = now
     db.commit()
+
+
+def peek_agent_id(token: str) -> str | None:
+    """Return the WindowsAgent.id (sub) for a valid launcher ACCESS token, else None.
+
+    Decode-only (no DB) — used by the rate limiter to bucket launcher traffic per
+    agent. Never raises.
+    """
+    try:
+        payload = _decode_agent(token)
+    except Exception:  # noqa: BLE001
+        return None
+    if payload.get("type") != "access":
+        return None
+    sub = payload.get("sub")
+    return str(sub) if sub else None

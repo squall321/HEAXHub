@@ -140,6 +140,18 @@ def compute_etag(payload: dict[str, Any]) -> str:
     return '"' + hashlib.sha256(blob.encode()).hexdigest()[:16] + '"'
 
 
+def is_servable_installer_app(app: App) -> bool:
+    """Whether an app's installer may be served to a launcher / portal download.
+
+    Mirrors the manifest's status gate (not ARCHIVED) so a retired app's
+    installer can't be pulled via the download endpoints even by a valid
+    launcher JWT (or the public portal route) that guesses its id. ``app_type``
+    is deliberately NOT checked — the agent self-update download serves the
+    ``hwax-agent`` app, which is ``desktop_agent`` (not ``windows_gui``).
+    """
+    return app.status != AppStatus.ARCHIVED
+
+
 _SCHEMA_CACHE: dict[str, Any] | None = None
 
 

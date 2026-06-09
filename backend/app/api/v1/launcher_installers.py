@@ -37,9 +37,10 @@ from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 
 from app.core.errors import UnauthorizedError
+from app.db.models.app import App
 from app.db.models.installer_package import InstallerPackage
 from app.deps import DbSession
-from app.services import agent_service, installer_packages
+from app.services import agent_manifest_builder, agent_service, installer_packages
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,14 @@ def _require_agent(
         raise UnauthorizedError("Missing Bearer token")
     token = authorization.split(" ", 1)[1].strip()
     return agent_service.verify_agent_jwt(db, token)
+
+
+def _servable(db: DbSession, app_id: str) -> bool:
+    """Least privilege: only serve an installer when its app exists and isn't
+    retired (ARCHIVED) — mirrors the manifest's status gate so a draft/archived
+    app's binary can't be pulled via these download routes."""
+    app = db.get(App, app_id)
+    return app is not None and agent_manifest_builder.is_servable_installer_app(app)
 
 
 # ── /installers/{id}/download ──────────────────────────────────────────────────
@@ -78,7 +87,8 @@ def download(
         return Response(status_code=status.HTTP_404_NOT_FOUND)
 
     pkg = db.get(InstallerPackage, pkg_uuid)
-    if pkg is None:
+    if pkg is None or not _servable(db, pkg.app_id):
+        # 404 (not 403) so a draft/archived installer id isn't even confirmed.
         return Response(status_code=status.HTTP_404_NOT_FOUND)
 
     resp = RedirectResponse(pkg.installer_url, status_code=302)
@@ -114,7 +124,7 @@ def latest(
         .limit(1)
     ).scalar_one_or_none()
 
-    if pkg is None:
+    if pkg is None or not _servable(db, app_id):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     payload: dict[str, Any] = {
@@ -172,7 +182,7 @@ def public_latest(
         .limit(1)
     ).scalar_one_or_none()
 
-    if pkg is None:
+    if pkg is None or not _servable(db, app_id):
         return Response(status_code=status.HTTP_404_NOT_FOUND)
 
     payload: dict[str, Any] = {
@@ -216,7 +226,7 @@ def public_download(
         .limit(1)
     ).scalar_one_or_none()
 
-    if pkg is None:
+    if pkg is None or not _servable(db, app_id):
         return Response(status_code=status.HTTP_404_NOT_FOUND)  # type: ignore[return-value]
 
     file_path = installer_packages.installer_path(app_id, pkg.os, pkg.version)

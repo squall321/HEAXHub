@@ -9,8 +9,8 @@ import type {
 export const agentsApi = {
   list: () => api.get<WindowsAgent[]>("/admin/agents"),
   detail: (id: string) => api.get<WindowsAgent>(`/admin/agents/${id}`),
-  // Returns a one-time enrollment token in `enrollment_token`.
-  // Plain token is NEVER shown again after this response.
+  // Returns { agent, token } — `token` is the one-time plaintext enrollment
+  // token, NEVER shown again after this response.
   create: (payload: WindowsAgentCreatePayload) =>
     api.post<WindowsAgentIssueResponse>("/admin/agents", payload),
   remove: (id: string) => api.del<{ ok: true }>(`/admin/agents/${id}`),

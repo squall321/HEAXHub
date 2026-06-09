@@ -26,7 +26,7 @@ export function AgentTokenDialog({ result, onClose }: AgentTokenDialogProps) {
 
   async function copyToken() {
     try {
-      await navigator.clipboard.writeText(result.enrollment_token);
+      await navigator.clipboard.writeText(result.token);
       setCopied(true);
       toast.success("토큰이 복사되었습니다.");
     } catch {
@@ -38,7 +38,7 @@ export function AgentTokenDialog({ result, onClose }: AgentTokenDialogProps) {
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>등록 토큰 발급 — {result.hostname}</DialogTitle>
+          <DialogTitle>등록 토큰 발급 — {result.agent.name}</DialogTitle>
           <DialogDescription>
             이 토큰은 단 한 번만 표시됩니다. Windows Agent 설치 시 한 번 입력하면 그 이후로는
             불필요합니다. 분실 시 새로 발급해야 합니다.
@@ -50,7 +50,7 @@ export function AgentTokenDialog({ result, onClose }: AgentTokenDialogProps) {
             Enrollment Token
           </label>
           <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-3">
-            <code className="flex-1 break-all font-mono text-xs">{result.enrollment_token}</code>
+            <code className="flex-1 break-all font-mono text-xs">{result.token}</code>
             <Button size="sm" variant="outline" onClick={copyToken}>
               {copied ? (
                 <Check className="h-3.5 w-3.5" />

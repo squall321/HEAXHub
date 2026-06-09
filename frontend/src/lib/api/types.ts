@@ -353,27 +353,34 @@ export interface ServiceInstance {
   stopped_at?: string | null;
 }
 
+// Mirrors backend AgentOut (app/api/v1/agents.py).
 export interface WindowsAgent {
   id: string;
-  hostname: string;
-  os_version?: string | null;
-  arch?: string | null;
-  status: "online" | "offline" | "disabled";
-  last_seen_at?: string | null;
-  version?: string | null;
-  capabilities?: string[];
-  created_at: string;
+  name: string;
+  pool: string;
+  hostname: string | null;
+  agent_version?: string | null;
+  status: string; // unknown | online | busy | offline (free string)
+  last_seen?: string | null;
+  disabled: boolean;
+  device_kind?: string | null; // 'launcher' | 'service' | null
+  capabilities?: Record<string, unknown> | null;
+  created_at: string | null;
 }
 
+// Mirrors backend AgentRegisterIn — name + pool are REQUIRED.
 export interface WindowsAgentCreatePayload {
-  hostname: string;
-  description?: string;
-  capabilities?: string[];
+  name: string;
+  pool: string;
+  hostname?: string;
+  device_kind?: "launcher" | "service";
 }
 
-export interface WindowsAgentIssueResponse extends WindowsAgent {
-  // One-time token, only returned on creation
-  enrollment_token: string;
+// Mirrors backend AgentRegisterOut: { agent, token }. `token` is the one-time
+// plaintext enrollment token, returned only on create / rotate.
+export interface WindowsAgentIssueResponse {
+  agent: WindowsAgent;
+  token: string;
 }
 
 export interface InstallerPackage {

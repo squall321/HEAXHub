@@ -28,6 +28,8 @@ import type { WindowsAgent, WindowsAgentIssueResponse } from "@/lib/api/types";
 import { formatDateTime, timeAgo } from "@/lib/utils/format";
 import { AgentTokenDialog } from "./AgentTokenDialog";
 
+const COL_COUNT = 9;
+
 export function AgentsTable() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -89,8 +91,10 @@ export function AgentsTable() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>이름</TableHead>
+              <TableHead>풀</TableHead>
               <TableHead>호스트명</TableHead>
-              <TableHead>OS</TableHead>
+              <TableHead>종류</TableHead>
               <TableHead>버전</TableHead>
               <TableHead>상태</TableHead>
               <TableHead>마지막 접속</TableHead>
@@ -101,24 +105,28 @@ export function AgentsTable() {
           <TableBody>
             {items.map((a) => (
               <TableRow key={a.id}>
-                <TableCell className="font-mono text-xs">{a.hostname}</TableCell>
-                <TableCell className="text-xs">{a.os_version ?? "—"}</TableCell>
-                <TableCell className="text-xs">{a.version ?? "—"}</TableCell>
+                <TableCell className="font-medium text-xs">{a.name}</TableCell>
+                <TableCell className="text-xs">{a.pool}</TableCell>
+                <TableCell className="font-mono text-xs">{a.hostname ?? "—"}</TableCell>
+                <TableCell className="text-xs">{a.device_kind ?? "—"}</TableCell>
+                <TableCell className="text-xs">{a.agent_version ?? "—"}</TableCell>
                 <TableCell>
                   <Badge
                     variant={
-                      a.status === "online"
-                        ? "success"
-                        : a.status === "disabled"
-                          ? "destructive"
-                          : "muted"
+                      a.disabled
+                        ? "destructive"
+                        : a.status === "online"
+                          ? "success"
+                          : a.status === "busy"
+                            ? "default"
+                            : "muted"
                     }
                   >
-                    {a.status}
+                    {a.disabled ? "비활성" : a.status}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {timeAgo(a.last_seen_at)}
+                  {a.last_seen ? timeAgo(a.last_seen) : "—"}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {formatDateTime(a.created_at)}
@@ -146,7 +154,7 @@ export function AgentsTable() {
             ))}
             {items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={COL_COUNT} className="py-12 text-center text-sm text-muted-foreground">
                   등록된 Windows Agent가 없습니다.
                 </TableCell>
               </TableRow>
@@ -174,7 +182,7 @@ export function AgentsTable() {
           <DialogHeader>
             <DialogTitle>에이전트 삭제</DialogTitle>
             <DialogDescription>
-              `{deleting?.hostname}` 을 삭제하면 이 PC에서는 더 이상 작업을 수신하지 못합니다.
+              `{deleting?.name}` 을 삭제하면 이 PC에서는 더 이상 작업을 수신하지 못합니다.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -203,12 +211,18 @@ function AgentCreateDialog({
   onIssued: (result: WindowsAgentIssueResponse) => void;
 }) {
   const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [pool, setPool] = useState("hwax-launcher");
   const [hostname, setHostname] = useState("");
-  const [description, setDescription] = useState("");
 
   const create = useMutation({
     mutationFn: () =>
-      agentsApi.create({ hostname, description: description || undefined }),
+      agentsApi.create({
+        name,
+        pool,
+        hostname: hostname || undefined,
+        device_kind: "launcher",
+      }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["admin", "agents"] });
       onIssued(r);
@@ -227,19 +241,27 @@ function AgentCreateDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>호스트명</Label>
+            <Label>이름</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="ws-홍길동 / 부서-용도 (고유)"
+            />
+          </div>
+          <div>
+            <Label>풀</Label>
+            <Input
+              value={pool}
+              onChange={(e) => setPool(e.target.value)}
+              placeholder="hwax-launcher"
+            />
+          </div>
+          <div>
+            <Label>호스트명 (선택)</Label>
             <Input
               value={hostname}
               onChange={(e) => setHostname(e.target.value)}
               placeholder="WORKSTATION-01"
-            />
-          </div>
-          <div>
-            <Label>설명</Label>
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="용도 / 부서"
             />
           </div>
         </div>
@@ -247,7 +269,10 @@ function AgentCreateDialog({
           <Button variant="ghost" onClick={onClose}>
             취소
           </Button>
-          <Button disabled={!hostname || create.isPending} onClick={() => create.mutate()}>
+          <Button
+            disabled={!name || !pool || create.isPending}
+            onClick={() => create.mutate()}
+          >
             발급
           </Button>
         </DialogFooter>

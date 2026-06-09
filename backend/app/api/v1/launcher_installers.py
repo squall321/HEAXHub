@@ -74,10 +74,12 @@ def download(
     db: DbSession,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Response:
-    """Redirect to the actual installer URL after agent JWT verification.
+    """Serve the installer to a launcher after agent JWT verification.
 
-    The launcher follows the 302 and verifies the downloaded bytes against
-    ``X-Sha256`` (and the manifest's ``programs[].package.sha256``).
+    Internal/relative ``installer_url`` (the on-disk deployment) → stream the
+    bytes directly. Absolute ``installer_url`` (object storage) → 302 redirect.
+    Either way the agent verifies bytes against ``X-Sha256`` / the manifest's
+    ``programs[].package.sha256``.
     """
     _require_agent(db, authorization)
 
@@ -91,11 +93,34 @@ def download(
         # 404 (not 403) so a draft/archived installer id isn't even confirmed.
         return Response(status_code=status.HTTP_404_NOT_FOUND)
 
-    resp = RedirectResponse(pkg.installer_url, status_code=302)
-    resp.headers["X-Sha256"] = pkg.sha256
-    if pkg.size_bytes:
-        resp.headers["X-Size-Bytes"] = str(pkg.size_bytes)
-    return resp
+    url = (pkg.installer_url or "").strip()
+    if url.startswith("http://") or url.startswith("https://"):
+        # Absolute (object storage / presigned) → redirect; the agent follows it.
+        resp = RedirectResponse(url, status_code=302)
+        resp.headers["X-Sha256"] = pkg.sha256
+        if pkg.size_bytes:
+            resp.headers["X-Size-Bytes"] = str(pkg.size_bytes)
+        return resp
+
+    # Internal/relative installer_url (current on-disk deployment): STREAM the
+    # bytes. We must NOT 302 to the relative /apps/{app_id}/installers/{os}/{version}
+    # route — that needs a *user* JWT (the agent's launcher JWT would 401) and its
+    # root-relative Location drops the portal /heax-hub prefix. Mirror
+    # public-download, but behind the launcher JWT.
+    file_path = installer_packages.installer_path(pkg.app_id, pkg.os, pkg.version)
+    if not file_path.exists():
+        return Response(status_code=status.HTTP_410_GONE)
+    return FileResponse(
+        path=str(file_path),
+        media_type="application/octet-stream",
+        filename=f"{pkg.app_id}-{pkg.version}-{pkg.os}.exe",
+        headers={
+            "X-Sha256": pkg.sha256,
+            "X-Installer-SHA256": pkg.sha256,
+            "X-Installer-Version": pkg.version,
+            "X-Installer-Signed": "1" if pkg.signed else "0",
+        },
+    )
 
 
 # ── /installers/{app_id}/latest ────────────────────────────────────────────────

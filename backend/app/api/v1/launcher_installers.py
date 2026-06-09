@@ -32,7 +32,7 @@ import logging
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Response, status
+from fastapi import APIRouter, Header, Request, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 
@@ -63,6 +63,22 @@ def _servable(db: DbSession, app_id: str) -> bool:
     app's binary can't be pulled via these download routes."""
     app = db.get(App, app_id)
     return app is not None and agent_manifest_builder.is_servable_installer_app(app)
+
+
+def _public_base_url(request: Request) -> str:
+    """Public origin the client reached us at, for absolute URLs in the updater
+    feed. Rebuilt from the reverse-proxy headers so it's correct behind the HWAX
+    portal (which strips /heax-hub and forwards it via X-Forwarded-Prefix);
+    falls back to the request's own scheme/host."""
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    raw_prefix = request.headers.get("x-forwarded-prefix", "").strip("/")
+    prefix = f"/{raw_prefix}" if raw_prefix else ""
+    return f"{proto}://{host}{prefix}"
 
 
 # ── /installers/{id}/download ──────────────────────────────────────────────────
@@ -130,16 +146,16 @@ def download(
 def latest(
     app_id: str,
     db: DbSession,
+    request: Request,
 ) -> Response:
     """Tauri updater feed: static JSON conforming to TauriUpdaterManifest.
 
-    Public endpoint — integrity is guaranteed by the per-platform Ed25519
-    ``signature`` field, not by transport auth. Returns 204 when no Windows
-    installer is registered yet.
-
-    Phase 1: ``signature`` is emitted as ``""`` because the signing pipeline
-    is not yet wired. Tauri will log a warning but continue — flip the
-    feature flag on the agent side to enforce when the key is in place.
+    Public endpoint — integrity is the per-platform Ed25519/minisign
+    ``signature``, not transport auth. The agent's tauri-plugin-updater verifies
+    it against the pubkey pinned in tauri.conf.json, so a feed WITHOUT a valid
+    signature is useless (the plugin rejects it). We therefore return **204 (no
+    update)** unless a ``.sig`` is on disk, then emit it with an **absolute,
+    public** download ``url`` (the updater fetches it with no bearer).
     """
     pkg = db.execute(
         select(InstallerPackage)
@@ -152,6 +168,16 @@ def latest(
     if pkg is None or not _servable(db, app_id):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    # The minisign .sig is produced by `tauri build` and uploaded alongside the
+    # installer. No .sig ⇒ nothing the plugin could verify ⇒ "no update".
+    sig_path = installer_packages.signature_path(app_id, pkg.os, pkg.version)
+    if not sig_path.exists():
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    signature = sig_path.read_text(encoding="utf-8").strip()
+    if not signature:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    base = _public_base_url(request)
     payload: dict[str, Any] = {
         "version": pkg.version,
         "notes": "",  # TODO Phase 2 — pull from latest changelog row
@@ -159,8 +185,9 @@ def latest(
         "platforms": {
             # Tauri convention for Windows x86_64.
             "windows-x86_64": {
-                "signature": "",  # TODO Phase 2 — read sidecar .sig file
-                "url": pkg.installer_url,
+                "signature": signature,
+                # Absolute + public: the Tauri updater downloads this with NO bearer.
+                "url": f"{base}/api/v1/installers/{app_id}/public-download",
             },
         },
     }

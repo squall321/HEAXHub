@@ -336,7 +336,7 @@ def updater_feed(app_id: str, db: DbSession, request: Request):
 
 
 @download_router.get("/{app_id}/public-latest")
-def public_latest(app_id: str, db: DbSession) -> Response:
+def public_latest(app_id: str, db: DbSession, request: Request) -> Response:
     """Public latest-installer metadata for the portal download page.
 
     Unlike the bearer-gated ``/installers/{id}/download``, this endpoint is
@@ -358,7 +358,9 @@ def public_latest(app_id: str, db: DbSession) -> Response:
         "size_bytes": int(row.size_bytes) if row.size_bytes else None,
         "signed": bool(row.signed),
         "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
-        "download_url": f"/api/v1/installers/{app_id}/public-download",
+        # Absolute, portal-prefix-aware URL (same as updater_feed / the agent manifest) so a client
+        # using this field directly hits /heax-hub/api/v1/... and not the prefix-less portal root.
+        "download_url": f"{_public_base_url(request)}/api/v1/installers/{app_id}/public-download",
     }
     import json as _json
     return Response(

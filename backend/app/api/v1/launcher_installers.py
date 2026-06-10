@@ -36,6 +36,7 @@ from fastapi import APIRouter, Header, Request, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.core.errors import UnauthorizedError
 from app.db.models.app import App
 from app.db.models.installer_package import InstallerPackage
@@ -66,10 +67,18 @@ def _servable(db: DbSession, app_id: str) -> bool:
 
 
 def _public_base_url(request: Request) -> str:
-    """Public origin the client reached us at, for absolute URLs in the updater
-    feed. Rebuilt from the reverse-proxy headers so it's correct behind the HWAX
-    portal (which strips /heax-hub and forwards it via X-Forwarded-Prefix);
-    falls back to the request's own scheme/host."""
+    """Public base URL for ABSOLUTE links in the updater feed (the Tauri plugin
+    parses the url as url::Url and cannot resolve a relative path).
+
+    If ``settings.public_base_url`` is configured it is authoritative — this is
+    the robust production path, correct regardless of whether the HWAX portal
+    sets X-Forwarded-Prefix. Otherwise fall back to the reverse-proxy headers
+    (the portal strips /heax-hub and is *expected* to forward it via
+    X-Forwarded-Prefix; if it doesn't, the prefix is silently lost — hence the
+    setting)."""
+    configured = get_settings().public_base_url.strip().rstrip("/")
+    if configured:
+        return configured
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = (
         request.headers.get("x-forwarded-host")

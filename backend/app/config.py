@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     app_port: int = 4040
     app_base_url: str = "http://localhost:4040"
     frontend_base_url: str = "http://localhost:4173"
+    # Public base URL the launcher fleet reaches the API at — e.g. the HWAX portal
+    # sub-path "https://hwax.sec.samsung.net/heax-hub". Used to build ABSOLUTE URLs
+    # in the Tauri updater feed (the plugin parses the url as url::Url and cannot
+    # resolve a relative path). Empty ⇒ derive from the reverse-proxy headers,
+    # which is correct ONLY if the portal sets X-Forwarded-Prefix; set this in
+    # production so self-update never depends on that.
+    public_base_url: str = ""
 
     # --- DB / Redis ---
     database_url: str = "postgresql+psycopg://heaxhub:heaxhub@localhost:5732/heaxhub"

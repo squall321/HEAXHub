@@ -73,6 +73,19 @@ def test_verify_token_roundtrip(db: Session) -> None:
     assert agent_registry.verify_token(db, token=token) is None
 
 
+# ── device_kind (launcher vs service) ───────────────────────────────────────────
+
+
+def test_register_agent_device_kind(db: Session) -> None:
+    launcher, _ = agent_registry.register_agent(
+        db, name="pytest-launcher-1", pool="hwax-launcher", device_kind="launcher"
+    )
+    assert launcher.device_kind == "launcher"
+    # Omitted ⇒ NULL, preserving the existing service-agent registration flow.
+    legacy, _ = agent_registry.register_agent(db, name="pytest-legacy-1", pool="p")
+    assert legacy.device_kind is None
+
+
 # ── dispatch picks online, non-busy agent ──────────────────────────────────────
 
 

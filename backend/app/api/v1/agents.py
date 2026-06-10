@@ -12,7 +12,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -21,6 +21,7 @@ from fastapi import (
     File,
     Form,
     Header,
+    Query,
     UploadFile,
     status,
 )
@@ -28,11 +29,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.errors import ConflictError, NotFoundError, UnauthorizedError, ValidationError
+from app.db.models.audit_log import AuditLog
+from app.db.models.install_report import InstallReport
 from app.db.models.job import Job, JobStatus
 from app.db.models.windows_agent import WindowsAgent
 from app.deps import AdminUser, DbSession
 from app.runners import windows_agent_client
-from app.services import agent_registry, audit_service
+from app.services import agent_registry, agent_service, audit_service
 
 router = APIRouter(tags=["agents"])
 
@@ -69,9 +72,9 @@ class AgentRegisterIn(BaseModel):
     pool: str
     hostname: str | None = None
     capabilities: dict[str, Any] | None = None
-    # 'launcher' = HWAXAgent Windows tray; 'service' = legacy polling worker.
-    # NULL leaves the row unflagged (admin can backfill later).
-    device_kind: str | None = Field(default=None, pattern=r"^(launcher|service)$")
+    # 'launcher' = HWAXAgent (JWT launcher); 'service' = polling worker. Omitted
+    # ⇒ NULL, preserving the existing service-agent registration flow.
+    device_kind: Literal["launcher", "service"] | None = None
 
 
 class AgentOut(BaseModel):
@@ -83,6 +86,7 @@ class AgentOut(BaseModel):
     status: str
     last_seen: str | None
     disabled: bool
+    device_kind: str | None = None
     capabilities: dict[str, Any] | None
     created_at: str | None
 
@@ -97,6 +101,7 @@ class AgentOut(BaseModel):
             status=row.status,
             last_seen=row.last_seen.isoformat() if row.last_seen else None,
             disabled=row.disabled,
+            device_kind=row.device_kind,
             capabilities=row.capabilities,
             created_at=row.created_at.isoformat() if row.created_at else None,
         )
@@ -105,6 +110,60 @@ class AgentOut(BaseModel):
 class AgentRegisterOut(BaseModel):
     agent: AgentOut
     token: str = Field(..., description="One-time plaintext token; store it now.")
+
+
+class InstallReportOut(BaseModel):
+    """One launcher install attempt (omits the large log_excerpt for list views)."""
+
+    id: str
+    agent_id: str
+    app_id: str
+    version: str
+    status: str
+    exit_code: int | None
+    started_at: str | None
+    finished_at: str | None
+    sha256_verified: bool | None
+    error: str | None
+    previous_version: str | None
+    created_at: str | None
+
+    @classmethod
+    def from_row(cls, r: InstallReport) -> "InstallReportOut":
+        return cls(
+            id=str(r.id),
+            agent_id=str(r.agent_id),
+            app_id=r.app_id,
+            version=r.version,
+            status=r.status,
+            exit_code=r.exit_code,
+            started_at=r.started_at.isoformat() if r.started_at else None,
+            finished_at=r.finished_at.isoformat() if r.finished_at else None,
+            sha256_verified=r.sha256_verified,
+            error=r.error,
+            previous_version=r.previous_version,
+            created_at=r.created_at.isoformat() if r.created_at else None,
+        )
+
+
+class AgentAuditOut(BaseModel):
+    """One audit_log row for a launcher agent (kind/severity live in meta)."""
+
+    id: int
+    action: str
+    target_id: str
+    created_at: str | None
+    meta: dict[str, Any] | None
+
+    @classmethod
+    def from_row(cls, r: AuditLog) -> "AgentAuditOut":
+        return cls(
+            id=r.id,
+            action=r.action,
+            target_id=r.target_id,
+            created_at=r.created_at.isoformat() if r.created_at else None,
+            meta=r.meta,
+        )
 
 
 class AgentPollOut(BaseModel):
@@ -297,14 +356,107 @@ def admin_register_agent(
     return AgentRegisterOut(agent=AgentOut.from_row(agent), token=token)
 
 
+@admin_router.post("/{agent_id}/rotate-token", response_model=AgentRegisterOut)
+def admin_rotate_token(
+    agent_id: uuid.UUID,
+    db: DbSession,
+    _admin: AdminUser,
+) -> AgentRegisterOut:
+    """Mint a fresh one-time enrollment token for an existing agent.
+
+    For a lost/leaked token or a re-imaged workstation: the old enrollment token
+    stops working, the agent (if disabled) is re-enabled so it can re-enroll
+    without a name collision, and the old device's JWT chain is revoked.
+    """
+    result = agent_registry.rotate_enrollment_token(db, agent_id)
+    if result is None:
+        raise NotFoundError("Agent not found")
+    agent, token = result
+    agent_service.revoke_refresh_chain(db, agent.id)
+    audit_service.safe_log(
+        db,
+        actor_user_id=_admin.id,
+        action="agent.token.rotated",
+        target_type="agent",
+        target_id=str(agent.id),
+        meta={"name": agent.name, "device_kind": agent.device_kind},
+    )
+    return AgentRegisterOut(agent=AgentOut.from_row(agent), token=token)
+
+
 @admin_router.get("", response_model=list[AgentOut])
 def admin_list_agents(
     db: DbSession,
     _admin: AdminUser,
     pool: str | None = None,
+    device_kind: str | None = Query(
+        default=None, description="Filter, e.g. 'launcher' to see only HWAXAgents."
+    ),
 ) -> list[AgentOut]:
-    rows = agent_registry.list_agents(db, pool=pool)
+    rows = agent_registry.list_agents(db, pool=pool, device_kind=device_kind)
     return [AgentOut.from_row(r) for r in rows]
+
+
+@admin_router.get("/{agent_id}", response_model=AgentOut)
+def admin_get_agent(
+    agent_id: uuid.UUID,
+    db: DbSession,
+    _admin: AdminUser,
+) -> AgentOut:
+    """Single-agent detail. ``capabilities['modules']`` (from heartbeat) shows
+    the installed module versions; ``last_seen`` / ``agent_version`` show liveness."""
+    agent = db.get(WindowsAgent, agent_id)
+    if agent is None:
+        raise NotFoundError("Agent not found")
+    return AgentOut.from_row(agent)
+
+
+@admin_router.get("/{agent_id}/installs", response_model=list[InstallReportOut])
+def admin_agent_installs(
+    agent_id: uuid.UUID,
+    db: DbSession,
+    _admin: AdminUser,
+    status_filter: str | None = Query(
+        default=None, alias="status", description="success|failed|rolled_back|partial"
+    ),
+    app_id: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[InstallReportOut]:
+    """Install-attempt history for an agent, newest first — install health at a glance."""
+    if db.get(WindowsAgent, agent_id) is None:
+        raise NotFoundError("Agent not found")
+    stmt = select(InstallReport).where(InstallReport.agent_id == agent_id)
+    if status_filter:
+        stmt = stmt.where(InstallReport.status == status_filter)
+    if app_id:
+        stmt = stmt.where(InstallReport.app_id == app_id)
+    stmt = stmt.order_by(InstallReport.created_at.desc()).limit(limit).offset(offset)
+    return [InstallReportOut.from_row(r) for r in db.execute(stmt).scalars().all()]
+
+
+@admin_router.get("/{agent_id}/audit", response_model=list[AgentAuditOut])
+def admin_agent_audit(
+    agent_id: uuid.UUID,
+    db: DbSession,
+    _admin: AdminUser,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[AgentAuditOut]:
+    """Audit-event history for an agent, newest first (kind/severity in meta)."""
+    if db.get(WindowsAgent, agent_id) is None:
+        raise NotFoundError("Agent not found")
+    stmt = (
+        select(AuditLog)
+        .where(
+            AuditLog.target_type == "windows_agent",
+            AuditLog.target_id == str(agent_id),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return [AgentAuditOut.from_row(r) for r in db.execute(stmt).scalars().all()]
 
 
 @admin_router.delete("/{agent_id}")

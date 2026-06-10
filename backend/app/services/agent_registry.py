@@ -28,6 +28,18 @@ def _generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def fresh_token_hash() -> str:
+    """Return a SHA256 hash of a fresh random token whose plaintext is discarded.
+
+    Used to *burn* a single-use enrollment token: after a launcher redeems its
+    enrollment token for a JWT pair, we overwrite ``auth_token_hash`` with this
+    so the original enrollment string can never verify again, and — because the
+    plaintext is thrown away — no new bearer token exists either. The launcher
+    authenticates with its JWT pair from then on.
+    """
+    return _hash_token(_generate_token())
+
+
 # ── public api ─────────────────────────────────────────────────────────────────
 
 
@@ -43,8 +55,8 @@ def register_agent(
     """Register a new agent and return the (row, plaintext_token).
 
     The plaintext token is shown to the operator once; only SHA256(token) is stored.
-    ``device_kind`` is ``'launcher'`` for the HWAXAgent tray launcher or
-    ``'service'`` for the legacy polling worker; ``None`` leaves it unflagged.
+    ``device_kind`` is 'launcher' (HWAXAgent) or 'service' (polling worker); None
+    keeps the legacy behaviour.
     """
     token = _generate_token()
     agent = WindowsAgent(
@@ -96,10 +108,14 @@ def heartbeat(
     db.commit()
 
 
-def list_agents(db: Session, pool: str | None = None) -> list[WindowsAgent]:
+def list_agents(
+    db: Session, pool: str | None = None, device_kind: str | None = None
+) -> list[WindowsAgent]:
     stmt = select(WindowsAgent).order_by(WindowsAgent.created_at.desc())
     if pool:
         stmt = stmt.where(WindowsAgent.pool == pool)
+    if device_kind:
+        stmt = stmt.where(WindowsAgent.device_kind == device_kind)
     return list(db.execute(stmt).scalars().all())
 
 
@@ -112,6 +128,29 @@ def disable(db: Session, agent_id: Any) -> WindowsAgent | None:
     db.commit()
     db.refresh(agent)
     return agent
+
+
+def rotate_enrollment_token(
+    db: Session, agent_id: Any
+) -> tuple[WindowsAgent, str] | None:
+    """Mint a fresh one-time enrollment token for an existing agent.
+
+    Returns ``(agent, plaintext_token)`` (shown once) or ``None`` if the agent
+    doesn't exist. Re-enables a disabled agent so a re-imaged/wiped workstation
+    can re-enroll without a name-collision (``WindowsAgent.name`` is UNIQUE, so
+    you can't just re-create it). The previous bearer hash is overwritten, so any
+    un-redeemed old enrollment token immediately stops working; the caller should
+    also revoke the JWT chain (see ``agent_service.revoke_refresh_chain``).
+    """
+    agent = db.get(WindowsAgent, agent_id)
+    if agent is None:
+        return None
+    token = _generate_token()
+    agent.auth_token_hash = _hash_token(token)
+    agent.disabled = False
+    db.commit()
+    db.refresh(agent)
+    return agent, token
 
 
 def dispatch_job_to_pool(

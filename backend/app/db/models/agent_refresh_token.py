@@ -1,8 +1,10 @@
-"""AgentRefreshToken ORM — refresh tokens issued to HWAXAgent (Windows tray launcher).
+"""AgentRefreshToken ORM model — refresh-token revocation records for HWAXAgent
+launchers.
 
-Sibling table to ``refresh_tokens``. Kept separate because the latter's FK
-points at ``users.id`` and HWAXAgent doesn't have a User row — the subject
-of these tokens is a ``WindowsAgent.id`` instead.
+A sibling of ``refresh_tokens`` (which FKs ``users.id``). Launcher refresh tokens
+have ``subject = WindowsAgent.id``, so they cannot reuse the user table without a
+FK violation. Same columns + rotation policy (``replaced_by_jti``), but
+``agent_id`` FKs ``windows_agents.id``.
 """
 from __future__ import annotations
 

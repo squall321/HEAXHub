@@ -31,7 +31,7 @@ class WindowsAgent(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     disabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # 'launcher' (HWAXAgent Windows tray) | 'service' (legacy polling worker) | NULL (legacy rows)
+    # 'launcher' (HWAXAgent, JWT-based) | 'service' (polling worker) | None (legacy).
     device_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover

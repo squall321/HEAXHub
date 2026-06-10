@@ -195,6 +195,31 @@ def get_by_av_os(
     return db.execute(stmt).scalar_one_or_none()
 
 
+def delete_installer(
+    db: Session, installer_id: uuid.UUID, *, app_id: str | None = None
+) -> InstallerPackage | None:
+    """Delete an installer_packages row + its on-disk artifact dir.
+
+    Returns the (now-deleted) row for audit, or None if it didn't exist (or
+    belongs to a different ``app_id`` when that guard is supplied — checked
+    BEFORE any deletion). Removing the file is best-effort — a missing dir is not
+    an error (operator may have cleaned it out of band).
+    """
+    row = db.get(InstallerPackage, installer_id)
+    if row is None or (app_id is not None and row.app_id != app_id):
+        return None
+    try:
+        d = installer_dir(row.app_id, row.os, row.version)
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+    except ValidationError:
+        # Path-segment guard rejected a stored value; leave the file, drop the row.
+        pass
+    db.delete(row)
+    db.commit()
+    return row
+
+
 def save_upload(
     *,
     app_id: str,

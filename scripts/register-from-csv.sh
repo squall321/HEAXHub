@@ -3,7 +3,9 @@
 # register-from-csv.sh — CSV 한 장을 읽어 HEAXHub 카탈로그에 URL 항목을 일괄 등록.
 #
 # CSV 포맷 (첫 줄은 헤더이므로 무시, 둘째 줄부터 읽음):
-#   그룹,파트명,Agent이름,프로그램이름,URL
+#   그룹,파트명,Agent이름,프로그램이름,URL[,설명]
+#   ※ 6번째 열(설명)은 선택. 쉼표를 하나 더 붙여 사이트/프로그램 설명을 적으면
+#     description 에 "소속: <그룹> / <파트> · <설명>" 형태로 들어간다. 없으면 소속만.
 #
 # 행마다:
 #   - Agent이름 채워짐    → tags: [agent]   분류로 등록
@@ -67,7 +69,7 @@ ROWNUM=0
 # 첫 줄(헤더) 무시. \r 제거(윈도우 CSV 대비).
 {
   read -r _header || true   # 헤더 버림
-  while IFS=',' read -r GROUP PART AGENT_NAME PROG_NAME URL _rest || [[ -n "${GROUP:-}" ]]; do
+  while IFS=',' read -r GROUP PART AGENT_NAME PROG_NAME URL DESC_EXTRA _more || [[ -n "${GROUP:-}" ]]; do
     ROWNUM=$((ROWNUM + 1))
     # 각 필드 trim + CR 제거
     GROUP="$(echo "${GROUP:-}" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
@@ -75,6 +77,8 @@ ROWNUM=0
     AGENT_NAME="$(echo "${AGENT_NAME:-}" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     PROG_NAME="$(echo "${PROG_NAME:-}" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
     URL="$(echo "${URL:-}" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+    # 6번째 컬럼(선택): 사이트/프로그램 설명. 없으면 빈 값.
+    DESC_EXTRA="$(echo "${DESC_EXTRA:-}" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
 
     # 완전 빈 줄 건너뜀
     if [[ -z "$GROUP$PART$AGENT_NAME$PROG_NAME$URL" ]]; then
@@ -124,7 +128,7 @@ ROWNUM=0
       n=$((n + 1))
     done
 
-    # 소속 설명 자동 생성
+    # 소속 설명 자동 생성 + (있으면) CSV 6번째 컬럼의 설명을 이어 붙임.
     OWNER_DESC=""
     if [[ -n "$GROUP" && -n "$PART" ]]; then
       OWNER_DESC="소속: $GROUP / $PART"
@@ -132,6 +136,13 @@ ROWNUM=0
       OWNER_DESC="소속: $GROUP"
     elif [[ -n "$PART" ]]; then
       OWNER_DESC="소속: $PART"
+    fi
+    if [[ -n "$DESC_EXTRA" ]]; then
+      if [[ -n "$OWNER_DESC" ]]; then
+        OWNER_DESC="$OWNER_DESC · $DESC_EXTRA"
+      else
+        OWNER_DESC="$DESC_EXTRA"
+      fi
     fi
 
     # tags: kind + group + part (빈 값 제외)

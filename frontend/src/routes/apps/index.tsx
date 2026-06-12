@@ -25,7 +25,7 @@ function AppsCatalogPage() {
   const [catalogStatuses, setCatalogStatuses] = useState<AppStatus[]>([]);
   const [catalogSort, setCatalogSort] = useState<CatalogSort>("recent");
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["apps", filters],
     queryFn: () => appsApi.list(filters),
   });
@@ -62,6 +62,8 @@ function AppsCatalogPage() {
           <CatalogGrid
             apps={visibleApps}
             isLoading={isLoading}
+            isError={isError}
+            onRetry={() => refetch()}
             activeTypes={catalogTypes}
             onTypesChange={setCatalogTypes}
             activeStatuses={catalogStatuses}

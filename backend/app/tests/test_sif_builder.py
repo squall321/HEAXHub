@@ -158,10 +158,15 @@ def test_calls_apt_runner_with_correct_args(
     )
 
     assert result.action == "built"
-    assert captured["sif_out"] == sif_builder.SIF_DIR / "demo-fa.sif"
+    # Build targets a temp path; os.replace swaps it onto the final SIF.
+    assert captured["sif_out"] == sif_builder.SIF_DIR / "demo-fa.sif.building"
+    assert result.sif == sif_builder.SIF_DIR / "demo-fa.sif"
+    assert (sif_builder.SIF_DIR / "demo-fa.sif").exists()
+    assert not (sif_builder.SIF_DIR / "demo-fa.sif.building").exists()
     assert captured["def_in"] == sif_builder.SIF_DIR / "demo-fa.def"
     assert captured["fakeroot"] is True
-    assert captured["force"] is True
+    # force is False: we always build into a fresh temp, never overwrite live.
+    assert captured["force"] is False
     # stdout must be a writable file handle so logs land on disk.
     assert "stdout" in captured["kwargs"]
     assert captured["kwargs"].get("stderr") == subprocess.STDOUT
@@ -196,5 +201,35 @@ def test_failure_returns_log_tail(
     assert result.hash is not None  # we know the cache key we tried
     assert "exit=255" in (result.error or "")
     assert failing_marker in (result.error or "")
+    assert result.log_path is not None
     # And no sentinel was written.
     assert not (sif_builder.SIF_DIR / "demo-fail.sif.hash").exists()
+
+
+def test_failure_preserves_existing_sif(
+    isolated_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A build failure must NOT clobber the last-good SIF (atomic swap)."""
+    # Pre-existing good SIF from a previous build. No sentinel → forces rebuild.
+    good_sif = sif_builder.SIF_DIR / "demo-keep.sif"
+    good_sif.write_bytes(b"LAST-GOOD-IMAGE")
+
+    def fake_run_build(*, sif_out, def_in, fakeroot, force, **kwargs):
+        # Write a partial temp image, then fail — mimics apptainer aborting.
+        Path(sif_out).write_bytes(b"PARTIAL-GARBAGE")
+        raise subprocess.CalledProcessError(
+            returncode=1, cmd=["apptainer", "build", str(sif_out)]
+        )
+
+    monkeypatch.setattr(sif_builder.apt_runner, "run_build", fake_run_build)
+
+    result = sif_builder.build_sif(
+        slug="demo-keep",
+        manifest=_manifest(stack="flask"),
+        fetch_result=_fetch_result(),
+    )
+
+    assert result.action == "failed"
+    # Old image is intact and the temp file was discarded.
+    assert good_sif.read_bytes() == b"LAST-GOOD-IMAGE"
+    assert not (sif_builder.SIF_DIR / "demo-keep.sif.building").exists()

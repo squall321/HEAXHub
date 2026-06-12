@@ -63,6 +63,14 @@ celery_app.conf.update(
             "task": "integration_tasks.scan_integrations_periodic",
             "schedule": 300.0,  # 5 minutes
         },
+        # Self-heal: re-register Caddy routes (lost on Caddy restart) + restart
+        # dead service instances. Idempotent + build-free; fast no-op when all
+        # integrations are healthy. Short interval so a route/instance loss is
+        # repaired within ~45s instead of waiting on the 5-minute scan.
+        "reconcile-integrations-every-45s": {
+            "task": "integration_tasks.reconcile_integrations",
+            "schedule": 45.0,
+        },
     },
 )
 

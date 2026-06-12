@@ -44,7 +44,7 @@ from app.db.models.app import (
 )
 from app.db.models.app_version import AppVersion, BuildStatus
 from app.db.models.user import User, UserRole
-from app.services import stack_resolver
+from app.services import audit_service, stack_resolver
 from app.services.stack_resolver import StackSpec
 
 logger = get_logger(__name__)
@@ -194,6 +194,23 @@ def _resolve_visibility(manifest: dict[str, Any]) -> AppVisibility:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(slots=True)
+class BuildOutcome:
+    """What ``_build_and_launch`` did so the caller can persist + report it.
+
+    ``rebuilt`` is True only when a SIF/host build actually executed (cache
+    miss). It stays False on cache hits, so an unchanged demo never gets
+    re-reported as 'updated'.
+    """
+
+    status: BuildStatus
+    rebuilt: bool = False
+    sif_path: str | None = None
+    build_log_path: str | None = None
+    commit: str | None = None
+    error: str | None = None
+
+
 def _build_and_launch(
     db: Session,
     *,
@@ -202,24 +219,36 @@ def _build_and_launch(
     stack: StackSpec,
     integration_dir: Path,
     manifest: dict[str, Any],
-) -> None:
+    commit_gated: bool = False,
+) -> BuildOutcome:
     """Fetch source, build SIF (or fall back to legacy host-PATH builder),
-    then launch.
+    then launch. Records the build outcome on the AppVersion row.
+
+    ``commit_gated`` (used on the same-version rescan path) narrows the rebuild
+    trigger to a real upstream commit move: if the fetch reports the commit is
+    unchanged and a built SIF already exists, the expensive SIF build is
+    skipped even when cosmetic manifest fields drifted. This is the
+    conservative trigger the operators asked for — a description/tag edit must
+    not stampede a rebuild of every demo. New versions (``commit_gated=False``)
+    always build.
 
     When manifest.source is present:
       1) integration_fetcher.fetch_for_integration clones the upstream into
          var/integration_workspaces/<slug>/upstream/
       2) integration_sif_builder.build_sif renders the stack .def template
-         and invokes apt_runner.run_build → var/sifs/<slug>.sif
+         and invokes apt_runner.run_build → var/sifs/<slug>.sif (atomic swap)
       3) integration_launcher.launch is called with sif_path so it dispatches
          via apptainer instance start/exec.
 
     When manifest.source is absent the legacy in-tree builder + host-PATH
     launcher runs (backwards compatibility with pre-2.0 manifests).
 
-    All steps are best-effort: failures are logged with the slug so the
-    operator can inspect ``var/logs/build_<slug>.log`` and the next scan
-    re-tries automatically.
+    The AppVersion row is moved to BUILDING before the build and finalized to
+    SUCCESS (+ sif_path/build_log_path/git_commit_hash) or FAILED
+    (+ build_log_path) afterwards. All steps are best-effort: failures are
+    logged + persisted, never raised, so discovery of the next integration
+    continues. The returned :class:`BuildOutcome` lets the caller decide
+    whether a same-version scan counts as 'updated' (rebuilt) or 'unchanged'.
     """
     slug = integration_dir.name
 
@@ -228,9 +257,21 @@ def _build_and_launch(
         source = SourceSpec.from_manifest(manifest)
     except ValueError as exc:
         logger.warning("source block invalid for %s: %s", app.id, exc)
-        return
+        return _record_build(
+            db, app=app, version=version, manifest=manifest,
+            outcome=BuildOutcome(status=BuildStatus.FAILED, error=str(exc)),
+        )
 
-    sif_path = None  # populated when SIF build succeeds
+    # Mark BUILDING up-front so a crash mid-build leaves an honest status
+    # behind (instead of the old hard-coded SUCCESS).
+    if version.build_status != BuildStatus.BUILDING:
+        version.build_status = BuildStatus.BUILDING
+        db.commit()
+
+    sif_path: str | None = None
+    build_log_path: str | None = None
+    commit: str | None = None
+    rebuilt = False
 
     if source is not None and source.url:
         # ── fetch upstream into managed workspace ─────────────────────
@@ -239,68 +280,269 @@ def _build_and_launch(
             fr = integration_fetcher.fetch_for_integration(slug, source)
             if fr.action == "failed":
                 logger.warning("fetch failed for %s: %s", app.id, fr.error)
-                return
+                return _record_build(
+                    db, app=app, version=version, manifest=manifest,
+                    outcome=BuildOutcome(
+                        status=BuildStatus.FAILED,
+                        error=f"fetch failed: {fr.error}",
+                    ),
+                )
+            commit = fr.commit
             if fr.action in {"cloned", "updated"}:
                 logger.info("integration fetched: %s (%s) commit=%s",
                             app.id, fr.action, (fr.commit or "?")[:8])
         except Exception as exc:  # noqa: BLE001
             logger.exception("fetcher crashed for %s: %s", app.id, exc)
-            return
+            return _record_build(
+                db, app=app, version=version, manifest=manifest,
+                outcome=BuildOutcome(
+                    status=BuildStatus.FAILED, error=f"fetcher crashed: {exc}"
+                ),
+            )
+
+        # ── conservative gate on the rescan path ──────────────────────
+        # When commit-gated, a fetch that didn't move the commit (action
+        # "skipped") and an already-built SIF means there is nothing new to
+        # build — skip straight to relaunch. This sidesteps build_sif's
+        # whole-manifest hash, which is too eager (a description edit would
+        # otherwise rebuild). We still backfill metadata so the row catches up.
+        if commit_gated and fr.action == "skipped":
+            existing_sif = _existing_sif_path(slug)
+            if existing_sif is not None:
+                logger.debug("commit unchanged for %s — skipping SIF build", app.id)
+                outcome = _record_build(
+                    db, app=app, version=version, manifest=manifest,
+                    outcome=BuildOutcome(
+                        status=BuildStatus.SUCCESS,
+                        rebuilt=False,
+                        sif_path=str(existing_sif),
+                        commit=commit,
+                    ),
+                )
+                _maybe_launch(
+                    db, app=app, stack=stack, integration_dir=integration_dir,
+                    manifest=manifest, source=source, sif_path=str(existing_sif),
+                )
+                return outcome
 
         # ── build per-demo SIF via apptainer ──────────────────────────
         try:
             from app.services import integration_sif_builder  # noqa: PLC0415
             sr = integration_sif_builder.build_sif(slug, manifest, fr)
+            commit = sr.commit or commit
+            if sr.log_path is not None:
+                build_log_path = str(sr.log_path)
             if sr.action == "failed":
                 logger.warning("SIF build failed for %s: %s", app.id,
                                (sr.error or "")[:300])
-                return
+                return _record_build(
+                    db, app=app, version=version, manifest=manifest,
+                    outcome=BuildOutcome(
+                        status=BuildStatus.FAILED,
+                        build_log_path=build_log_path,
+                        commit=commit,
+                        error=sr.error,
+                    ),
+                )
             if sr.action == "built":
                 logger.info("SIF built: %s (%s)", app.id, sr.sif)
+                rebuilt = True
             elif sr.action == "skipped":
                 logger.debug("SIF skipped for %s (cached or no template)", app.id)
-            sif_path = sr.sif
+            sif_path = str(sr.sif) if sr.sif else None
         except Exception as exc:  # noqa: BLE001
             logger.exception("sif_builder crashed for %s: %s", app.id, exc)
-            return
+            return _record_build(
+                db, app=app, version=version, manifest=manifest,
+                outcome=BuildOutcome(
+                    status=BuildStatus.FAILED, error=f"sif_builder crashed: {exc}"
+                ),
+            )
     else:
         # ── legacy host-PATH builder for in-tree integrations ─────────
         try:
             from app.services import integration_builder  # noqa: PLC0415
             br = integration_builder.build(integration_dir, manifest=manifest)
+            if br.log_path:
+                build_log_path = str(br.log_path)
             if br.action == "failed":
                 logger.warning("build failed for %s: %s", app.id, br.error)
-                return
+                return _record_build(
+                    db, app=app, version=version, manifest=manifest,
+                    outcome=BuildOutcome(
+                        status=BuildStatus.FAILED,
+                        build_log_path=build_log_path,
+                        error=br.error,
+                    ),
+                )
             if br.action == "built":
                 logger.info("integration built: %s (stack=%s, %.1fs)",
                             app.id, br.stack, br.duration_seconds)
+                rebuilt = True
         except Exception as exc:  # noqa: BLE001
             logger.exception("builder crashed for %s: %s", app.id, exc)
-            return
+            return _record_build(
+                db, app=app, version=version, manifest=manifest,
+                outcome=BuildOutcome(
+                    status=BuildStatus.FAILED, error=f"builder crashed: {exc}"
+                ),
+            )
 
+    # Build succeeded (or was a cache hit) → record SUCCESS before launching
+    # so a launch crash doesn't leave the row stuck on BUILDING.
+    outcome = _record_build(
+        db, app=app, version=version, manifest=manifest,
+        outcome=BuildOutcome(
+            status=BuildStatus.SUCCESS,
+            rebuilt=rebuilt,
+            sif_path=sif_path,
+            build_log_path=build_log_path,
+            commit=commit,
+        ),
+    )
+
+    _maybe_launch(
+        db, app=app, stack=stack, integration_dir=integration_dir,
+        manifest=manifest, source=source, sif_path=sif_path,
+    )
+    return outcome
+
+
+def _existing_sif_path(slug: str) -> Path | None:
+    """Return the built SIF for ``slug`` if it exists on disk, else None."""
+    from app.services import integration_sif_builder  # noqa: PLC0415
+
+    candidate = integration_sif_builder.SIF_DIR / f"{slug}.sif"
+    return candidate if candidate.exists() else None
+
+
+def _maybe_launch(
+    db: Session,
+    *,
+    app: App,
+    stack: StackSpec,
+    integration_dir: Path,
+    manifest: dict[str, Any],
+    source: "SourceSpec | None",
+    sif_path: str | None,
+) -> None:
+    """Launch service-mode integrations (best-effort, never raises).
+
+    The launcher's own ``already_running`` liveness probe makes this idempotent
+    for healthy services, so it is safe to call on every scan.
+    """
     if stack.launch_mode != "service":
         return
-
-    # ── launch ────────────────────────────────────────────────────────
     try:
         from app.services import integration_launcher  # noqa: PLC0415
         from dataclasses import asdict  # noqa: PLC0415
         lr = integration_launcher.launch(
             integration_dir, manifest=manifest, db=db,
-            slug=slug,
+            slug=integration_dir.name,
             source=asdict(source) if source else None,
-            sif_path=sif_path,
+            sif_path=Path(sif_path) if sif_path else None,
         )
         if lr.action == "failed":
             logger.warning("launch failed for %s: %s", app.id, lr.error)
-            return
-        if lr.action == "started":
+        elif lr.action == "started":
             logger.info("integration started: %s pid=%s port=%s",
                         app.id, lr.pid, lr.port)
         else:
             logger.debug("integration %s: %s", app.id, lr.action)
     except Exception as exc:  # noqa: BLE001
         logger.exception("launcher crashed for %s: %s", app.id, exc)
+
+
+def _record_build(
+    db: Session,
+    *,
+    app: App,
+    version: AppVersion,
+    manifest: dict[str, Any],
+    outcome: BuildOutcome,
+) -> BuildOutcome:
+    """Persist the build result onto the AppVersion row + notify on failure.
+
+    Only writes columns we have real values for (never blanks an existing
+    sif_path on a cache-hit success). Best-effort: a DB error here is logged,
+    not raised.
+    """
+    try:
+        version.build_status = outcome.status
+        if outcome.sif_path:
+            version.sif_path = outcome.sif_path
+        if outcome.build_log_path:
+            version.build_log_path = outcome.build_log_path
+        if outcome.commit:
+            version.git_commit_hash = outcome.commit[:64]
+        db.commit()
+        db.refresh(version)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("failed to persist build status for %s: %s", app.id, exc)
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+    if outcome.status == BuildStatus.FAILED:
+        _notify_build_failed(
+            db, app=app, version=version, manifest=manifest,
+            log_path=outcome.build_log_path, error=outcome.error,
+        )
+    return outcome
+
+
+def _notify_build_failed(
+    db: Session,
+    *,
+    app: App,
+    version: AppVersion,
+    manifest: dict[str, Any],
+    log_path: str | None,
+    error: str | None,
+) -> None:
+    """Tell an operator a build failed: email if configured, else audit log.
+
+    Always writes an audit ``integration.build.failed`` entry as the durable
+    record; the email is a best-effort heads-up on top of it.
+    """
+    meta = {
+        "app_id": app.id,
+        "version": version.version,
+        "log_path": log_path,
+        "error": (error or "")[:1000],
+    }
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action="integration.build.failed",
+        target_type="app_version",
+        target_id=str(version.id),
+        meta=meta,
+    )
+
+    # Best-effort operator email. Never let a mail failure escape.
+    try:
+        from app.config import get_settings  # noqa: PLC0415
+        from app.services import mail_service  # noqa: PLC0415
+
+        settings = get_settings()
+        to = (settings.seed_admin_email or "").strip()
+        if not to:
+            return
+        body = (
+            f"Integration build FAILED.\n\n"
+            f"app: {app.id}\nversion: {version.version}\n"
+            f"log: {log_path or '(none)'}\n\n"
+            f"--- error ---\n{(error or '(no detail)')[:2000]}\n"
+        )
+        mail_service.send_mail(
+            to=to,
+            subject=f"[HEAXHub] integration build failed: {app.id}@{version.version}",
+            body=body,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("build-failed notification mail failed for %s", app.id)
 
 
 # ---------------------------------------------------------------------------
@@ -395,9 +637,10 @@ def _process_dir(
             app_id=app_id,
             version=version_str,
             manifest_snapshot=manifest,
-            # In-tree integrations don't go through the build pipeline — mark
-            # success so publish/run paths don't gate on build.
-            build_status=BuildStatus.SUCCESS,
+            # Start PENDING; _build_and_launch flips it to BUILDING and then
+            # SUCCESS/FAILED based on what actually happens. (Was hard-coded
+            # SUCCESS before the build had even run.)
+            build_status=BuildStatus.PENDING,
         )
         db.add(version)
         db.flush()
@@ -427,9 +670,30 @@ def _process_dir(
         existing_version.manifest_snapshot = manifest
         db.commit()
         db.refresh(existing_version)
+
+    # Trigger expansion: re-run build/launch even when the version string is
+    # unchanged, so a source push picks up without a manual version bump.
+    # ``commit_gated=True`` keeps this conservative — a SIF rebuild fires only
+    # when the upstream commit actually moves, never on cosmetic manifest edits
+    # (description/tags). That avoids stampeding a rebuild of every demo. The
+    # downstream content hashes (build_sif / integration_builder) still guard
+    # the build itself, and the launcher's already_running probe makes the
+    # relaunch idempotent for healthy services.
+    outcome = _build_and_launch(
+        db, app=app, version=existing_version, stack=stack,
+        integration_dir=integration_dir, manifest=manifest,
+        commit_gated=True,
+    )
+
+    if created_app:
+        action: ScanAction = "created"
+    elif outcome.rebuilt:
+        action = "updated"
+    else:
+        action = "unchanged"
     return ScanResult(
         slug=slug,
-        action="created" if created_app else "unchanged",
+        action=action,
         app_id=app_id,
         version=version_str,
     )

@@ -617,7 +617,8 @@ def _sif_argv_for(
     if stack_name == "java_springboot":
         return ["java", "-jar", "/app/app.jar", f"--server.port={port}"]
     if stack_name == "rust_actix":
-        return ["/server"]
+        # rust_actix.def copies the built binary to /app/server inside the SIF.
+        return ["/app/server"]
     # Generic fallback: honour manifest.launch.command.
     cmd = (manifest.get("launch") or {}).get("command") or "./.portal/run.sh"
     return ["/bin/sh", "-c", str(cmd)]

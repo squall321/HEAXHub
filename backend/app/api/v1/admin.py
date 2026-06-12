@@ -492,6 +492,29 @@ def sync_integration_repos(
     }
 
 
+@router.post("/integrations/proxy-sync")
+def proxy_sync_integrations(db: DbSession, admin: AdminUser) -> dict[str, Any]:
+    """Manually trigger a reconcile pass: re-register lost Caddy routes and
+    restart dead service instances for every live integration.
+
+    Idempotent + build-free — same code path the beat task runs on a 45s
+    interval. Operators hit this after a Caddy restart to immediately re-inject
+    the ``/apps/<id>`` routes instead of waiting for the next tick.
+    """
+    from app.workers.integration_tasks import reconcile_integrations  # noqa: PLC0415
+
+    summary = reconcile_integrations()
+    audit_service.safe_log(
+        db,
+        actor_user_id=admin.id,
+        action="integrations.proxy_sync",
+        target_type="system",
+        target_id="integrations",
+        meta={"by_action": summary.get("by_action")},
+    )
+    return summary
+
+
 @router.post("/integrations/test-request")
 def create_integration_test_request(
     db: DbSession,

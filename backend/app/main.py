@@ -96,6 +96,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:  # noqa: BLE001
         logger.exception("scan_integrations failed at startup")
 
+    # Caddy keeps its routes in memory only, so a Caddy (or stack) restart wipes
+    # every /apps/<id> route while the upstream services stay alive. The scanner
+    # above does not re-register them (it early-returns on the unchanged-version
+    # path). Run one reconcile pass at boot to re-inject routes for already-live
+    # integrations + restart any that died. Best-effort: never blocks boot.
+    try:
+        from app.workers.integration_tasks import reconcile_integrations  # noqa: PLC0415
+
+        summary = reconcile_integrations()
+        logger.info("integrations reconcile at startup: %s", summary.get("by_action"))
+    except Exception:  # noqa: BLE001
+        logger.exception("reconcile_integrations failed at startup")
+
     yield
     logger.info("HEAXHub backend shutting down")
 

@@ -7,7 +7,10 @@ From: node:20-slim
 %post
     set -eux
     apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+    # Pin pnpm to a version compatible with Node 20; corepack default
+    # pulls pnpm@latest which requires Node 22+ (fails with ERR_UNKNOWN_BUILTIN_MODULE node:sqlite).
     corepack enable
+    corepack prepare pnpm@9.15.0 --activate
     cd /app && pnpm install --frozen-lockfile
     cd /app && pnpm build --if-present
 

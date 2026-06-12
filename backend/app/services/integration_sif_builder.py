@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,6 +77,12 @@ class SifBuildResult:
     sif: Path | None
     hash: str | None
     error: str | None = None
+    # Absolute path to the build log on disk. Set whenever a build was
+    # attempted (built/failed); None on cache-hit skip or no-template skip.
+    log_path: Path | None = None
+    # Stable upstream identity (git commit sha / archive digest) that this SIF
+    # was built from. Lets the caller persist AppVersion.git_commit_hash.
+    commit: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +100,7 @@ def build_sif(
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     stack = _stack_name(manifest)
+    commit_for_meta = _commit_identity(fetch_result)
     template_path = TEMPLATES_DIR / f"{stack}.def"
     if not template_path.is_file():
         return SifBuildResult(
@@ -100,13 +108,14 @@ def build_sif(
             sif=None,
             hash=None,
             error=f"no SIF template for stack {stack}",
+            commit=commit_for_meta,
         )
 
     # Read template *bytes* — that's what we hash, and that's what we render
     # against. Decode to str only for the placeholder substitution step.
     template_bytes = template_path.read_bytes()
 
-    commit = _commit_identity(fetch_result)
+    commit = commit_for_meta
     upstream_dir = _upstream_dir(fetch_result, slug)
     subpath = ((manifest.get("source") or {}).get("subpath")) or ""
     entrypoint = _entrypoint(manifest)
@@ -138,6 +147,7 @@ def build_sif(
                     sif=sif_path,
                     hash=build_hash,
                     error=None,
+                    commit=commit,
                 )
         except OSError:
             # Sentinel unreadable → treat as miss and rebuild.
@@ -145,6 +155,7 @@ def build_sif(
 
     # Persist the rendered .def next to the SIF for operator debugging.
     def_path = SIF_DIR / f"{slug}.def"
+    log_path = LOG_DIR / f"sif_build_{slug}.log"
     try:
         def_path.write_text(rendered, encoding="utf-8")
     except OSError as exc:
@@ -153,9 +164,21 @@ def build_sif(
             sif=None,
             hash=build_hash,
             error=f"failed to write {def_path}: {exc}",
+            log_path=log_path,
+            commit=commit,
         )
 
-    log_path = LOG_DIR / f"sif_build_{slug}.log"
+    # Build into a temporary path so a failed/aborted build never clobbers the
+    # last-good SIF that is potentially serving live traffic. We os.replace()
+    # onto the final path only after apptainer exits 0 — an atomic swap on the
+    # same filesystem. force=False because the temp path is always fresh.
+    building_path = SIF_DIR / f"{slug}.sif.building"
+    try:
+        if building_path.exists():
+            building_path.unlink()
+    except OSError:
+        pass
+
     try:
         with log_path.open("ab") as log_fh:
             log_fh.write(
@@ -163,15 +186,16 @@ def build_sif(
             )
             log_fh.flush()
             apt_runner.run_build(
-                sif_out=sif_path,
+                sif_out=building_path,
                 def_in=def_path,
                 fakeroot=True,
-                force=True,
+                force=False,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
                 check=True,
             )
     except subprocess.CalledProcessError as exc:
+        _discard(building_path)
         tail = _tail_text(log_path, _ERROR_TAIL_BYTES)
         return SifBuildResult(
             action="failed",
@@ -181,22 +205,45 @@ def build_sif(
                 f"apptainer build exit={exc.returncode}\n"
                 f"--- tail ({log_path.name}) ---\n{tail}"
             ),
+            log_path=log_path,
+            commit=commit,
         )
     except FileNotFoundError as exc:
         # apt_runner.local_apptainer_path() raises this when no apptainer
         # is installed anywhere; surface the original message verbatim.
+        _discard(building_path)
         return SifBuildResult(
             action="failed",
             sif=None,
             hash=build_hash,
             error=str(exc),
+            log_path=log_path,
+            commit=commit,
         )
     except OSError as exc:  # pragma: no cover - defensive
+        _discard(building_path)
         return SifBuildResult(
             action="failed",
             sif=None,
             hash=build_hash,
             error=f"OS error during build: {exc}",
+            log_path=log_path,
+            commit=commit,
+        )
+
+    # Atomic swap: move the freshly-built temp SIF onto the final path. Only
+    # now is the old image replaced, so a crash mid-build leaves it intact.
+    try:
+        os.replace(building_path, sif_path)
+    except OSError as exc:  # pragma: no cover - defensive
+        _discard(building_path)
+        return SifBuildResult(
+            action="failed",
+            sif=None,
+            hash=build_hash,
+            error=f"built {building_path.name} but failed to swap into place: {exc}",
+            log_path=log_path,
+            commit=commit,
         )
 
     # Success → write the sentinel atomically.
@@ -208,6 +255,8 @@ def build_sif(
             sif=sif_path,
             hash=build_hash,
             error=f"built {sif_path.name} but failed to write sentinel: {exc}",
+            log_path=log_path,
+            commit=commit,
         )
 
     return SifBuildResult(
@@ -215,6 +264,8 @@ def build_sif(
         sif=sif_path,
         hash=build_hash,
         error=None,
+        log_path=log_path,
+        commit=commit,
     )
 
 
@@ -283,6 +334,15 @@ def _hash_inputs(commit: str, manifest: dict[str, Any], template_bytes: bytes) -
     h.update(b"\0")
     h.update(template_bytes)
     return h.hexdigest()
+
+
+def _discard(path: Path) -> None:
+    """Best-effort delete of a partial/temp SIF. Never raises."""
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:  # pragma: no cover - defensive
+        logger.warning("sif_builder: could not remove temp file %s", path)
 
 
 def _tail_text(path: Path, max_bytes: int) -> str:

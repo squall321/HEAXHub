@@ -23,7 +23,12 @@ from app.core.errors import GoneError, NotFoundError
 from app.db.models.app import App
 from app.db.models.installer_package import InstallerPackage
 from app.deps import AdminUser, CurrentUser, DbSession, get_app_or_404
-from app.services import agent_manifest_builder, custom_protocol, installer_packages
+from app.services import (
+    agent_manifest_builder,
+    audit_service,
+    custom_protocol,
+    installer_packages,
+)
 
 # HEAXHub OS slug for the agent's own build; mapped to the Tauri target-triple
 # key "windows-x86_64" in the updater feed.
@@ -227,6 +232,33 @@ def download_protocol_reg(
             "Content-Disposition": f'attachment; filename="{app_id}.reg"',
         },
     )
+
+
+@router.delete("/{app_id}/installers/{installer_id}")
+def delete_installer(
+    app_id: str,
+    installer_id: uuid.UUID,
+    db: DbSession,
+    admin: AdminUser,
+) -> dict[str, bool]:
+    """Operator-only: remove an installer package (row + on-disk artifact).
+
+    The admin UI's installer list (InstallerUploader → installersApi.remove) calls
+    this; it expects ``{ ok: true }``. 404 if the id is unknown or belongs to a
+    different app (so an id from another app can't be deleted via this path).
+    """
+    row = installer_packages.delete_installer(db, installer_id, app_id=app_id)
+    if row is None:
+        raise NotFoundError("Installer not found")
+    audit_service.safe_log(
+        db,
+        actor_user_id=admin.id,
+        action="installer.delete",
+        target_type="app",
+        target_id=app_id,
+        meta={"installer_id": str(installer_id), "version": row.version, "os": row.os},
+    )
+    return {"ok": True}
 
 
 # ───────────────────────────── launcher download-by-id ──────────────────────────

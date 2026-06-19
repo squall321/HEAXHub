@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: my_python_webapp
 name: My Python Web App
 version: 0.1.0
@@ -8,26 +8,31 @@ app_type: web_app
 execution_target: linux_runner
 
 description: |
-  HEAXHub python-webapp 템플릿. FastAPI + uvicorn 으로 동작하는 상시 운영 서비스이다.
-  포탈은 run.sh가 기록한 result.json.outputs.url 을 사용자에게 안내한다.
+  HEAXHub python-webapp 템플릿 (FastAPI + uvicorn).
+  service 모드 — 포탈이 상시 프로세스로 띄우고 /apps/<slug>/ 서브경로로 리버스
+  프록시한다. 런처가 $PORT 와 $ROOT_PATH 를 주입하며, 앱은 그 값으로 listen·root-path
+  를 잡으므로 하나의 웹으로 자연스럽게 합쳐진다(서브경로 자산/링크 안 깨짐).
 
 tags:
   - template
   - python
   - webapp
 
-launch:
-  mode: url
-  open_in: new_tab
-  auth_mode: none
-  runtime: python_venv
-  command: ./run.sh input output params.json
+build:
+  stack: fastapi
 
-outputs:
-  - name: url
-    type: file
-    path: output/result.json
-    description: result.json.outputs.url 에 접속 가능한 URL 이 기록된다.
+launch:
+  mode: service
+  # $PORT / $ROOT_PATH 는 런처가 주입한다. 고정 포트를 쓰지 말 것.
+  command: uvicorn app.main:app --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH
+  runtime: python_venv
+
+health_check:
+  path: /health
+
+restart_policy:
+  policy: on_failure
+  max_retries: 3
 
 permissions:
   visibility: team
@@ -36,11 +41,3 @@ resources:
   cpu: 1
   memory_gb: 1
   gpu: false
-
-build:
-  type: python_venv
-  python_version: "3.11"
-  pyproject: pyproject.toml
-
-requirements:
-  os: linux

@@ -1,0 +1,116 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  color: #1f2937;
+  background: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem;
+}
+
+header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+}
+
+.subtitle {
+  margin: 0 0 1.5rem;
+  color: #475569;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+code {
+  background: #e2e8f0;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.add-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.add-form input {
+  flex: 1;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.add-form button {
+  padding: 0.55rem 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  font: inherit;
+  cursor: pointer;
+}
+
+.add-form button:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+.error {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+}
+
+.empty {
+  color: #64748b;
+  font-style: italic;
+}
+
+.tasks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.tasks li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+}
+
+.tasks li.done span {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.tasks label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  flex: 1;
+}
+
+.tasks small {
+  color: #94a3b8;
+}

@@ -1,0 +1,46 @@
+schema_version: 2
+id: my_fullstack_app
+name: My Fullstack App
+version: 0.1.0
+owner: cae-automation
+status: draft
+app_type: web_app
+execution_target: linux_runner
+
+description: |
+  HEAXHub fastapi_react 템플릿 — TypeScript Vite+React 프론트엔드 + FastAPI 백엔드를
+  하나의 SIF로 묶은 풀스택 앱. 서브경로(/apps/<slug>/)에서 자산·API가 깨지지 않도록
+  "상대경로" 전략을 코드로 박아 둔 가장 견고한 형태:
+    - Vite base: "./"   → 번들 자산 URL 이 전부 상대경로 (서브경로 무관)
+    - fetch("api/...")  → 현재 페이지 기준 상대경로 → 자동으로 /apps/<slug>/api/...
+    - FastAPI 가 frontend/dist 를 StaticFiles 로 "/" 에 마운트 (/api/* 가 먼저 선언)
+  런처가 $PORT / $ROOT_PATH 를 주입하고 fastapi_react 스택이 빌드(pnpm build + pip)한다.
+
+tags:
+  - template
+  - fullstack
+  - react
+  - fastapi
+
+build:
+  stack: fastapi_react
+
+launch:
+  mode: service
+  # fastapi_react 스택의 기본 entrypoint(uvicorn ... --root-path $ROOT_PATH)를 쓴다.
+  # 커스텀이 필요할 때만 command 를 지정.
+
+health_check:
+  path: /api/health
+
+restart_policy:
+  policy: on_failure
+  max_retries: 3
+
+permissions:
+  visibility: team
+
+resources:
+  cpu: 1
+  memory_gb: 1
+  gpu: false

@@ -1,0 +1,16 @@
+[project]
+name = "my-fullstack-app"
+version = "0.1.0"
+description = "HEAXHub fastapi_react 스택 데모. Vite+React TS 프론트엔드 + FastAPI 백엔드를 한 SIF로 패키징."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

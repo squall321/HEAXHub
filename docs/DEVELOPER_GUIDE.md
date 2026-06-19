@@ -243,7 +243,9 @@ permissions:
    - Next.js/Vite: `basePath` / `base` 를 `$ROOT_PATH` 기준으로
    - Streamlit/Dash/Shiny: 각 `--server.baseUrlPath` / `requests_pathname_prefix` / `--root-path`
 
-시작 템플릿이 `templates/`에 있다 — `python-webapp`, `streamlit-hello`, `python-cli`, `cpp-cli`, `windows-gui`. 복사해서 시작하면 위 규약이 이미 반영돼 있다.
+시작 템플릿이 `templates/`에 있다 — `python-webapp`(FastAPI service), `fastapi-react`(Vite+React+FastAPI 풀스택), `streamlit-hello`, `python-cli`, `cpp-cli`, `windows-gui`. 복사해서 시작하면 위 규약이 이미 반영돼 있다.
+
+> **서브경로에서 가장 안 깨지는 형태**가 필요하면 `templates/fastapi-react`를 쓴다. Vite `base: "./"`(자산 상대경로) + `fetch("api/...")`(API 상대경로) + FastAPI StaticFiles 마운트로, `/apps/<slug>/` prefix가 무엇이든 자산·API가 그대로 동작한다(빌드 검증 완료).
 
 ---
 

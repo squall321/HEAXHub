@@ -7,3 +7,7 @@ __pycache__/
 .DS_Store
 *.egg-info/
 build/
+# tsc build artifacts (source of truth is the .ts files)
+vite.config.js
+vite.config.d.ts
+*.tsbuildinfo

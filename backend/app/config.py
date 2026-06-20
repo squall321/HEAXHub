@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     email_verify_token_ttl_hours: int = 24
     password_reset_token_ttl_hours: int = 2
 
+    # --- Portal SSO (jwt-handoff downstream consumer) ---
+    # Empty PORTAL_JWKS_URL ⇒ /auth/portal-callback returns 404 (standalone unaffected;
+    # local login / PATs / launcher tokens keep working). Set on portal-integrated deploys.
+    portal_jwks_url: str = ""
+    portal_audience: str = "heax-hub"  # token `aud`; must equal systems.yaml audience
+    portal_issuer: str = "https://hwax.sec.samsung.net"  # optional iss check
+    portal_sso_landing: str = "/heax-hub/"  # browser redirect target after bootstrap
+
     # --- Mail ---
     smtp_host: str = "localhost"
     smtp_port: int = 8125

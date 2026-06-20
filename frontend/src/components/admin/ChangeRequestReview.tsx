@@ -69,12 +69,20 @@ export function ChangeRequestReview({ crId }: ChangeRequestReviewProps) {
   const issue = useMutation({
     mutationFn: (via: "pr" | "issue" | "markdown") => changeRequestsApi.issue(crId, via),
     onSuccess: (res, via) => {
-      if (via === "pr" && res.pr_url) {
-        toast.success("PR이 발행되었습니다.");
-        window.open(res.pr_url, "_blank");
-      } else if (via === "issue" && res.issue_url) {
-        toast.success("Issue가 발행되었습니다.");
-        window.open(res.issue_url, "_blank");
+      // backend ChangeRequestIssueResult: { url, content }.
+      if ((via === "pr" || via === "issue") && res.url) {
+        toast.success(via === "pr" ? "PR이 발행되었습니다." : "Issue가 발행되었습니다.");
+        window.open(res.url, "_blank");
+      } else if (via === "markdown" && res.content) {
+        // Markdown 발행 — 본문을 파일로 내려준다.
+        const blob = new Blob([res.content], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `change-request-${crId?.slice(0, 8) ?? "unknown"}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("Markdown을 발행했습니다.");
       } else {
         toast.success("처리되었습니다.");
       }

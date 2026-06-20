@@ -23,4 +23,6 @@ export const submissionsApi = {
   reject: (id: string, notes?: string) =>
     api.patch<Submission>(`/submissions/${id}`, { status: "rejected", review_notes: notes }),
   testRun: (id: string) => api.post<{ job_id: string }>(`/submissions/${id}/test-run`),
+  publish: (id: string) => api.post<Submission>(`/submissions/${id}/publish`),
+  retry: (id: string) => api.post<Submission>(`/submissions/${id}/retry`),
 };

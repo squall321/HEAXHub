@@ -97,6 +97,24 @@ def publish_submission(
     return SubmissionOut.model_validate(sub)
 
 
+@router.post("/{submission_id}/retry", response_model=SubmissionOut)
+def retry_submission(
+    submission_id: uuid.UUID,
+    db: DbSession,
+    reviewer: AdminUser,
+) -> SubmissionOut:
+    """Re-run clone+build for a FAILED submission.
+
+    Admin-only. Clears any orphaned App/AppVersion rows from a previous failed
+    attempt (so the same app_id isn't blocked forever) and re-enqueues the
+    clone+provision pipeline — no manual SQL needed.
+    """
+    sub = app_lifecycle.retry_submission(
+        db, reviewer=reviewer, submission_id=submission_id
+    )
+    return SubmissionOut.model_validate(sub)
+
+
 @router.post("/{submission_id}/test-run", response_model=SubmissionOut)
 def test_run_submission(
     submission_id: uuid.UUID,

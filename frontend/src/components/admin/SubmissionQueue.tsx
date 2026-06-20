@@ -56,6 +56,35 @@ export function SubmissionQueue() {
     },
   });
 
+  const testRun = useMutation({
+    mutationFn: () => submissionsApi.testRun(selected!.id),
+    onSuccess: (res) => {
+      toast.success(`테스트 실행을 시작했습니다 (job ${res.job_id.slice(0, 8)}).`);
+      qc.invalidateQueries({ queryKey: ["admin", "submissions"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "테스트 실행 실패"),
+  });
+
+  const publish = useMutation({
+    mutationFn: () => submissionsApi.publish(selected!.id),
+    onSuccess: () => {
+      toast.success("공개되었습니다. 카탈로그에 노출됩니다.");
+      qc.invalidateQueries({ queryKey: ["admin", "submissions"] });
+      setSelected(null);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "공개 실패"),
+  });
+
+  const retry = useMutation({
+    mutationFn: () => submissionsApi.retry(selected!.id),
+    onSuccess: () => {
+      toast.success("재시도를 시작했습니다.");
+      qc.invalidateQueries({ queryKey: ["admin", "submissions"] });
+      setSelected(null);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "재시도 실패"),
+  });
+
   if (isLoading) return <Skeleton className="h-96 w-full" />;
 
   const items = data?.items ?? [];
@@ -156,23 +185,71 @@ export function SubmissionQueue() {
                   />
                 </div>
 
-                <div className="flex gap-2">
+                {/* 상태별 액션 — 승인→빌드 대기→테스트→공개를 웹에서 완주 */}
+                {(selected.status === "pending" ||
+                  selected.status === "under_review" ||
+                  selected.status === "manifest_required") && (
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => approve.mutate()}
+                      disabled={approve.isPending || reject.isPending}
+                      className="flex-1"
+                    >
+                      <Check className="mr-2 h-4 w-4" /> 승인
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => reject.mutate()}
+                      disabled={approve.isPending || reject.isPending}
+                      className="flex-1"
+                    >
+                      <X className="mr-2 h-4 w-4" /> 반려
+                    </Button>
+                  </div>
+                )}
+
+                {(selected.status === "provisioning" ||
+                  selected.status === "building") && (
+                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    빌드가 진행 중입니다. 완료되면 테스트·공개 버튼이 나타납니다.
+                  </p>
+                )}
+
+                {selected.status === "built" && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => testRun.mutate()}
+                      disabled={testRun.isPending || publish.isPending}
+                      className="flex-1"
+                    >
+                      테스트 실행
+                    </Button>
+                    <Button
+                      onClick={() => publish.mutate()}
+                      disabled={publish.isPending || testRun.isPending}
+                      className="flex-1"
+                    >
+                      <Check className="mr-2 h-4 w-4" /> 공개
+                    </Button>
+                  </div>
+                )}
+
+                {selected.status === "failed" && (
                   <Button
-                    onClick={() => approve.mutate()}
-                    disabled={approve.isPending || reject.isPending}
-                    className="flex-1"
+                    onClick={() => retry.mutate()}
+                    disabled={retry.isPending}
+                    className="w-full"
                   >
-                    <Check className="mr-2 h-4 w-4" /> 승인
+                    재시도
                   </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => reject.mutate()}
-                    disabled={approve.isPending || reject.isPending}
-                    className="flex-1"
-                  >
-                    <X className="mr-2 h-4 w-4" /> 반려
-                  </Button>
-                </div>
+                )}
+
+                {selected.status === "published" && (
+                  <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
+                    공개됨 — 카탈로그와 <code>/apps/{selected.proposed_app_id}/</code> 에서 확인.
+                  </p>
+                )}
               </div>
             </>
           )}

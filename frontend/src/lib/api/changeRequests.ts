@@ -26,14 +26,12 @@ export const changeRequestsApi = {
     api.post<ChangeRequest>("/change-requests", payload),
   update: (id: string, payload: ChangeRequestUpdatePayload) =>
     api.patch<ChangeRequest>(`/change-requests/${id}`, payload),
+  // backend expects { via } in the body (ChangeRequestIssueRequest), not a query param.
   issue: (id: string, via: IssueVia) =>
-    api.post<IssueResponse>(`/change-requests/${id}/issue`, undefined, {
-      query: { via },
-    }),
+    api.post<IssueResponse>(`/change-requests/${id}/issue`, { via }),
   // Returns text/markdown — apiRequest passes non-JSON content through as string.
   markdown: (id: string) =>
     api.get<string>(`/change-requests/${id}/markdown`),
-  remove: (id: string) => api.del<{ ok: true }>(`/change-requests/${id}`),
 
   // ---------------------------------------------------------------------------
   // Claude-in-the-loop assistant handoff

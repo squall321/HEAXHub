@@ -189,11 +189,14 @@ export interface JobDetail extends Job {
 export type SubmissionStatus =
   | "pending"
   | "under_review"
+  | "manifest_required"
   | "approved"
   | "rejected"
+  | "provisioning"
+  | "building"
   | "built"
   | "published"
-  | "manifest_required";
+  | "failed";
 
 export interface Submission {
   id: string;
@@ -476,11 +479,12 @@ export interface ChangeRequestUpdatePayload {
 
 export type IssueVia = "pr" | "issue" | "markdown";
 
+// Mirrors backend ChangeRequestIssueResult: { url, content }.
+// - PR/Issue 발행 → url 에 GitHub 링크
+// - Markdown 발행 → content 에 마크다운 본문
 export interface IssueResponse {
-  ok: boolean;
-  pr_url?: string;
-  issue_url?: string;
-  status: ChangeRequestStatus;
+  url?: string | null;
+  content?: string | null;
 }
 
 // Submission v2 — source abstraction

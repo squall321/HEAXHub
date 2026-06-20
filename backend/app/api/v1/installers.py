@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from app.api.v1.launcher_agents import LauncherAuth
 from app.config import get_settings
 from app.core.errors import GoneError, NotFoundError
-from app.db.models.app import App
+from app.db.models.app import App, AppStatus, AppVisibility
 from app.db.models.installer_package import InstallerPackage
 from app.deps import AdminUser, CurrentUser, DbSession, get_app_or_404
 from app.services import (
@@ -40,6 +40,23 @@ router = APIRouter(prefix="/apps", tags=["installers"])
 # secured by the launcher JWT (aud=hwax-agent) — NOT user auth. This is the
 # endpoint the manifest's package.url points at (§2.3 / §2.5).
 download_router = APIRouter(prefix="/installers", tags=["hwax-agent"])
+
+
+def _assert_public_installer_allowed(db: DbSession, app_id: str) -> None:
+    """Gate the *public* (unauthenticated) installer endpoints.
+
+    Without this, anyone could pull the installer binary for ANY app_id —
+    including DRAFT/ARCHIVED apps or ones whose visibility isn't company-wide.
+    Public download is only for stable, company-visible apps (e.g. the launcher
+    itself). Everything else 404s (not 403 — don't reveal existence).
+    """
+    app = db.get(App, app_id)
+    if (
+        app is None
+        or app.status != AppStatus.STABLE
+        or app.visibility != AppVisibility.COMPANY
+    ):
+        raise NotFoundError("No public installer for this app")
 
 
 def _public_base_url(request: Request) -> str:
@@ -378,8 +395,10 @@ def public_latest(app_id: str, db: DbSession, request: Request) -> Response:
 
     Response (200):
         {app_id, version, sha256, size_bytes, signed, uploaded_at, download_url}
-    Response (404): no Windows installer registered for this app yet.
+    Response (404): no Windows installer registered for this app yet, or the
+    app isn't publicly downloadable (not stable / not company-visible).
     """
+    _assert_public_installer_allowed(db, app_id)
     row = installer_packages.get_latest(db, app_id=app_id, os=WINDOWS_OS)
     if row is None:
         return Response(status_code=404)
@@ -410,12 +429,22 @@ def public_download(app_id: str, db: DbSession):
     ``X-Installer-SHA256`` / ``X-Installer-Version`` / ``X-Installer-Signed``
     so the SPA can verify before launching.
     """
+    _assert_public_installer_allowed(db, app_id)
     row = installer_packages.get_latest(db, app_id=app_id, os=WINDOWS_OS)
     if row is None:
         return Response(status_code=404)
     file_path = installer_packages.installer_path(app_id, row.os, row.version)
     if not file_path.exists():
         return Response(status_code=410)
+    # Anonymous download — record who/what (best-effort) for the audit trail.
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action="installer.public_download",
+        target_type="app",
+        target_id=app_id,
+        meta={"version": row.version, "os": row.os},
+    )
     return FileResponse(
         path=str(file_path),
         media_type="application/octet-stream",

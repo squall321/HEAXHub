@@ -202,6 +202,7 @@ def test_download_draft_app_gated_404(ctx) -> None:
 
 def test_download_requires_bearer_401(ctx) -> None:
     session, client = ctx
+    _make_app(session, "dl_auth_app")
     pkg = _make_pkg(
         session, app_id="dl_auth_app", version="1.0.0", os="windows-x64", url="x"
     )
@@ -223,6 +224,7 @@ def test_download_rejects_user_token_401(ctx) -> None:
     session.add(user)
     session.flush()
     user_token = create_access_token(str(user.id))  # no audience
+    _make_app(session, "dl_user_app")
     pkg = _make_pkg(
         session, app_id="dl_user_app", version="1.0.0", os="windows-x64", url="x"
     )

@@ -38,7 +38,7 @@ stacks:
     runtime: python_venv
     python_version: "3.12"
     install: pip install -e .
-    entrypoint: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.baseUrlPath $ROOT_PATH
+    entrypoint: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.baseUrlPath $ROOT_PATH --server.headless true
     health_path: /_stcore/health
     use_cases:
       - 데이터 대시보드 / 시각화
@@ -99,7 +99,7 @@ stacks:
     node_version: "20"
     install: pnpm install --frozen-lockfile
     build: pnpm build
-    entrypoint: pnpm start -- --port $PORT --hostname 0.0.0.0
+    entrypoint: node_modules/.bin/next start --port $PORT --hostname 0.0.0.0
     health_path: /
     base_path_env: NEXT_PUBLIC_BASE_PATH
     use_cases:
@@ -203,7 +203,7 @@ stacks:
     runtime: native_binary
     rust_edition: "2021"
     install: cargo build --release
-    entrypoint: ./target/release/server
+    entrypoint: /app/server
     health_path: /health
     use_cases:
       - 고성능 HTTP 마이크로서비스
@@ -222,7 +222,7 @@ stacks:
     runtime: native_binary
     go_version: "1.22"
     build: go build -trimpath -ldflags='-s -w' -o ./bin/server ./cmd/server
-    entrypoint: ./bin/server
+    entrypoint: /app/bin/server
     health_path: /healthz
     base_path_env: BASE_PATH
     use_cases:
@@ -243,7 +243,10 @@ stacks:
     runtime: python_venv
     python_version: "3.12"
     install: pip install -e .
-    entrypoint: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 app:server
+    # Dash 데모는 app.py 의 __main__ 에서 app.run(port=$PORT) 으로 뜨고, base
+    # path 는 DASH_URL_BASE_PATHNAME env(런처가 주입)로 잡는다. gunicorn app:server
+    # 도 가능하나 현행 실동작(python app.py)에 맞춘다.
+    entrypoint: python app.py
     health_path: /
     base_path_env: DASH_URL_BASE_PATHNAME
     use_cases:

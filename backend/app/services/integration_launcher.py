@@ -554,7 +554,16 @@ def _sif_argv_for(
     binary names (gunicorn / uvicorn / streamlit / node) and let the
     container's PATH resolve them. The cwd is the bind-mounted workspace.
     """
-    _ = spec  # currently unused but accepted for parity with _argv_for
+    _ = spec  # entrypoint single-sourcing deferred — see STK-01 note below.
+    # NOTE (STK-01): folding these branches into `/bin/sh -lc <stacks.yaml
+    # entrypoint>` was attempted but reverted: a login shell (`-lc`) re-resolves
+    # binaries against the host PATH and loses the SIF's per-stack cwd/PATH
+    # context (e.g. fastapi_react's runscript cd's to /app/backend and relies on
+    # the SIF-internal uvicorn — `-lc` instead found the host ~/.local/bin/uvicorn
+    # and 502'd). The hard-coded argv below run via instance_exec keep that
+    # context intact. stacks.yaml entrypoints were synced to these values for
+    # documentation accuracy; a safe single-sourcing needs argv tokenization +
+    # explicit cwd, tracked as future work.
     if stack_name == "streamlit":
         return [
             "streamlit", "run", "app.py",

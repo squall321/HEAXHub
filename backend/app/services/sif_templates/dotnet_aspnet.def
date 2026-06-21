@@ -7,6 +7,14 @@ From: mcr.microsoft.com/dotnet/sdk:8.0
 %post
     set -eux
     cd /src && dotnet publish -c Release -o /app/publish
+    # STK-03: the published entry assembly is named after the .csproj (not
+    # "app.dll"). Resolve it via its .deps.json sidecar and symlink to a stable
+    # /app/publish/app.dll so the launcher/stacks.yaml entrypoint is uniform.
+    cd /app/publish
+    entry="$(ls *.deps.json 2>/dev/null | head -n1 | sed 's/\.deps\.json$//')"
+    if [ -n "$entry" ] && [ -f "${entry}.dll" ]; then
+        ln -sf "${entry}.dll" app.dll
+    fi
 
 %environment
     export ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080}

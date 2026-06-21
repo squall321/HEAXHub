@@ -162,7 +162,7 @@ stacks:
     runtime: dotnet
     dotnet_version: "8.0"
     install: dotnet publish -c Release -o publish
-    entrypoint: dotnet publish/app.dll --urls http://0.0.0.0:$PORT
+    entrypoint: dotnet /app/publish/app.dll --urls http://0.0.0.0:$PORT
     health_path: /health
     use_cases:
       - 기존 ASP.NET Core REST API 마이그레이션

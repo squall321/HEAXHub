@@ -118,6 +118,20 @@ def build_sif(
     commit = commit_for_meta
     upstream_dir = _upstream_dir(fetch_result, slug)
     subpath = ((manifest.get("source") or {}).get("subpath")) or ""
+    # STK-06: when the manifest pins a monorepo sub-directory, build that
+    # subtree (not the whole repo). Resolve UPSTREAM_DIR to <upstream>/<subpath>
+    # so the .def's `%files {{UPSTREAM_DIR}} /app` copies only the relevant app.
+    # ``..``/leading-slash are already stripped by managed_workspaces.upstream_dir.
+    if subpath:
+        sub_dir = upstream_dir / subpath.strip().lstrip("/")
+        if sub_dir.is_dir():
+            upstream_dir = sub_dir
+        else:
+            logger.warning(
+                "STK-06: source.subpath '%s' not found under %s for %s; "
+                "building the repo root instead",
+                subpath, upstream_dir, slug,
+            )
     entrypoint = _entrypoint(manifest)
 
     placeholders = {

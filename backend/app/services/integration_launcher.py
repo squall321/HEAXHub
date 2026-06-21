@@ -612,8 +612,11 @@ def _sif_argv_for(
         # path so it works regardless of pwd flag interaction.
         return ["/app/bin/server"]
     if stack_name == "dotnet_aspnet":
+        # STK-03: artefacts land in /app/publish; the .def symlinks the real
+        # entry assembly to /app/publish/app.dll. A manifest may still name a
+        # specific assembly, which is resolved under publish/ too.
         override = (manifest.get("launch") or {}).get("assembly") or "app.dll"
-        return ["dotnet", f"/app/{override}", "--urls", f"http://0.0.0.0:{port}"]
+        return ["dotnet", f"/app/publish/{override}", "--urls", f"http://0.0.0.0:{port}"]
     if stack_name == "java_springboot":
         return ["java", "-jar", "/app/app.jar", f"--server.port={port}"]
     if stack_name == "rust_actix":

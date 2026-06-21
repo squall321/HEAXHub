@@ -17,11 +17,26 @@ From: python:3.12-slim
     rm -rf /var/lib/apt/lists/*
 
     corepack enable
-    corepack prepare pnpm@9.15.0 --activate
 
     # Stage 1: build the frontend → /app/frontend/dist/
+    # ── lockfile-tolerant pnpm install (STK-05) ──────────────────────────────
+    # Honour package.json `packageManager` if present; else pin pnpm@9.15.0.
+    # Try frozen for reproducibility, fall back to --no-frozen-lockfile once.
     cd /app/frontend
-    pnpm install --frozen-lockfile
+    if grep -q '"packageManager"' package.json 2>/dev/null; then
+        corepack prepare --activate || corepack prepare pnpm@9.15.0 --activate
+    else
+        corepack prepare pnpm@9.15.0 --activate
+    fi
+    if [ -f pnpm-lock.yaml ]; then
+        pnpm install --frozen-lockfile || {
+            echo "WARN[STK-05]: frozen install failed; retrying --no-frozen-lockfile" >&2
+            pnpm install --no-frozen-lockfile
+        }
+    else
+        echo "WARN[STK-05]: no pnpm-lock.yaml; installing --no-frozen-lockfile" >&2
+        pnpm install --no-frozen-lockfile
+    fi
     pnpm build
 
     # Stage 2: install the FastAPI backend (which serves /app/frontend/dist/

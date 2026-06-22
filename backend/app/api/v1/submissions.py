@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, status
+from fastapi.responses import PlainTextResponse
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.models.app import App
@@ -113,6 +115,38 @@ def retry_submission(
         db, reviewer=reviewer, submission_id=submission_id
     )
     return SubmissionOut.model_validate(sub)
+
+
+@router.get("/{submission_id}/build-log", response_class=PlainTextResponse)
+def submission_build_log(
+    submission_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    tail: int = 2000,
+) -> PlainTextResponse:
+    """Return the SIF build log for this submission's app (UX-03).
+
+    Lets a submitter (or admin) see why a build failed without ssh. Access is
+    gated by ``get_submission`` (non-admins only see their own submissions).
+    ``tail`` caps the number of trailing lines returned.
+    """
+    sub = submission_service.get_submission(db, user=user, submission_id=submission_id)
+    slug = sub.proposed_app_id.replace("_", "-")
+    # Matches integration_sif_builder.LOG_DIR (= <repo>/var/logs).
+    log_dir = Path(__file__).resolve().parents[3] / "var" / "logs"
+    log_path = log_dir / f"sif_build_{slug}.log"
+    if not log_path.exists():
+        return PlainTextResponse(
+            "아직 빌드 로그가 없습니다. (빌드 전이거나 외부 링크/프록시 앱일 수 있음)",
+            status_code=200,
+        )
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception as exc:  # noqa: BLE001
+        return PlainTextResponse(f"로그 읽기 실패: {exc}", status_code=200)
+    if tail and len(lines) > tail:
+        lines = lines[-tail:]
+    return PlainTextResponse("\n".join(lines))
 
 
 @router.post("/{submission_id}/test-run", response_model=SubmissionOut)

@@ -18,6 +18,7 @@ import { Route as SubmitIndexRouteImport } from './routes/submit/index'
 import { Route as JobsIndexRouteImport } from './routes/jobs/index'
 import { Route as AppsIndexRouteImport } from './routes/apps/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as SubmitMyRouteImport } from './routes/submit/my'
 import { Route as PasswordResetRouteImport } from './routes/password.reset'
 import { Route as JobsJobIdRouteImport } from './routes/jobs/$jobId'
 import { Route as AppsAppIdRouteImport } from './routes/apps/$appId'
@@ -79,6 +80,11 @@ const AppsIndexRoute = AppsIndexRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubmitMyRoute = SubmitMyRouteImport.update({
+  id: '/submit/my',
+  path: '/submit/my',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PasswordResetRoute = PasswordResetRouteImport.update({
@@ -188,6 +194,7 @@ export interface FileRoutesByFullPath {
   '/apps/$appId': typeof AppsAppIdRouteWithChildren
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/password/reset': typeof PasswordResetRoute
+  '/submit/my': typeof SubmitMyRoute
   '/admin/': typeof AdminIndexRoute
   '/apps/': typeof AppsIndexRoute
   '/jobs/': typeof JobsIndexRoute
@@ -216,6 +223,7 @@ export interface FileRoutesByTo {
   '/apps/$appId': typeof AppsAppIdRouteWithChildren
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/password/reset': typeof PasswordResetRoute
+  '/submit/my': typeof SubmitMyRoute
   '/admin': typeof AdminIndexRoute
   '/apps': typeof AppsIndexRoute
   '/jobs': typeof JobsIndexRoute
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/apps/$appId': typeof AppsAppIdRouteWithChildren
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/password/reset': typeof PasswordResetRoute
+  '/submit/my': typeof SubmitMyRoute
   '/admin/': typeof AdminIndexRoute
   '/apps/': typeof AppsIndexRoute
   '/jobs/': typeof JobsIndexRoute
@@ -275,6 +284,7 @@ export interface FileRouteTypes {
     | '/apps/$appId'
     | '/jobs/$jobId'
     | '/password/reset'
+    | '/submit/my'
     | '/admin/'
     | '/apps/'
     | '/jobs/'
@@ -303,6 +313,7 @@ export interface FileRouteTypes {
     | '/apps/$appId'
     | '/jobs/$jobId'
     | '/password/reset'
+    | '/submit/my'
     | '/admin'
     | '/apps'
     | '/jobs'
@@ -331,6 +342,7 @@ export interface FileRouteTypes {
     | '/apps/$appId'
     | '/jobs/$jobId'
     | '/password/reset'
+    | '/submit/my'
     | '/admin/'
     | '/apps/'
     | '/jobs/'
@@ -360,6 +372,7 @@ export interface RootRouteChildren {
   AppsAppIdRoute: typeof AppsAppIdRouteWithChildren
   JobsJobIdRoute: typeof JobsJobIdRoute
   PasswordResetRoute: typeof PasswordResetRoute
+  SubmitMyRoute: typeof SubmitMyRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AppsIndexRoute: typeof AppsIndexRoute
   JobsIndexRoute: typeof JobsIndexRoute
@@ -429,6 +442,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/submit/my': {
+      id: '/submit/my'
+      path: '/submit/my'
+      fullPath: '/submit/my'
+      preLoaderRoute: typeof SubmitMyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/password/reset': {
@@ -597,6 +617,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppsAppIdRoute: AppsAppIdRouteWithChildren,
   JobsJobIdRoute: JobsJobIdRoute,
   PasswordResetRoute: PasswordResetRoute,
+  SubmitMyRoute: SubmitMyRoute,
   AdminIndexRoute: AdminIndexRoute,
   AppsIndexRoute: AppsIndexRoute,
   JobsIndexRoute: JobsIndexRoute,

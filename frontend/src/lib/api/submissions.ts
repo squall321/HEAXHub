@@ -25,4 +25,9 @@ export const submissionsApi = {
   testRun: (id: string) => api.post<{ job_id: string }>(`/submissions/${id}/test-run`),
   publish: (id: string) => api.post<Submission>(`/submissions/${id}/publish`),
   retry: (id: string) => api.post<Submission>(`/submissions/${id}/retry`),
+  buildLog: (id: string, tail?: number) =>
+    api.get<string>(`/submissions/${id}/build-log`, {
+      query: { tail },
+      responseType: "text",
+    }),
 };

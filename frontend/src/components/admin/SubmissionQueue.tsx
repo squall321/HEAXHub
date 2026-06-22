@@ -22,9 +22,19 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { submissionsApi } from "@/lib/api/submissions";
-import type { Submission } from "@/lib/api/types";
+import type { Submission, SubmissionStatus } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/utils/format";
 import { ManifestPreview } from "@/components/apps/ManifestPreview";
+import { BuildLogViewer } from "@/components/submit/BuildLogViewer";
+
+// 빌드를 시도했거나 끝난 상태에서만 빌드 로그가 의미를 갖는다.
+const LOG_RELEVANT: SubmissionStatus[] = [
+  "provisioning",
+  "building",
+  "built",
+  "published",
+  "failed",
+];
 
 export function SubmissionQueue() {
   const qc = useQueryClient();
@@ -249,6 +259,15 @@ export function SubmissionQueue() {
                   <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
                     공개됨 — 카탈로그와 <code>/apps/{selected.proposed_app_id}/</code> 에서 확인.
                   </p>
+                )}
+
+                {LOG_RELEVANT.includes(selected.status) && (
+                  <BuildLogViewer
+                    submissionId={selected.id}
+                    autoRefresh={
+                      selected.status === "provisioning" || selected.status === "building"
+                    }
+                  />
                 )}
               </div>
             </>

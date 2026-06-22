@@ -33,6 +33,7 @@ const items: NavItem[] = [
   { to: "/apps", label: "앱 카탈로그", icon: Compass },
   { to: "/jobs", label: "내 실행", icon: History },
   { to: "/submit", label: "새 앱 신청", icon: Send },
+  { to: "/submit/my", label: "내 신청", icon: ClipboardList },
 ];
 
 const adminItems: NavItem[] = [

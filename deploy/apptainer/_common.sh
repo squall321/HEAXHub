@@ -95,6 +95,34 @@ require_apptainer() {
   note "apptainer: $_HEAX_APPT ($v)"
 }
 
+# ── python 바이너리 결정 (apptainer 와 동일한 .tools 우선 패턴) ───────────────
+# 우선순위:
+#   1) HEAXHUB_PYTHON_BIN 환경변수 (운영자 override)
+#   2) .tools/python-<VER>/bin/python3 (install-python.sh 가 푼 vendored standalone)
+#   3) $PYTHON_BIN (예: python3.12) on PATH
+#   4) python3 on PATH
+# 호스트 python 의존을 없애려면 (2) 가 잡히게 install-python.sh 를 먼저 돌린다.
+resolve_python() {
+  if [[ -n "${HEAXHUB_PYTHON_BIN:-}" && -x "${HEAXHUB_PYTHON_BIN}" ]]; then
+    _HEAX_PY="${HEAXHUB_PYTHON_BIN}"; return 0
+  fi
+  if [[ -d "$TOOLS_DIR" ]]; then
+    local newest
+    newest=$(find "$TOOLS_DIR" -maxdepth 3 -type f -path "*/python-*/bin/python3" 2>/dev/null \
+              | sort -V | tail -1)
+    if [[ -n "$newest" && -x "$newest" ]]; then
+      _HEAX_PY="$newest"; return 0
+    fi
+  fi
+  if [[ -n "${PYTHON_BIN:-}" ]] && command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    _HEAX_PY="$(command -v "$PYTHON_BIN")"; return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    _HEAX_PY="$(command -v python3)"; return 0
+  fi
+  _HEAX_PY=""; return 1
+}
+
 # ── .env 로드 ──────────────────────────────────────────────────────────────
 # 우선순위: deploy/apptainer/.env > 프로젝트 루트 .env.
 # 없으면 .env.example 자동 복사 (재실행 시 운영자가 편집할 수 있게).
@@ -180,8 +208,18 @@ require_python_venv() {
     return 0
   fi
   step "백엔드 venv 생성"
-  local py="${PYTHON_BIN:-python3.12}"
-  command -v "$py" >/dev/null 2>&1 || py="python3"
+  resolve_python || true
+  # vendored standalone python(.tools) 이 아직 없으면 설치 시도 — cache 타르볼이
+  # 있으면 즉시 추출, 없고 uv/네트워크가 있으면 받아서. 모두 실패하면 시스템
+  # python 으로 폴백(dev 박스 호환). 성공하면 호스트 python 의존이 사라진다.
+  if [[ -z "${_HEAX_PY:-}" || "${_HEAX_PY}" != "$TOOLS_DIR"/* ]]; then
+    if [[ -x "$APPT_DIR/install-python.sh" ]]; then
+      bash "$APPT_DIR/install-python.sh" >/dev/null 2>&1 && resolve_python || true
+    fi
+  fi
+  [[ -n "${_HEAX_PY:-}" ]] || { err "python 바이너리 미발견 — bash deploy/apptainer/install-python.sh"; exit 1; }
+  local py="$_HEAX_PY"
+  note "venv base python: $py ($("$py" --version 2>&1))"
   "$py" -m venv "$venv"
   local pip="$venv/bin/pip"
   "$pip" install --upgrade pip wheel setuptools >/dev/null

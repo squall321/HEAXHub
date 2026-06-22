@@ -25,18 +25,23 @@
 - tar, gzip
 
 ### 1.2 오프라인 타깃 서버
-인터넷 없이도 미리 깔려 있어야 하는 apt 패키지 목록:
+**사전 apt 설치 0종이 목표다.** 런타임을 번들이 직접 나른다:
 
-```
-postgresql-client
-redis-tools
-apptainer
-python3.11
-python3.11-venv
-```
+- **apptainer** — 번들 `vendor/apptainer_*.deb` 를 `dpkg-deb -x` 로 repo 의
+  `deploy/apptainer/.tools/` 에 푼다(root 불필요, 시스템 무손상). install_offline.sh 가 자동 수행.
+- **python** — 번들 `vendor/python-*.tar.gz`(relocatable standalone Python)를
+  `.tools/python-*/` 로 풀고, 백엔드 venv 의 base python 으로 쓴다. 시스템 python3 불필요.
+- **postgres / redis** — SIF(`heaxhub_postgres/redis.sif`) 안에서 돈다. 호스트
+  `postgresql-client` / `redis-tools` 는 설치에 쓰이지 않는다(헬스체크·백업 시
+  서비스 SIF 내부 `exec` 로 처리). 없어도 진행한다.
 
-해당 패키지는 사내 미러 또는 별도 `.deb` 번들로 미리 설치해 두어야 한다.
-(install_offline.sh 가 시작 시 존재 여부만 확인한다.)
+따라서 타깃 OS 전제는 **unprivileged user namespaces 가 켜진 리눅스 커널** 하나로
+줄어든다(Ubuntu 24.04 기본 ON; `sysctl kernel.unprivileged_userns_clone` 확인).
+`dpkg-deb` 는 base 시스템(dpkg)에 포함되어 별도 설치가 필요 없다.
+
+> userns 가 꺼진 커널(`=0`)에서는 비특권 apptainer 가 인스턴스를 못 띄운다.
+> 이때만 커널 설정(또는 setuid apptainer)이 필요하며, 이건 tar 로 나를 수 없는
+> 유일한 OS 레이어다.
 
 ### 1.3 SIF 사전 빌드
 운영에 필요한 SIF 는 사전에 빌드되어 staging 박스의
@@ -122,9 +127,10 @@ bash scripts/install_offline.sh
 
 install_offline.sh 가 하는 일:
 
-1. `python3`, `apptainer`, `psql`, `redis-cli` 가 PATH 에 있는지 확인
-2. `~/heaxhub/backend/.venv` 생성 후 `pip install --no-index --find-links wheels/`
-   로 모든 의존성을 오프라인 설치하고 `pip install -e backend`
+1. `vendor/` 의 런타임을 repo `deploy/apptainer/.tools/` 로 추출 — apptainer(.deb)
+   와 standalone python(tarball). 시스템 apt 의존 없음(`ensure_runtimes`)
+2. 그 vendored python 으로 `~/heaxhub/backend/.venv` 생성 후
+   `pip install --no-index --find-links wheels/` 오프라인 설치 + `pip install -e backend`
 3. `frontend-dist/` 를 `~/heaxhub/web/` 으로 복사 (Caddy/nginx 서빙 위치)
 4. `agents/linux-x64/HeaxAgent` 를 `~/heaxhub/agent/` 에 배치하고
    `~/.config/systemd/user/heaxhub-agent.service` 등록

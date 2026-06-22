@@ -53,34 +53,41 @@ SIFS_DIR="${BUNDLE_ROOT}/sifs"
 AGENTS_DIR="${BUNDLE_ROOT}/agents"
 FRONTEND_SRC="${BUNDLE_ROOT}/frontend-dist"
 CONFIG_DIR="${BUNDLE_ROOT}/config"
+VENDOR_DIR="${BUNDLE_ROOT}/vendor"
+RESOLVED_PY=""
 
 log()  { echo "[install] $*"; }
 warn() { echo "[install][WARN] $*" >&2; }
 err()  { echo "[install][ERR] $*" >&2; }
 
-# ─── 1) 사전 패키지 확인 ────────────────────────────────────────────────────
-check_deps() {
-  log "checking host prerequisites"
-  local missing=()
-  for cmd in python3 apptainer psql redis-cli; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-      missing+=("$cmd")
-    fi
-  done
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    err "missing: ${missing[*]}"
-    err "사전에 (인터넷 가능 서버에서) 다음 apt 패키지가 설치되어야 함:"
-    err "  postgresql-client redis-tools apptainer python3.11 python3.11-venv"
-    exit 1
+# ─── 1) 런타임 보장 (vendored 우선, 시스템 사전설치 0종 목표) ────────────────
+# apptainer/python 은 번들 vendor/ 에서 repo 의 .tools/ 로 푼다(install-apptainer/
+# install-python 재사용 → conf/relocation 처리 포함). psql/redis-cli 는 설치
+# 단계에서 안 쓰이므로(서비스 SIF 내부 exec) 없어도 진행. 결국 타깃 OS 전제는
+# "unprivileged userns 가 켜진 커널" 하나로 줄어든다.
+note_missing() { warn "$1 없음 — 설치엔 불필요(운영 헬스체크/백업 시에만). 무시하고 진행"; }
+ensure_runtimes() {
+  log "ensuring runtimes (vendored apptainer/python — no host apt needed)"
+  local appt_dir="${TARGET_ROOT}/deploy/apptainer"
+  if [[ -d "$appt_dir" ]]; then
+    mkdir -p "${appt_dir}/cache"
+    cp -n "${VENDOR_DIR}"/apptainer_*.deb              "${appt_dir}/cache/" 2>/dev/null || true
+    cp -n "${VENDOR_DIR}"/python-*-x86_64-linux.tar.gz "${appt_dir}/cache/" 2>/dev/null || true
+    bash "${appt_dir}/install-apptainer.sh" >/dev/null 2>&1 || warn "apptainer .tools 추출 실패"
+    bash "${appt_dir}/install-python.sh"     >/dev/null 2>&1 || warn "python .tools 추출 실패"
+    RESOLVED_PY="$(ls "${appt_dir}/.tools/"python-*/bin/python3 2>/dev/null | sort -V | tail -1 || true)"
+  else
+    warn "repo 의 deploy/apptainer 가 ${TARGET_ROOT} 에 없음 — vendored 런타임 자동추출 생략"
+    warn "  repo 를 ${TARGET_ROOT} 에 두고(git/번들) 재실행하면 vendored 런타임이 .tools/ 로 풀립니다."
   fi
-
-  # python 버전 체크
-  local pyv
-  pyv="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-  case "$pyv" in
-    3.1[0-9]) log "python3 = ${pyv} OK" ;;
-    *) warn "python3 = ${pyv} (3.10+ 권장)" ;;
-  esac
+  # 폴백: 시스템 python (vendored 가 없을 때만)
+  [[ -x "$RESOLVED_PY" ]] || RESOLVED_PY="$(command -v python3 || true)"
+  [[ -n "$RESOLVED_PY" ]] || { err "python 미발견 — vendor/python-*.tar.gz 또는 시스템 python3 필요"; exit 1; }
+  log "venv base python : $RESOLVED_PY ($("$RESOLVED_PY" --version 2>&1))"
+  command -v apptainer >/dev/null 2>&1 || ls "${appt_dir}/.tools/"apptainer-*/usr/bin/apptainer >/dev/null 2>&1 \
+    || warn "apptainer 미발견 — vendor/apptainer_*.deb 추출 실패 시 userns 커널 + apptainer 필요"
+  command -v psql      >/dev/null 2>&1 || note_missing psql
+  command -v redis-cli >/dev/null 2>&1 || note_missing redis-cli
 }
 
 # ─── 2) 백엔드 오프라인 설치 ────────────────────────────────────────────────
@@ -99,7 +106,8 @@ install_backend() {
 
   local venv="${TARGET_ROOT}/backend/.venv"
   if [[ ! -d "$venv" ]]; then
-    python3 -m venv "$venv"
+    # vendored standalone python(ensure_runtimes 가 해석) 으로 venv 생성 → 시스템 python 불필요
+    "${RESOLVED_PY:-python3}" -m venv "$venv"
   fi
   # 오프라인 install: --no-index --find-links wheels/
   "${venv}/bin/pip" install --no-index --find-links "${WHEELS_DIR}" \
@@ -236,7 +244,7 @@ EOF
 }
 
 # ─── main ───────────────────────────────────────────────────────────────────
-[[ "$SKIP_DEPS" -eq 1 ]] || check_deps
+[[ "$SKIP_DEPS" -eq 1 ]] || ensure_runtimes
 install_backend
 install_frontend
 install_agent

@@ -15,11 +15,13 @@ fi
 # a rootless cgroup manager via a user D-Bus session ("failed to connect to dbus") and its root-owned
 # conf can't be relaxed without sudo. An extracted apptainer's conf has `systemd cgroups = no`, so
 # instances start with no D-Bus. Resolution order:
-#   $HEAX_APPTAINER  →  HEAXHub's own infra/apptainer/bin-*/  →  the HWAX portal's extracted one
+#   $HEAX_APPTAINER / $HEAXHUB_APPT_BIN  →  HEAXHub's own deploy/apptainer/.tools/apptainer-*/
+#   (install-apptainer.sh result)  →  infra/apptainer/bin-*/  →  the HWAX portal's extracted one
 #   (siblings / ~/Projects / ~/claude)  →  system `apptainer`.
-APPTAINER="${HEAX_APPTAINER:-}"
+APPTAINER="${HEAX_APPTAINER:-${HEAXHUB_APPT_BIN:-}}"
 if [ -z "$APPTAINER" ]; then
-  for c in "$ROOT"/infra/apptainer/bin-*/usr/bin/apptainer \
+  for c in "$ROOT"/deploy/apptainer/.tools/apptainer-*/usr/bin/apptainer \
+           "$ROOT"/infra/apptainer/bin-*/usr/bin/apptainer \
            "$ROOT"/../HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer \
            "$HOME"/Projects/HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer \
            "$HOME"/claude/HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer; do

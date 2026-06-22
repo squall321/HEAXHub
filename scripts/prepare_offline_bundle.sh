@@ -122,6 +122,7 @@ mkstage "${STAGE}/agents/win-x64"
 mkstage "${STAGE}/frontend-dist"
 mkstage "${STAGE}/config"
 mkstage "${STAGE}/scripts"
+mkstage "${STAGE}/vendor"
 
 # ─── 2) wheels (pip download) ───────────────────────────────────────────────
 WHEEL_COUNT=0
@@ -213,6 +214,24 @@ if [[ "$WITH_TOOLCHAINS" -eq 1 ]]; then
   [[ ${#TOOLCHAIN_MISSING[@]} -gt 0 ]] && warn "missing toolchains: ${TOOLCHAIN_MISSING[*]}"
 else
   log "skip toolchain SIFs (use --with-toolchains to include ~2 GB of heaxhub_toolchain_*.sif)"
+fi
+
+# ─── 3c) vendored 런타임 (apptainer .deb + standalone python) ────────────────
+# 타깃 사전 apt 0종이 목표 — apptainer 바이너리와 python 런타임을 번들이 직접
+# 나른다. install_offline.sh 가 vendor/ 에서 .tools 로 추출한다.
+VENDOR_COUNT=0
+shopt -s nullglob
+for v in "${ROOT}/deploy/apptainer/cache/"apptainer_*.deb \
+         "${ROOT}/deploy/apptainer/cache/"python-*-x86_64-linux.tar.gz; do
+  if [[ -f "$v" ]]; then
+    run "cp '$v' '${STAGE}/vendor/'"
+    VENDOR_COUNT=$((VENDOR_COUNT+1))
+  fi
+done
+shopt -u nullglob
+log "vendored runtimes: ${VENDOR_COUNT} (apptainer.deb / python.tar.gz)"
+if [[ "$VENDOR_COUNT" -lt 2 ]]; then
+  warn "vendor 누락 — 먼저 bash deploy/apptainer/install-apptainer.sh 와 install-python.sh 로 cache/ 를 채우세요"
 fi
 
 # ─── 4) HeaxAgent (dotnet publish) ─────────────────────────────────────────
@@ -360,7 +379,9 @@ fi
 # ─── 9) tar ─────────────────────────────────────────────────────────────────
 if [[ "$DRY_RUN" -eq 0 ]]; then
   log "creating tarball ${TARBALL}"
-  (cd "${OUTPUT_DIR}" && tar czf "$(basename "$TARBALL")" "${BUNDLE_NAME}")
+  # -h: sifs/ 의 symlink 를 실파일로 dereference 해서 담는다(타깃에서 깨진 링크 방지).
+  # env -u TAR_OPTIONS: --exclude-vcs-ignores 환경에서도 stage 전체가 담기도록 무력화.
+  (cd "${OUTPUT_DIR}" && env -u TAR_OPTIONS tar czhf "$(basename "$TARBALL")" "${BUNDLE_NAME}")
   BUNDLE_SIZE="$(du -sh "$TARBALL" | awk '{print $1}')"
   FILE_COUNT="$(find "$STAGE" | wc -l)"
   log "tarball size  : ${BUNDLE_SIZE}"
@@ -377,6 +398,7 @@ echo " bundle dir      : ${STAGE}"
 echo " wheels count    : ${WHEEL_COUNT}"
 echo " sifs count      : ${SIF_COUNT} (of ${#SIF_LIST[@]})"
 echo " toolchains      : ${TOOLCHAIN_COUNT} (of ${#TOOLCHAIN_LIST[@]}, --with-toolchains=${WITH_TOOLCHAINS})"
+echo " vendored rt     : ${VENDOR_COUNT} (apptainer.deb + python.tar.gz → 타깃 사전 apt 0종)"
 echo " agent linux-x64 : ${AGENT_LINUX_BIN:-<skipped>}"
 echo " agent win-x64   : ${AGENT_WIN_BIN:-<skipped>}"
 echo " frontend dist   : ${FRONTEND_SIZE}"

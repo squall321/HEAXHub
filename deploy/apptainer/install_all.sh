@@ -36,6 +36,11 @@ done
 
 load_env
 export_proxy
+# 로컬 격리 런타임 보장(.tools/): 시스템 apptainer/python 의존 제거. cache/ 에
+# apptainer.deb / python tarball 이 있으면 즉시 추출(오프라인), 없으면 다운로드
+# 시도, 이미 있으면 skip. 둘 다 실패해도 아래 require_* 가 명확히 안내한다.
+bash "$APPT_DIR/install-apptainer.sh" >/dev/null 2>&1 || warn "apptainer .tools 설치 생략(이미 있거나 실패)"
+bash "$APPT_DIR/install-python.sh"     >/dev/null 2>&1 || warn "python .tools 설치 생략(이미 있거나 실패)"
 require_apptainer
 ensure_dirs
 require_disk 3

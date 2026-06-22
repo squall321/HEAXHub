@@ -438,6 +438,14 @@ def _launch_via_sif(
         "HEAX_BASE_PATH": base_path,
         "DASH_URL_BASE_PATHNAME": base_path + "/",
     }
+    # SRV-04: cgroup limits from the manifest's resources block (best-effort —
+    # only applied when settings.enforce_instance_limits is on).
+    _res = manifest.get("resources") if isinstance(manifest.get("resources"), dict) else {}
+    _mem_gb = _res.get("memory_gb")
+    _cpu = _res.get("cpu")
+    _memory = f"{int(float(_mem_gb) * 1024)}m" if _mem_gb else None
+    _cpus = str(_cpu) if _cpu else None
+
     if instance_name not in running_instances:
         try:
             apt_runner.instance_start(
@@ -446,6 +454,8 @@ def _launch_via_sif(
                 binds=binds,
                 cleanenv=True,
                 env=env_in_container,
+                memory=_memory,
+                cpus=_cpus,
             )
         except subprocess.CalledProcessError as exc:
             _safe_release_port(db, port)

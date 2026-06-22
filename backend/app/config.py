@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     # Override via APPTAINER_BIN if your distro puts it elsewhere.
     apptainer_bin: str = "/usr/local/bin/apptainer"
     build_timeout_seconds: int = 1800
+    # SRV-04: apply per-instance cgroup memory/cpu limits (from the manifest's
+    # resources block) at `apptainer instance start`. Off by default because a
+    # locally-extracted apptainer with `systemd cgroups = no` ignores/errors on
+    # the flags; turn on (ENFORCE_INSTANCE_LIMITS=1) on hosts with working cgroups.
+    enforce_instance_limits: bool = False
 
     # --- Seed admin (used by scripts/create_admin.py) ---
     seed_admin_email: str = "admin@example.com"

@@ -54,12 +54,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # non-secret features. Any set_secret/get_secret call will raise.
     try:
         if not _sm.is_configured():
-            logger.warning(
+            msg = (
                 "SECRET_ENCRYPTION_KEY is empty — secret_manager will refuse "
-                "set/get calls. Generate a key with `python -c \"from "
+                "set/get calls, and manifest-declared job secrets cannot be "
+                "injected (SEC-05). Generate a key with `python -c \"from "
                 "cryptography.fernet import Fernet; print(Fernet.generate_key()"
                 ".decode())\"` and add it to .env."
             )
+            # Prod parity with the JWT_SECRET guard: a non-dev deploy that can't
+            # encrypt secrets is misconfigured — fail fast instead of silently
+            # running with a dead secret store.
+            if settings.app_env != "development":
+                raise RuntimeError(msg)
+            logger.warning(msg)
+    except RuntimeError:
+        raise
     except Exception:  # noqa: BLE001
         logger.exception("secret_manager startup check failed")
 

@@ -51,19 +51,21 @@ def _manifest(job: Job) -> dict[str, Any]:
 
 
 def _inject_secrets(app_id: str, env: dict[str, str], env_required: list[str]) -> dict[str, str]:
-    """Use secret_manager if available; otherwise pull from os.environ as a fallback."""
+    """Merge manifest-declared secrets (from the encrypted store) into ``env``.
+
+    SEC-05: the call used the wrong signature (``env=``/``keys=``), so it threw
+    every time and silently fell back to ``os.environ`` — leaking the backend
+    process environment (DB password, JWT secret, …) into every job. Fixed to
+    the real signature ``inject_for_app(db, app_id, env_required) -> {key: val}``
+    and the os.environ fallback removed: a missing secret must fail loudly, not
+    quietly hand the job our own credentials.
+    """
     if not env_required:
         return env
-    try:
-        with SessionLocal() as db:
-            return secret_manager.inject_for_app(  # type: ignore[attr-defined]
-                db, app_id=app_id, env=env, keys=env_required
-            )
-    except Exception:
-        logger.exception("secret_manager.inject_for_app failed — falling back to os.environ")
-    for key in env_required:
-        if key not in env and key in os.environ:
-            env[key] = os.environ[key]
+    with SessionLocal() as db:
+        resolved = secret_manager.inject_for_app(db, app_id, env_required)
+    # App-scoped secrets win; don't let them be shadowed by ambient env.
+    env.update(resolved)
     return env
 
 

@@ -164,6 +164,8 @@ def instance_start(
     *,
     cleanenv: bool = True,
     env: Mapping[str, str] | None = None,
+    memory: str | None = None,
+    cpus: str | None = None,
     **kwargs,
 ) -> subprocess.CompletedProcess:
     """Start a persistent apptainer instance.
@@ -171,15 +173,29 @@ def instance_start(
     Equivalent to::
 
         APPTAINERENV_<K>=<V> apptainer instance start [--cleanenv] \
-            [--bind host:container ...] <sif> <name>
+            [--memory <bytes>] [--cpus <n>] [--bind host:container ...] \
+            <sif> <name>
 
     Env vars in ``env`` are prefixed with ``APPTAINERENV_`` so they land
     inside the container at startup (this is how apptainer forwards env
     when ``--cleanenv`` is active).
+
+    SRV-04: ``memory`` (e.g. ``"1024m"``) and ``cpus`` (e.g. ``"1.5"``) apply a
+    cgroup limit so one runaway app can't take the shared host down. Only passed
+    when ``settings.enforce_instance_limits`` is on — the locally-extracted
+    apptainer runs with ``systemd cgroups = no`` on some hosts where these flags
+    are a no-op/error, so gating keeps the default deploy safe.
     """
+    from app.config import get_settings  # noqa: PLC0415 — avoid import cycle
+
     args: list[str] = ["instance", "start"]
     if cleanenv:
         args.append("--cleanenv")
+    if get_settings().enforce_instance_limits:
+        if memory:
+            args.extend(["--memory", str(memory)])
+        if cpus:
+            args.extend(["--cpus", str(cpus)])
     args.extend(_bind_flags(binds))
     args.extend([str(sif), name])
 

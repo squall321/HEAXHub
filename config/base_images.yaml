@@ -1,0 +1,22 @@
+# HEAXHub — 앱 빌드 base image → 로컬 base SIF 매핑.
+#
+# 각 stack 의 sif_templates/*.def 는 `Bootstrap: docker / From: <ref>` 로 base
+# image 를 Docker Hub 에서 끌어온다. 아래 매핑의 <ref> 에 해당하는 로컬 SIF 가
+# base image 디렉터리(기본 ~/serviceApptainers, 또는 $HEAXHUB_BASE_IMAGE_DIR /
+# $SIF_DIR)에 존재하면, 빌더(integration_sif_builder._localize_base_images)가
+# 렌더된 .def 의 그 헤더를 `Bootstrap: localimage / From: <local sif>` 로 바꾼다.
+# 로컬 SIF 가 없으면 docker:// 그대로 폴백 — 동작 변화 없음.
+#
+# 로컬 base SIF 는 deploy/apptainer/pull-base-images.sh 로 미리 받아둔다.
+# 목적: 앱 빌드의 "토대(base 레이어)"를 Docker Hub 가용성과 무관하게 항상 로컬에
+# 두어, 일부 패키지/네트워크가 흔들려도 빌드가 되게 한다(앱 자체 deps 만 egress).
+
+"python:3.12-slim":                    base_python312.sif
+"node:20-slim":                        base_node20.sif
+"golang:1.22":                         base_golang122.sif
+"debian:stable-slim":                  base_debian_stable.sif
+"debian:bookworm-slim":                base_debian_bookworm.sif
+"rust:1-slim":                         base_rust1.sif
+"eclipse-temurin:17-jdk-jammy":        base_temurin17.sif
+"mcr.microsoft.com/dotnet/sdk:8.0":    base_dotnet_sdk8.sif
+"r-base:4.4.0":                        base_rbase440.sif

@@ -30,13 +30,17 @@ structured result it can persist or surface in the operator UI.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from app.core.logger import get_logger
 from app.services import apt_runner
@@ -51,6 +55,67 @@ _REPO_ROOT: Path = Path(__file__).resolve().parents[3]
 TEMPLATES_DIR: Path = Path(__file__).parent / "sif_templates"
 SIF_DIR: Path = _REPO_ROOT / "var" / "sifs"
 LOG_DIR: Path = _REPO_ROOT / "var" / "logs"
+
+# Base image map: docker ref → local base SIF filename. See config/base_images.yaml.
+_BASE_IMAGE_MAP_PATH: Path = _REPO_ROOT / "config" / "base_images.yaml"
+
+
+def base_image_dir() -> Path:
+    """Directory holding local base SIFs (base_<key>.sif).
+
+    $HEAXHUB_BASE_IMAGE_DIR → ~/serviceApptainers (where start.sh keeps the
+    service SIFs). Kept identical to deploy/apptainer/pull-base-images.sh.
+    """
+    val = os.environ.get("HEAXHUB_BASE_IMAGE_DIR")
+    if val:
+        return Path(val).expanduser()
+    return Path.home() / "serviceApptainers"
+
+
+@functools.lru_cache(maxsize=1)
+def _base_image_map() -> dict[str, str]:
+    """Load docker-ref → local-SIF-filename map. Empty on any error (feature off)."""
+    try:
+        data = yaml.safe_load(_BASE_IMAGE_MAP_PATH.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items() if v}
+
+
+def _localize_base_images(rendered: str) -> str:
+    """Rewrite ``Bootstrap: docker`` / ``From: <ref>`` pairs to a local base SIF
+    when one exists, so app builds don't depend on Docker Hub for the base layer.
+
+    Untouched (docker:// fallback) when the map is empty or the local SIF is
+    absent. Handles multi-stage defs (e.g. go_service) by scanning every pair.
+    """
+    mapping = _base_image_map()
+    if not mapping:
+        return rendered
+    base_dir = base_image_dir()
+    lines = rendered.splitlines()
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        if line.strip() == "Bootstrap: docker" and i + 1 < n:
+            m = re.match(r"\s*From:\s*(\S+)\s*$", lines[i + 1])
+            if m:
+                ref = m.group(1)
+                sif = mapping.get(ref)
+                if sif and (base_dir / sif).is_file():
+                    out.append("Bootstrap: localimage")
+                    out.append(f"From: {base_dir / sif}")
+                    logger.info("base image localized: %s → %s", ref, base_dir / sif)
+                    i += 2
+                    continue
+        out.append(line)
+        i += 1
+    result = "\n".join(out)
+    return result + "\n" if rendered.endswith("\n") else result
 
 # How many trailing bytes of the build log to surface in `error`.
 _ERROR_TAIL_BYTES = 4096
@@ -145,6 +210,9 @@ def build_sif(
     rendered = template_bytes.decode("utf-8")
     for key, value in placeholders.items():
         rendered = rendered.replace(key, value)
+    # Prefer a local base SIF over docker:// when one is staged (resilience to
+    # Docker Hub being unavailable). No-op when no local base SIF exists.
+    rendered = _localize_base_images(rendered)
 
     # Cache key.
     build_hash = _hash_inputs(commit, manifest, template_bytes)

@@ -53,6 +53,21 @@
 - heaxhub_caddy.sif
 - KooSimulationPython313.sif (옵션, 시뮬레이션 워크로드용)
 
+### 1.4 앱 빌드 base image (서버 운영 토대)
+포털은 제출 프로젝트를 서버에서 SIF 로 빌드한다. 각 stack `.def` 의 base image
+(`python:3.12-slim`, `node:20-slim` 등)는 기본적으로 빌드 시점에 Docker Hub 에서
+받는다. **base 레이어를 Docker Hub 가용성과 무관하게 로컬에 두려면** 미리 받아둔다:
+
+```bash
+bash deploy/apptainer/pull-base-images.sh           # config/base_images.yaml 의 9종
+```
+
+→ `~/serviceApptainers/base_*.sif` 로 저장되고, 빌더가 자동으로 해당 stack 빌드 시
+`Bootstrap: localimage` 로 그 SIF 를 쓴다(없으면 `docker://` 폴백). 앱 자체 의존성
+(requirements.txt / package.json)은 여전히 빌드 시점에 레지스트리에서 받는다 —
+폐쇄망이면 사내 미러/프록시가 필요하다. `prepare_offline_bundle.sh` 는 받아둔
+base SIF 를 자동으로 번들에 동봉한다.
+
 ---
 
 ## 2. 온라인 staging 박스에서 번들 만들기

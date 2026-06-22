@@ -234,6 +234,21 @@ if [[ "$VENDOR_COUNT" -lt 2 ]]; then
   warn "vendor 누락 — 먼저 bash deploy/apptainer/install-apptainer.sh 와 install-python.sh 로 cache/ 를 채우세요"
 fi
 
+# ─── 3d) base image SIFs (앱 빌드 토대 — Docker Hub 무관 빌드) ───────────────
+# pull-base-images.sh 가 받아둔 base_*.sif 를 동봉한다. 타깃의 builder 가
+# ~/serviceApptainers 에서 이들을 찾아 localimage 로 빌드 → 앱 빌드 base 레이어가
+# Docker Hub 가용성과 무관. install_sifs 가 sifs/*.sif 를 그 위치로 복사한다.
+BASE_IMG_DIR="${HEAXHUB_BASE_IMAGE_DIR:-$HOME/serviceApptainers}"
+BASE_COUNT=0
+shopt -s nullglob
+for bsif in "${BASE_IMG_DIR}"/base_*.sif; do
+  run "ln -sf '${bsif}' '${STAGE}/sifs/$(basename "$bsif")'"
+  BASE_COUNT=$((BASE_COUNT+1))
+done
+shopt -u nullglob
+log "base image SIFs: ${BASE_COUNT} (dir: ${BASE_IMG_DIR})"
+[[ "$BASE_COUNT" -eq 0 ]] && warn "base image SIF 없음 — bash deploy/apptainer/pull-base-images.sh 로 먼저 받으세요"
+
 # ─── 4) HeaxAgent (dotnet publish) ─────────────────────────────────────────
 AGENT_LINUX_OUT="${STAGE}/agents/linux-x64"
 AGENT_WIN_OUT="${STAGE}/agents/win-x64"
@@ -399,6 +414,7 @@ echo " wheels count    : ${WHEEL_COUNT}"
 echo " sifs count      : ${SIF_COUNT} (of ${#SIF_LIST[@]})"
 echo " toolchains      : ${TOOLCHAIN_COUNT} (of ${#TOOLCHAIN_LIST[@]}, --with-toolchains=${WITH_TOOLCHAINS})"
 echo " vendored rt     : ${VENDOR_COUNT} (apptainer.deb + python.tar.gz → 타깃 사전 apt 0종)"
+echo " base image SIFs : ${BASE_COUNT:-0} (앱 빌드 토대 — Docker Hub 무관)"
 echo " agent linux-x64 : ${AGENT_LINUX_BIN:-<skipped>}"
 echo " agent win-x64   : ${AGENT_WIN_BIN:-<skipped>}"
 echo " frontend dist   : ${FRONTEND_SIZE}"

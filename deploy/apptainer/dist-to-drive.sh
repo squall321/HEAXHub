@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Push the BUILT frontend dist (+ optionally the caddy SIF) to Google Drive via rclone, so cae00
-# (corporate TLS-intercept network: npm + Docker Hub unreachable) pulls them instead of building.
+# Push HEAXHub fallback artifacts to Google Drive via rclone, so a server that reaches Drive but
+# NOT Docker Hub/PyPI/GitHub can still pull them and run. Pushes: frontend dist + vendored runtimes
+# (apptainer.deb, python.tar.gz from deploy/apptainer/cache/) + app-build base SIFs (base_*.sif)
+# + optional service SIFs (HEAX_DRIVE_WITH_SIFS). latest/ accumulates (copy, not mirror).
 #
 # Run on an ONLINE build host, AFTER building the SPA for the portal sub-path:
 #   HEAX_BASE_PATH=/heax-hub/ pnpm --dir frontend build      # base baked into frontend/dist
@@ -24,12 +26,15 @@ REMOTE="${HEAX_DRIVE_REMOTE:-}"
 REMOTE="${REMOTE%/}"
 RETAIN="${HEAX_DRIVE_RETAIN:-3}"
 
-[ -f frontend/dist/index.html ] \
-  || { echo "✗ frontend/dist missing — build first: HEAX_BASE_PATH=/heax-hub/ pnpm --dir frontend build"; exit 1; }
-
 TS="$(date -u +%Y%m%d-%H%M%SZ)"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
-( cd frontend && tar -czf "$STAGE/frontend-dist.tar.gz" dist )
+# frontend/dist 는 있으면 포함, 없으면 런타임/base 만 푸시(폴백 저장소 목적).
+if [ -f frontend/dist/index.html ]; then
+  ( cd frontend && tar -czf "$STAGE/frontend-dist.tar.gz" dist )
+  echo "  · including frontend-dist.tar.gz"
+else
+  echo "! frontend/dist 없음 — dist 생략, 런타임/base 아티팩트만 푸시"
+fi
 
 # Ship the service SIFs too (cae00 can't `apptainer pull docker://...` or build them). They change
 # rarely, so ship them ONCE with HEAX_DRIVE_WITH_SIFS=1 (or HEAX_DRIVE_WITH_CADDY=1 for caddy only).
@@ -42,10 +47,23 @@ elif [ "${HEAX_DRIVE_WITH_CADDY:-0}" = "1" ] && [ -f "$SIFDIR/heaxhub_caddy.sif"
   cp "$SIFDIR/heaxhub_caddy.sif" "$STAGE/heaxhub_caddy.sif"; echo "  · including caddy SIF"
 fi
 
+# ── 벤더링 런타임 + base image SIF (Drive 폴백 저장소) ───────────────────────
+# 1차(Docker Hub/PyPI/GitHub)가 막혀도 서버가 Drive 로 폴백해 받게 한다.
+for v in deploy/apptainer/cache/apptainer_*.deb \
+         deploy/apptainer/cache/python-*-x86_64-linux.tar.gz; do
+  [ -f "$v" ] && { cp "$v" "$STAGE/"; echo "  · including $(basename "$v")"; }
+done
+if [ "${HEAX_DRIVE_WITH_BASE:-1}" = "1" ]; then
+  for b in "$SIFDIR"/base_*.sif; do
+    [ -f "$b" ] && { cp "$b" "$STAGE/"; echo "  · including $(basename "$b")"; }
+  done
+fi
+
 ( cd "$STAGE" && sha256sum ./* > SHA256SUMS )
 echo "→ uploading to $REMOTE/dist-$TS/ (+ latest/)"
 rclone copy --progress "$STAGE/" "$REMOTE/dist-$TS/"
-rclone sync --progress "$STAGE/" "$REMOTE/latest/"
+# latest/ 는 sync(미러·삭제) 대신 copy(누적) — 부분 푸시가 기존 아티팩트를 지우지 않게.
+rclone copy --progress "$STAGE/" "$REMOTE/latest/"
 
 if [ "$RETAIN" -gt 0 ]; then
   echo "→ retention: keep last $RETAIN set(s)"

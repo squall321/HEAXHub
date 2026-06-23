@@ -81,7 +81,15 @@ else
   fi
 fi
 
-# 2) 캐시 미스 → 다운로드
+# 1b) 캐시 미스 → Drive 폴백 (서버가 Drive 는 닿고 GitHub 는 막힌 경우)
+if [[ -z "$DEB" ]]; then
+  if drive_fetch "$DEB_NAME" "$CACHE_DIR/$DEB_NAME"; then
+    DEB="$CACHE_DIR/$DEB_NAME"
+    ok "→ Drive 폴백에서 .deb 받음: $DEB"
+  fi
+fi
+
+# 2) 캐시·Drive 미스 → 다운로드
 if [[ -z "$DEB" ]]; then
   mkdir -p "$CACHE_DIR"
   DEB="$CACHE_DIR/$DEB_NAME"

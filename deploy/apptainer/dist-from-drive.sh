@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Pull the built frontend dist (+ optional caddy SIF) from Google Drive, so cae00 serves the SPA
-# with NO build. Caddy binds frontend/dist → /srv/web (start.sh), so we just drop dist in place.
+# Pull HEAXHub fallback artifacts from Google Drive (rclone) and place them: frontend dist →
+# frontend/dist, vendored runtimes (apptainer.deb/python.tar.gz) → deploy/apptainer/cache/,
+# base SIFs (base_*.sif) + service SIFs → ~/serviceApptainers. Lets a Drive-reachable but
+# Docker-Hub/PyPI/GitHub-blocked server set up + build without those upstreams.
 #
 # Needs in .env:  HEAX_DRIVE_REMOTE=HeaxDrive:HEAXHub/dist
 # After this:  bash deploy/apptainer/start.sh   (frontend/dist present → install_all skips the build)
@@ -30,9 +32,13 @@ STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 rclone copy --progress "$SRC/" "$STAGE/"
 [ -f "$STAGE/SHA256SUMS" ] && { ( cd "$STAGE" && sha256sum -c SHA256SUMS ) || { echo "✗ checksum failed"; exit 1; }; echo "  ✓ checksums OK"; }
 
-# Restore frontend/dist
-( cd "$ROOT_DIR/frontend" && tar -xzf "$STAGE/frontend-dist.tar.gz" )
-echo "  ✓ extracted frontend/dist"
+# Restore frontend/dist (있을 때만 — 런타임/base 만 올라온 푸시도 지원)
+if [ -f "$STAGE/frontend-dist.tar.gz" ]; then
+  ( cd "$ROOT_DIR/frontend" && tar -xzf "$STAGE/frontend-dist.tar.gz" )
+  echo "  ✓ extracted frontend/dist"
+else
+  echo "  · frontend-dist 없음 — 런타임/base 만 반입"
+fi
 
 # Service SIFs (postgres/redis/caddy/mailhog) — cae00 can't pull/build them, so stage whatever was
 # shipped into ~/serviceApptainers (create the dir; start.sh expects it there).
@@ -43,6 +49,18 @@ if [ ${#sifs[@]} -gt 0 ]; then
   mkdir -p "$SIFDIR"
   for s in "${sifs[@]}"; do cp "$s" "$SIFDIR/"; echo "  ✓ staged $(basename "$s") → $SIFDIR"; done
 fi
+shopt -u nullglob
+
+# 벤더링 런타임 → deploy/apptainer/cache/ (install-apptainer/install-python 가 .tools 로 추출)
+mkdir -p "$ROOT_DIR/deploy/apptainer/cache"
+shopt -s nullglob
+for v in "$STAGE"/apptainer_*.deb "$STAGE"/python-*-x86_64-linux.tar.gz; do
+  cp "$v" "$ROOT_DIR/deploy/apptainer/cache/"; echo "  ✓ staged $(basename "$v") → deploy/apptainer/cache/"
+done
+# base image SIF → SIFDIR (builder 가 localimage 로 사용)
+for b in "$STAGE"/base_*.sif; do
+  mkdir -p "$SIFDIR"; cp "$b" "$SIFDIR/"; echo "  ✓ staged $(basename "$b") → $SIFDIR"
+done
 shopt -u nullglob
 
 echo

@@ -181,6 +181,20 @@ export_proxy() {
   export NO_PROXY="$np" no_proxy="$np"
 }
 
+# ── Drive 폴백 ─────────────────────────────────────────────────────────────
+# 1차 소스(Docker Hub/PyPI/GitHub)가 막혀도, 서버가 닿는 Google Drive(rclone)에서
+# 아티팩트를 받아 "어쨌거나" 돌아가게 한다. $HEAX_DRIVE_REMOTE/latest/<fn> → dest.
+# rclone 미설치 / 리모트 미설정 / 파일 없음 → 조용히 실패(return 1)로 다음 폴백 진행.
+drive_fetch() {
+  local fn="$1" dest="$2"
+  command -v rclone >/dev/null 2>&1 || return 1
+  local remote="${HEAX_DRIVE_REMOTE:-}"
+  [[ -n "$remote" ]] || return 1
+  remote="${remote%/}"
+  mkdir -p "$(dirname "$dest")"
+  rclone copyto "${remote}/latest/${fn}" "$dest" >/dev/null 2>&1 && [[ -s "$dest" ]]
+}
+
 # ── 호스트 IP 감지 ─────────────────────────────────────────────────────────
 detect_host_ip() {
   local ip

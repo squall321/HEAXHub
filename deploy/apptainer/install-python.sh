@@ -68,6 +68,10 @@ freeze_cache() {
 if [[ -f "$CACHE_TARBALL" ]]; then
   ok "vendored cache 사용: $CACHE_TARBALL"
   extract_cache
+# ── 2b) Drive 폴백 (PyPI/GitHub 막혀도 서버가 닿는 Drive 에서) ───────────────
+elif drive_fetch "$(basename "$CACHE_TARBALL")" "$CACHE_TARBALL"; then
+  ok "→ Drive 폴백에서 python tarball 받음: $CACHE_TARBALL"
+  extract_cache
 # ── 3) uv 로 취득 (온라인 dev 박스) ──────────────────────────────────────────
 elif command -v uv >/dev/null 2>&1; then
   step "uv 로 standalone python $PY_VERSION 취득"

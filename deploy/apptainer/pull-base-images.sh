@@ -57,8 +57,12 @@ while IFS=$'\t' read -r ref sif; do
   if apptainer pull --force "$dst" "docker://$ref" >>"$LOG_DIR/pull-base-images.log" 2>&1; then
     ok "$ref → $sif ($(du -h "$dst" 2>/dev/null | cut -f1))"
     OK_N=$((OK_N+1))
+  elif drive_fetch "$sif" "$dst"; then
+    # Docker Hub 막힘 → 서버가 닿는 Drive 에서 미리 올려둔 base SIF 폴백
+    ok "$ref → $sif (Drive 폴백, $(du -h "$dst" 2>/dev/null | cut -f1))"
+    OK_N=$((OK_N+1))
   else
-    err "pull 실패: $ref (로그: $LOG_DIR/pull-base-images.log)"
+    err "pull 실패: $ref (Docker Hub/Drive 모두 실패. 로그: $LOG_DIR/pull-base-images.log)"
     FAIL_N=$((FAIL_N+1))
   fi
 done < <(awk -F'"' '/^"/ { ref=$2; rest=$3; sub(/^:[ \t]+/,"",rest); split(rest,a,/[ \t]+/); print ref"\t"a[1] }' "$MAP")

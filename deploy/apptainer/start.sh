@@ -171,6 +171,20 @@ if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
   nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port '"$API_PORT" \
     > var/logs/backend.log 2>&1 &
   disown
+  # readiness 대기 — 백엔드가 부팅 중 죽으면(시크릿 가드/임포트 등) 조용한 502 대신
+  # 즉시 크래시 로그를 보여준다(가이드라인 10: 추측 말고 실제 로그).
+  for _i in $(seq 1 25); do
+    curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  if curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
+    echo "  ✓ backend up (:$API_PORT)"
+  else
+    echo "  ✗ backend /health 미응답 — 크래시 로그 마지막 40줄 (var/logs/backend.log)" >&2
+    echo "  ----------------------------------------------------------------" >&2
+    tail -n 40 var/logs/backend.log >&2 2>/dev/null || true
+    echo "  ----------------------------------------------------------------" >&2
+  fi
 fi
 
 if ! pgrep -f "celery -A app.workers.celery_app worker" >/dev/null; then

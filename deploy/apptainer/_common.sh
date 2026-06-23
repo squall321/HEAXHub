@@ -242,7 +242,8 @@ require_python_venv() {
     "$pip" install --no-index --find-links "$WHEELS_DIR" -e "$BACKEND_DIR[dev]" \
       || "$pip" install --no-index --find-links "$WHEELS_DIR" -e "$BACKEND_DIR"
   else
-    "$pip" install -e "$BACKEND_DIR[dev]"
+    # prod 는 [dev] 불필요 — dev 의존성 설치 실패가 전체 셋업을 막지 않게 폴백.
+    "$pip" install -e "$BACKEND_DIR[dev]" || "$pip" install -e "$BACKEND_DIR"
   fi
 }
 

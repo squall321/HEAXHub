@@ -156,7 +156,10 @@ if curl -sf "http://127.0.0.1:${APP_PORT:-4040}/health" >/dev/null; then
   ok "backend /health OK"
   HEALTH_OK=1
 else
-  warn "backend /health 응답 없음 — var/logs/backend.log 확인"
+  warn "backend /health 응답 없음 — 크래시 로그 마지막 40줄 ($LOG_DIR/backend.log)"
+  echo "  ----------------------------------------------------------------" >&2
+  tail -n 40 "$LOG_DIR/backend.log" >&2 2>/dev/null || true
+  echo "  ----------------------------------------------------------------" >&2
 fi
 if curl -sf "http://127.0.0.1:${CADDY_ADMIN_URL##*:}/config/" >/dev/null 2>&1 \
    || curl -sf "http://127.0.0.1:2019/config/" >/dev/null 2>&1; then

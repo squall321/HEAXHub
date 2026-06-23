@@ -32,6 +32,12 @@ STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 if [ -f frontend/dist/index.html ]; then
   ( cd frontend && tar -czf "$STAGE/frontend-dist.tar.gz" dist )
   echo "  · including frontend-dist.tar.gz"
+  # 이 Drive 는 포털 서브경로 배포용. dist 가 루트(/) base 면 /heax-hub/ 아래에서
+  # 에셋이 /assets/... 로 요청돼 404 가 난다. 루트 base 면 경고(차단은 안 함).
+  if grep -q '"/assets/' frontend/dist/index.html 2>/dev/null; then
+    echo "  ⚠ 경고: dist 가 루트(/) base 로 빌드됨 — 포털 서브경로(/heax-hub/ 등) 배포 시 에셋 404." >&2
+    echo "         재빌드 권장: VITE_BASE_PATH=/heax-hub/ pnpm --dir frontend build" >&2
+  fi
 else
   echo "! frontend/dist 없음 — dist 생략, 런타임/base 아티팩트만 푸시"
 fi

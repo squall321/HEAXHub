@@ -54,41 +54,38 @@ echo "  caddy     : ${PUBLIC_PORT:-4180}"
 echo "================================================================"
 
 # ── 1) 시크릿 자동 생성 ────────────────────────────────────────────────
+# JWT_SECRET 이 약하면(미설정/빈값/기본 placeholder) 강한 값으로 생성한다.
+# SECRET_ENCRYPTION_KEY 는 *비어 있을 때만* 생성하고, 이미 있으면 절대 덮지 않는다
+# (덮으면 DB 에 이미 암호화된 시크릿이 복호 불가가 됨). openssl 만 사용 — Step 1 은
+# venv 생성 전이라 cryptography 에 의존하지 않게 한다.
 step "Step 1 — 시크릿 점검 / 자동 생성"
-ROTATE=0
+_set_kv() {  # .env 의 KEY=VAL set-or-append (라인 없으면 추가)
+  local f="$1" k="$2" v="$3"
+  if grep -qE "^${k}=" "$f"; then
+    sed -i "s|^${k}=.*|${k}=${v}|" "$f"
+  else
+    printf '%s=%s\n' "$k" "$v" >> "$f"
+  fi
+}
 for f in "$ROOT_DIR/.env" "$BACKEND_DIR/.env"; do
   [[ -f "$f" ]] || continue
-  if grep -q "^JWT_SECRET=local-dev-secret-do-not-use-in-prod" "$f"; then
-    ROTATE=1
-  fi
-  if ! grep -qE "^SECRET_ENCRYPTION_KEY=." "$f"; then
-    ROTATE=1
+  _jwt="$(sed -n 's/^JWT_SECRET=//p' "$f" | tail -1)"
+  case "$_jwt" in
+    ""|"change-me-to-a-strong-random-secret"|"local-dev-secret-do-not-use-in-prod")
+      _set_kv "$f" JWT_SECRET "$(openssl rand -hex 64)"
+      ok "JWT_SECRET 생성 → $f"
+      ;;
+    *) note "JWT_SECRET 이미 설정됨 → 유지 ($f)" ;;
+  esac
+  if ! grep -qE "^SECRET_ENCRYPTION_KEY=.+" "$f"; then
+    # Fernet 호환 키(32바이트 urlsafe-base64) — cryptography 불필요
+    _set_kv "$f" SECRET_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr '+/' '-_')"
+    ok "SECRET_ENCRYPTION_KEY 생성 → $f"
+  else
+    note "SECRET_ENCRYPTION_KEY 이미 설정됨 → 유지(덮지 않음, 기존 암호화 시크릿 보존)"
   fi
 done
-if [[ $ROTATE -eq 1 ]]; then
-  ok "시크릿 회전 진행 (JWT_SECRET / SECRET_ENCRYPTION_KEY)"
-  local_jwt="$(openssl rand -hex 64)"
-  local_fernet="$( "$BACKEND_DIR/.venv/bin/python" -c \
-    "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null \
-    || python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null \
-    || true)"
-  if [[ -z "$local_fernet" ]]; then
-    warn "cryptography 모듈 없음 — venv 생성 후 다시 시도"
-  else
-    for f in "$ROOT_DIR/.env" "$BACKEND_DIR/.env"; do
-      [[ -f "$f" ]] || continue
-      sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${local_jwt}|" "$f"
-      if grep -q "^SECRET_ENCRYPTION_KEY=" "$f"; then
-        sed -i "s|^SECRET_ENCRYPTION_KEY=.*|SECRET_ENCRYPTION_KEY=${local_fernet}|" "$f"
-      else
-        echo "SECRET_ENCRYPTION_KEY=${local_fernet}" >> "$f"
-      fi
-    done
-    ok "회전 완료. 자세한 절차는 docs/SECRET_ROTATION.md."
-  fi
-else
-  ok "이미 강한 시크릿 (placeholder 아님)"
-fi
+ok "시크릿 점검 완료 (회전 절차: docs/SECRET_ROTATION.md)"
 
 # ── 2) backend venv + alembic + admin seed ────────────────────────────
 step "Step 2 — 백엔드 venv / 마이그레이션 / 초기 admin"

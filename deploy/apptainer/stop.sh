@@ -4,9 +4,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Use the same (extracted, no-D-Bus) apptainer as start.sh — see its header.
-APPTAINER="${HEAX_APPTAINER:-}"
+APPTAINER="${HEAX_APPTAINER:-${HEAXHUB_APPT_BIN:-}}"
 if [ -z "$APPTAINER" ]; then
-  for c in "$ROOT"/infra/apptainer/bin-*/usr/bin/apptainer \
+  for c in "$ROOT"/deploy/apptainer/.tools/apptainer-*/usr/bin/apptainer \
+           "$ROOT"/infra/apptainer/bin-*/usr/bin/apptainer \
            "$ROOT"/../HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer \
            "$HOME"/Projects/HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer \
            "$HOME"/claude/HWAXPortal/infra/apptainer/bin-*/usr/bin/apptainer; do

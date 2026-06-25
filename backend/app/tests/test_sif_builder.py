@@ -7,6 +7,8 @@ success / failure paths. ``var/sifs`` and ``var/logs`` are pointed at
 """
 from __future__ import annotations
 
+import json
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -233,3 +235,67 @@ def test_failure_preserves_existing_sif(
     # Old image is intact and the temp file was discarded.
     assert good_sif.read_bytes() == b"LAST-GOOD-IMAGE"
     assert not (sif_builder.SIF_DIR / "demo-keep.sif.building").exists()
+
+
+# ---------------------------------------------------------------------------
+# _inject_build_env (빌드 시점 사내 미러 주입) — RCE 회귀 방지 포함
+# ---------------------------------------------------------------------------
+
+
+def test_inject_build_env_noop_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BUILD_* 가 하나도 없으면 원문 그대로(완전 no-op)."""
+    for k in sif_builder._BUILD_ENV_MAP:
+        monkeypatch.delenv(k, raising=False)
+    src = "Bootstrap: x\n%post\n    pip install -e .\n"
+    assert sif_builder._inject_build_env(src) == src
+
+
+def test_inject_build_env_injects_every_post_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    """멀티스테이지(.def 에 %post 가 여러 개)면 모든 블록에 주입된다."""
+    for k in sif_builder._BUILD_ENV_MAP:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BUILD_GOPROXY", "http://gp,direct")
+    src = "Bootstrap: a\n%post\n    go build\n\nBootstrap: b\n%post\n    echo hi\n"
+    out = sif_builder._inject_build_env(src)
+    assert out.count("export GOPROXY=") == 2
+
+
+def test_inject_build_env_is_shell_injection_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """값에 $()/백틱이 있어도 빌드 시 셸로 실행되지 않아야 한다(shlex.quote)."""
+    for k in sif_builder._BUILD_ENV_MAP:
+        monkeypatch.delenv(k, raising=False)
+    payload = "$(touch PWNED)`touch PWNED2`"
+    monkeypatch.setenv("BUILD_GOPROXY", payload)
+    out = sif_builder._inject_build_env("Bootstrap: x\n%post\n    echo hi\n")
+    line = next(l for l in out.splitlines() if "export GOPROXY=" in l).strip()
+    # 작은따옴표 리터럴이라야 한다.
+    assert line == "export GOPROXY=" + shlex.quote(payload)
+    # 실제 셸로 평가해도 PWNED 파일이 생기지 않아야 한다.
+    import os
+    import tempfile
+
+    d = tempfile.mkdtemp()
+    subprocess.run(["/bin/sh", "-c", line], cwd=d)
+    assert not (Path(d) / "PWNED").exists()
+    assert not (Path(d) / "PWNED2").exists()
+
+
+def test_parse_pip_missing_records_and_dedups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """빌드 로그의 pip 누락 패키지를 jsonl 에 기록하고 같은 로그 내 중복은 제거한다."""
+    monkeypatch.setattr(sif_builder, "_PKG_REQUESTS_FILE", tmp_path / "pkg-requests.jsonl")
+    log = tmp_path / "build.log"
+    log.write_text(
+        "Could not find a version that satisfies the requirement foopkg==1.2 (from x)\n"
+        "No matching distribution found for barpkg\n"
+        "Could not find a version that satisfies the requirement foopkg==1.2\n",
+        encoding="utf-8",
+    )
+    sif_builder._parse_and_log_pip_missing(log, "demo")
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "pkg-requests.jsonl").read_text().splitlines()
+    ]
+    assert sorted(r["package"] for r in rows) == ["barpkg", "foopkg==1.2"]
+    assert all(r["slug"] == "demo" for r in rows)

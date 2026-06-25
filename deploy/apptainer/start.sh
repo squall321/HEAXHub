@@ -51,6 +51,8 @@ CADDY_ADMIN_PORT=2019
 CADDY_HTTP_PORT=4180
 
 mkdir -p var/{pg,redis,mailhog,logs,pg_run,caddy}
+# Caddy 가 /pkgs/* 로 서빙할 사내 패키지 미러 루트(dist-from-drive.sh 가 latest/pip/ 를 채움).
+mkdir -p var/pkg-mirror/pip
 
 # ── 1. Postgres ───────────────────────────────────────────────
 if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-pg; then
@@ -141,6 +143,7 @@ if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx he
   "$APPTAINER" instance start \
     --bind "$BOOTSTRAP_DST:/etc/caddy/bootstrap.json:ro" \
     --bind "$FRONTEND_DIST:/srv/web:ro" \
+    --bind "$PWD/var/pkg-mirror:/srv/pkgs:ro" \
     --bind "$PWD/var/caddy:/data" \
     "$CADDY_SIF" heax-caddy >> var/logs/caddy-start.log 2>&1
   # Caddy in the instance: run with our bootstrap config, fully detached.

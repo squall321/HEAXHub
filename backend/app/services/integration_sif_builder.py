@@ -35,6 +35,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -126,6 +127,7 @@ _BUILD_ENV_MAP: dict[str, str] = {
     "BUILD_PIP_INDEX_URL": "PIP_INDEX_URL",
     "BUILD_PIP_EXTRA_INDEX_URL": "PIP_EXTRA_INDEX_URL",
     "BUILD_PIP_TRUSTED_HOST": "PIP_TRUSTED_HOST",
+    "BUILD_PIP_FIND_LINKS": "PIP_FIND_LINKS",
     "BUILD_NPM_REGISTRY": "npm_config_registry",
     "BUILD_GOPROXY": "GOPROXY",
     "BUILD_GOSUMDB": "GOSUMDB",
@@ -144,9 +146,9 @@ def _inject_build_env(rendered: str) -> str:
     for env_key, var_name in _BUILD_ENV_MAP.items():
         value = os.environ.get(env_key)
         if value:
-            # 값에 들어간 큰따옴표를 이스케이프해 안전하게 따옴표 처리.
-            safe = value.replace('"', '\\"')
-            exports.append(f'    export {var_name}="{safe}"')
+            # shlex.quote 로 작은따옴표 리터럴 처리 — 큰따옴표 안에서 살아남는
+            # $(...)·백틱·$ 확장을 원천 차단한다(빌드 시점 셸 인젝션 방지).
+            exports.append(f"    export {var_name}={shlex.quote(value)}")
     if not exports:
         return rendered
 
@@ -259,7 +261,10 @@ def build_sif(
     # 폐쇄망 사내 미러 변수(BUILD_*)를 %post 에 주입. 미설정 시 no-op.
     rendered = _inject_build_env(rendered)
 
-    # Cache key.
+    # Cache key — 원본 template_bytes 기준. _localize_base_images / _inject_build_env
+    # 후처리(로컬 base SIF, 사내 미러)는 해시에 포함하지 않는다(의도): 둘 다 패키지의
+    # *출처*만 바꿀 뿐 설치되는 패키지(빌드 산출물)는 동일하므로 캐시 무효화가 불필요.
+    # 새 의존성이 필요해지면 source/manifest 가 바뀌어 자연히 재빌드된다.
     build_hash = _hash_inputs(commit, manifest, template_bytes)
 
     sif_path = SIF_DIR / f"{slug}.sif"
@@ -324,6 +329,8 @@ def build_sif(
     except subprocess.CalledProcessError as exc:
         _discard(building_path)
         tail = _tail_text(log_path, _ERROR_TAIL_BYTES)
+        # 빌드 실패 로그에서 pip 누락 패키지를 파싱해 환류 로그에 적재.
+        _parse_and_log_pip_missing(log_path, slug)
         return SifBuildResult(
             action="failed",
             sif=None,
@@ -482,3 +489,52 @@ def _tail_text(path: Path, max_bytes: int) -> str:
         return data.decode("utf-8", errors="replace")
     except OSError:
         return ""
+
+
+# 환류 로그(누락 패키지) 파일 위치. var/ 는 repo 루트 기준.
+_PKG_REQUESTS_FILE: Path = _REPO_ROOT / "var" / "pkg-requests.jsonl"
+
+# pip 의 "버전/배포본을 못 찾음" 류 에러에서 패키지명을 뽑아내는 정규식.
+# 괄호/공백 직전까지를 패키지 토큰으로 캡처한다.
+_PIP_MISSING_PATTERNS: tuple[str, ...] = (
+    r"Could not find a version that satisfies the requirement\s+([^\s\(\)]+)",
+    r"No matching distribution found for\s+([^\s\(\)]+)",
+)
+
+
+def _parse_and_log_pip_missing(log_path: Path, slug: str) -> None:
+    """빌드 로그를 파싱해 pip 누락 패키지를 var/pkg-requests.jsonl 에 누적 기록한다.
+
+    실패 경로(action="failed")에서만 호출된다. 같은 빌드 로그 안의 중복 패키지는
+    set 으로 한 번만 기록하고, 파일이 없으면 첫 쓰기 시 자동 생성한다. 어떤 예외도
+    상위로 던지지 않는다(환류는 부가 기능이므로 빌드 결과에 영향 없음).
+    """
+    if not log_path.exists():
+        return
+    try:
+        log_text = _tail_text(log_path, 1024 * 1024)  # 최대 1MB 만 읽기
+    except Exception:  # pragma: no cover - defensive
+        return
+
+    packages: set[str] = set()
+    for pattern in _PIP_MISSING_PATTERNS:
+        for match in re.finditer(pattern, log_text, re.IGNORECASE):
+            pkg = match.group(1).strip()
+            if pkg:
+                packages.add(pkg)
+
+    if not packages:
+        return
+
+    from datetime import datetime, timezone
+
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        _PKG_REQUESTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with _PKG_REQUESTS_FILE.open("a", encoding="utf-8") as fh:
+            for pkg in sorted(packages):
+                record = {"slug": slug, "package": pkg, "ts": ts}
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+                logger.debug("sif_builder: recorded missing pkg %s for %s", pkg, slug)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("sif_builder: failed to log missing packages: %s", exc)

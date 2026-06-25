@@ -852,3 +852,50 @@ def stop_service_endpoint(
 ) -> dict[str, str]:
     service_manager.stop_service(db, instance_id=instance_id)
     return {"detail": "stopped"}
+
+
+# ---------------------------------------------------------------------------
+# 누락 패키지 환류 (빌드 중 감지된 pip 누락 패키지 조회)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/pkg-requests")
+def list_pkg_requests(db: DbSession, _admin: AdminUser) -> dict[str, Any]:
+    """빌드 중 감지된 pip 누락 패키지(JSONL 로그)를 최신순으로 반환한다."""
+    import json
+    from pathlib import Path
+
+    # var/ 는 repo 루트 기준. admin.py 는 backend/app/api/v1 이므로 parents[4].
+    req_file = Path(__file__).resolve().parents[4] / "var" / "pkg-requests.jsonl"
+    items: list[dict[str, Any]] = []
+
+    if req_file.exists():
+        try:
+            with req_file.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        try:
+                            items.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
+        except OSError:
+            pass
+
+    # 최신 먼저(ts 기준 내림차순) 정렬.
+    items.sort(key=lambda x: x.get("ts", ""), reverse=True)
+
+    # 재실패로 같은 패키지가 여러 번 쌓이므로 패키지별 최신 1건만 남긴다.
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for it in items:
+        pkg = it.get("package")
+        if pkg in seen:
+            continue
+        seen.add(pkg)
+        deduped.append(it)
+
+    return {
+        "total": len(deduped),
+        "items": deduped[:200],  # 최근 200개
+        "log_file": str(req_file),
+    }

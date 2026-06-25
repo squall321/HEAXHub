@@ -36,6 +36,28 @@
               ]
             },
             {
+              "@id": "pkgs-mirror",
+              "match": [{"path": ["/pkgs/*"]}],
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {"handler": "rewrite", "strip_path_prefix": "/pkgs"},
+                        {
+                          "handler": "file_server",
+                          "root": "/srv/pkgs",
+                          "browse": {},
+                          "index_names": ["index.html"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
               "@id": "spa-static",
               "handle": [
                 {

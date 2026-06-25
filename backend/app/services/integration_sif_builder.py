@@ -117,6 +117,49 @@ def _localize_base_images(rendered: str) -> str:
     result = "\n".join(out)
     return result + "\n" if rendered.endswith("\n") else result
 
+
+# BUILD_* 환경변수 → .def %post 에 export 할 빌드 미러 변수 매핑.
+# 실측 결론(apptainer 1.3.6): 호스트의 일반 환경변수는 build 시 %post 로 전달되지
+# 않으므로(격리됨), 미러를 적용하려면 %post 안에서 직접 export 해야 한다.
+# 키: 호스트에서 읽는 BUILD_* 이름, 값: .def %post 에 export 할 실제 변수명.
+_BUILD_ENV_MAP: dict[str, str] = {
+    "BUILD_PIP_INDEX_URL": "PIP_INDEX_URL",
+    "BUILD_PIP_EXTRA_INDEX_URL": "PIP_EXTRA_INDEX_URL",
+    "BUILD_PIP_TRUSTED_HOST": "PIP_TRUSTED_HOST",
+    "BUILD_NPM_REGISTRY": "npm_config_registry",
+    "BUILD_GOPROXY": "GOPROXY",
+    "BUILD_GOSUMDB": "GOSUMDB",
+}
+
+
+def _inject_build_env(rendered: str) -> str:
+    """빌드 시점에만 유효한 사내 미러 환경변수를 .def 의 모든 ``%post`` 블록 첫 줄에
+    주입한다(폐쇄망에서 pip/npm/go 의존성을 사내 미러로 받게 함).
+
+    호스트의 BUILD_* 환경변수를 읽어 대응하는 표준 변수명으로 ``export`` 줄을 만들어,
+    각 ``%post`` 헤더 라인 바로 다음에 끼워 넣는다. 멀티스테이지 .def(go_service 등)는
+    모든 %post 블록을 대상으로 한다. 설정된 BUILD_* 가 하나도 없으면 원문 그대로 반환한다.
+    """
+    exports: list[str] = []
+    for env_key, var_name in _BUILD_ENV_MAP.items():
+        value = os.environ.get(env_key)
+        if value:
+            # 값에 들어간 큰따옴표를 이스케이프해 안전하게 따옴표 처리.
+            safe = value.replace('"', '\\"')
+            exports.append(f'    export {var_name}="{safe}"')
+    if not exports:
+        return rendered
+
+    lines = rendered.splitlines()
+    out: list[str] = []
+    for line in lines:
+        out.append(line)
+        if line.strip() == "%post":
+            out.extend(exports)
+    result = "\n".join(out)
+    return result + "\n" if rendered.endswith("\n") else result
+
+
 # How many trailing bytes of the build log to surface in `error`.
 _ERROR_TAIL_BYTES = 4096
 
@@ -213,6 +256,8 @@ def build_sif(
     # Prefer a local base SIF over docker:// when one is staged (resilience to
     # Docker Hub being unavailable). No-op when no local base SIF exists.
     rendered = _localize_base_images(rendered)
+    # 폐쇄망 사내 미러 변수(BUILD_*)를 %post 에 주입. 미설정 시 no-op.
+    rendered = _inject_build_env(rendered)
 
     # Cache key.
     build_hash = _hash_inputs(commit, manifest, template_bytes)

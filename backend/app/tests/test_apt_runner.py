@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -144,3 +145,33 @@ def test_local_apptainer_path_raises_when_none(
     msg = str(ei.value)
     assert "apptainer" in msg.lower()
     assert "HEAXHUB_APPT_BIN" in msg or "install-apptainer" in msg
+
+
+def test_instance_start_isolation_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-01: enforce_instance_isolation 가 켜지면 --no-home --no-privs 가 붙고,
+    꺼지면(기본) 붙지 않는다 — 도는 앱을 안 깨뜨리는 게이팅 보장."""
+    from app.config import get_settings
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(args, **kwargs):  # noqa: ANN001
+        captured["args"] = list(args)
+        return subprocess.CompletedProcess(args=list(args), returncode=0)
+
+    monkeypatch.setattr(apt_runner, "run", fake_run)
+
+    # OFF(기본) — 격리 플래그 없음
+    monkeypatch.setenv("ENFORCE_INSTANCE_ISOLATION", "false")
+    get_settings.cache_clear()
+    apt_runner.instance_start("/tmp/x.sif", "inst")
+    assert "--no-home" not in captured["args"]
+    assert "--no-privs" not in captured["args"]
+
+    # ON — fs/권한 격리 플래그 주입
+    monkeypatch.setenv("ENFORCE_INSTANCE_ISOLATION", "true")
+    get_settings.cache_clear()
+    apt_runner.instance_start("/tmp/x.sif", "inst")
+    assert "--no-home" in captured["args"]
+    assert "--no-privs" in captured["args"]
+
+    get_settings.cache_clear()

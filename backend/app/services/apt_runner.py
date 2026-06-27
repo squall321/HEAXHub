@@ -196,6 +196,11 @@ def instance_start(
             args.extend(["--memory", str(memory)])
         if cpus:
             args.extend(["--cpus", str(cpus)])
+    # SEC-01(1단계): 파일시스템·권한 격리. --no-home(운영자 홈 미마운트) +
+    # --no-privs(권한 드롭). 기본 off — 켜야 적용. 네트워크는 앱이 포트를 열어
+    # Caddy 가 프록시하므로 격리에서 제외(별도 netns 설계 필요).
+    if get_settings().enforce_instance_isolation:
+        args.extend(["--no-home", "--no-privs"])
     args.extend(_bind_flags(binds))
     args.extend([str(sif), name])
 

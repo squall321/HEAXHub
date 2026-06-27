@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     # locally-extracted apptainer with `systemd cgroups = no` ignores/errors on
     # the flags; turn on (ENFORCE_INSTANCE_LIMITS=1) on hosts with working cgroups.
     enforce_instance_limits: bool = False
+    # SEC-01(1단계): 앱 인스턴스에 파일시스템·권한 격리를 적용한다 — `--no-home`
+    # (운영자 홈 미마운트)와 `--no-privs`(권한 드롭). 기본 off 라 도는 앱을 깨지
+    # 않으며, 켜면(ENFORCE_INSTANCE_ISOLATION=1) 앱이 호스트 홈/권한에 못 닿는다.
+    # 네트워크 격리(--net)는 앱이 포트를 열어 Caddy 가 프록시하므로 여기 포함하지
+    # 않는다(별도 netns/portmap 설계 필요).
+    enforce_instance_isolation: bool = False
 
     # --- Seed admin (used by scripts/create_admin.py) ---
     seed_admin_email: str = "admin@example.com"

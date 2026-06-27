@@ -36,6 +36,48 @@ def _route_id(app_id: str) -> str:
     return f"app-{app_id}"
 
 
+# forward_auth authz 엔드포인트 — 모든 /apps/{slug} 요청을 게이트한다.
+_AUTHZ_URI = "/api/v1/authz"
+_AUTHZ_DIAL = "127.0.0.1:4040"
+
+
+def _forward_auth_handler() -> dict[str, Any]:
+    """Build the Caddy ``forward_auth`` gate as native JSON.
+
+    In Caddy's JSON config there is no ``forward_auth`` handler — that
+    Caddyfile directive expands to a ``reverse_proxy`` handler whose request is
+    rewritten to the authz endpoint (method forced to GET so the body isn't
+    consumed) and whose ``handle_response`` only lets a 2xx authz verdict fall
+    through to the next handler in the chain. Any non-2xx (401/403/…) authz
+    response is copied back to the client by reverse_proxy and the request stops
+    there, so the real upstream is never reached.
+
+    The original request's ``Cookie`` and ``Authorization`` headers ride along
+    automatically (the auth subrequest is a copy of the inbound request); we
+    additionally surface the original URI/host via ``X-Forwarded-*`` so the
+    authz endpoint can extract the ``/apps/{slug}`` it must authorize.
+    """
+    return {
+        "handler": "reverse_proxy",
+        "rewrite": {"method": "GET", "uri": _AUTHZ_URI},
+        "upstreams": [{"dial": _AUTHZ_DIAL}],
+        "headers": {
+            "request": {
+                "set": {
+                    "X-Forwarded-Method": ["{http.request.method}"],
+                    "X-Forwarded-Uri": ["{http.request.uri}"],
+                    "X-Forwarded-Host": ["{http.request.host}"],
+                }
+            }
+        },
+        # 2xx만 매칭 → 다음 핸들러로 통과. 매칭되지 않은 4xx/5xx 는 reverse_proxy 가
+        # authz 응답 그대로 클라이언트에 반환하고 체인을 종료한다.
+        "handle_response": [
+            {"match": {"status_code": [2]}, "routes": []},
+        ],
+    }
+
+
 def _admin_url(path: str) -> str:
     base = get_settings().caddy_admin_url.rstrip("/")
     return f"{base}{path}"
@@ -67,7 +109,8 @@ def _build_route(
     # Match both the bare prefix (no trailing slash) and any subpath.
     match_paths = [path, f"{path}/*"]
 
-    handle_chain: list[dict[str, Any]] = []
+    # forward_auth 게이트를 reverse_proxy 앞에 둔다 (2xx 통과, 그 외 차단).
+    handle_chain: list[dict[str, Any]] = [_forward_auth_handler()]
     if strip_prefix:
         handle_chain.append({"handler": "rewrite", "strip_path_prefix": path})
     handle_chain.append({
@@ -102,7 +145,9 @@ def _build_static_route(
     path = path.rstrip("/")
     match_paths = [path, f"{path}/*"]
 
+    # 서비스 라우트와 동일한 forward_auth 게이트 — 비공개 정적 앱도 동일하게 보호.
     handle_chain: list[dict[str, Any]] = [
+        _forward_auth_handler(),
         {"handler": "rewrite", "strip_path_prefix": path},
         {
             "handler": "file_server",

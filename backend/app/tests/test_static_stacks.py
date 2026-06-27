@@ -249,7 +249,8 @@ def test_stack_resolver_knows_static_html_and_mkdocs() -> None:
 
 def test_proxy_manager_static_route_shape() -> None:
     """Lock in the Caddy route JSON shape so a Caddy admin upgrade doesn't
-    silently break us — the handler chain MUST be rewrite + file_server."""
+    silently break us — the handler chain MUST be forward_auth gate + rewrite
+    + file_server."""
     from app.services.proxy_manager import _build_static_route
 
     route = _build_static_route(
@@ -259,8 +260,12 @@ def test_proxy_manager_static_route_shape() -> None:
     assert route["@id"] == "app-demo_static"
     assert route["match"][0]["path"] == ["/apps/demo_static", "/apps/demo_static/*"]
     handle_chain = route["handle"][0]["routes"][0]["handle"]
-    assert handle_chain[0]["handler"] == "rewrite"
-    assert handle_chain[0]["strip_path_prefix"] == "/apps/demo_static"
-    assert handle_chain[1]["handler"] == "file_server"
-    assert handle_chain[1]["root"] == "/var/heax/apps/demo_static/public"
-    assert handle_chain[1]["index_names"] == ["index.html"]
+    # forward_auth gate first (reverse_proxy to authz, 2xx-only pass-through).
+    assert handle_chain[0]["handler"] == "reverse_proxy"
+    assert handle_chain[0]["rewrite"]["uri"] == "/api/v1/authz"
+    assert handle_chain[0]["handle_response"][0]["match"]["status_code"] == [2]
+    assert handle_chain[1]["handler"] == "rewrite"
+    assert handle_chain[1]["strip_path_prefix"] == "/apps/demo_static"
+    assert handle_chain[2]["handler"] == "file_server"
+    assert handle_chain[2]["root"] == "/var/heax/apps/demo_static/public"
+    assert handle_chain[2]["index_names"] == ["index.html"]

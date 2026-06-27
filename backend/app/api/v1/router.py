@@ -8,6 +8,7 @@ from app.api.v1 import (
     agents,
     apps,
     auth,
+    authz,
     change_requests,
     installers,
     jobs,
@@ -20,6 +21,7 @@ from app.api.v1 import (
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
+api_router.include_router(authz.router)
 api_router.include_router(portal_sso.router)
 api_router.include_router(users.router)
 api_router.include_router(apps.router)

@@ -578,14 +578,14 @@ def _sif_argv_for(
         return [
             "streamlit", "run", "app.py",
             "--server.port", str(port),
-            "--server.address", "0.0.0.0",
+            "--server.address", "127.0.0.1",
             "--server.baseUrlPath", base_path,
             "--server.headless", "true",
         ]
     if stack_name == "fastapi":
         return [
             "uvicorn", "app.main:app",
-            "--host", "0.0.0.0",
+            "--host", "127.0.0.1",
             "--port", str(port),
             "--root-path", base_path,
         ]
@@ -595,7 +595,7 @@ def _sif_argv_for(
         # /app/frontend/dist is StaticFiles-mounted by main.py at "/".
         return [
             "uvicorn", "app.main:app",
-            "--host", "0.0.0.0",
+            "--host", "127.0.0.1",
             "--port", str(port),
             "--root-path", base_path,
         ]
@@ -606,7 +606,7 @@ def _sif_argv_for(
         )
         return [
             "gunicorn",
-            "--bind", f"0.0.0.0:{port}",
+            "--bind", f"127.0.0.1:{port}",
             "--workers", "2",
             "--access-logfile", "-",
             str(callable_),
@@ -616,13 +616,13 @@ def _sif_argv_for(
     if stack_name == "shiny_for_python":
         return [
             "shiny", "run",
-            "--host", "0.0.0.0",
+            "--host", "127.0.0.1",
             "--port", str(port),
             "--root-path", base_path,
             "app.py",
         ]
     if stack_name in ("nextjs", "node_service"):
-        return ["node_modules/.bin/next", "start", "--port", str(port), "--hostname", "0.0.0.0"]
+        return ["node_modules/.bin/next", "start", "--port", str(port), "--hostname", "127.0.0.1"]
     if stack_name == "nodejs_express":
         return ["node", "dist/server.js"]
     if stack_name == "go_service":
@@ -635,7 +635,7 @@ def _sif_argv_for(
         # entry assembly to /app/publish/app.dll. A manifest may still name a
         # specific assembly, which is resolved under publish/ too.
         override = (manifest.get("launch") or {}).get("assembly") or "app.dll"
-        return ["dotnet", f"/app/publish/{override}", "--urls", f"http://0.0.0.0:{port}"]
+        return ["dotnet", f"/app/publish/{override}", "--urls", f"http://127.0.0.1:{port}"]
     if stack_name == "java_springboot":
         return ["java", "-jar", "/app/app.jar", f"--server.port={port}"]
     if stack_name == "rust_actix":
@@ -810,7 +810,7 @@ def _argv_for(
         return [
             str(bin_), "run", "app.py",
             "--server.port", str(port),
-            "--server.address", "0.0.0.0",
+            "--server.address", "127.0.0.1",
             "--server.baseUrlPath", base_path,
             "--server.headless", "true",
         ]
@@ -823,7 +823,7 @@ def _argv_for(
             )
         return [
             str(bin_), "app.main:app",
-            "--host", "0.0.0.0",
+            "--host", "127.0.0.1",
             "--port", str(port),
             "--root-path", base_path,
         ]
@@ -834,8 +834,8 @@ def _argv_for(
         # Use node_modules/.bin/next directly for tighter control.
         next_bin = workspace / "node_modules" / ".bin" / "next"
         if next_bin.exists():
-            return [str(next_bin), "start", "--port", str(port), "--hostname", "0.0.0.0"]
-        return [pnpm, "start", "--", "--port", str(port), "--hostname", "0.0.0.0"]
+            return [str(next_bin), "start", "--port", str(port), "--hostname", "127.0.0.1"]
+        return [pnpm, "start", "--", "--port", str(port), "--hostname", "127.0.0.1"]
     if stack_name == "flask":
         # gunicorn from the venv binds to $PORT; Flask reads SCRIPT_NAME from
         # env (WSGI standard) so we don't need to pass base_path on argv.
@@ -851,7 +851,7 @@ def _argv_for(
         )
         return [
             str(bin_),
-            "--bind", f"0.0.0.0:{port}",
+            "--bind", f"127.0.0.1:{port}",
             "--workers", "2",
             "--access-logfile", "-",
             str(callable_),
@@ -910,7 +910,7 @@ def _argv_for(
             )
         return [
             str(bin_), "run",
-            "--host", "0.0.0.0",
+            "--host", "127.0.0.1",
             "--port", str(port),
             "--root-path", base_path,
             "app.py",
@@ -959,7 +959,7 @@ def _argv_for(
             )
         return [
             dotnet_bin, str(dll_path),
-            "--urls", f"http://0.0.0.0:{port}",
+            "--urls", f"http://127.0.0.1:{port}",
         ]
     if stack_name == "java_springboot":
         # Spring Boot reads --server.port from the command-line property bridge.

@@ -38,7 +38,7 @@ stacks:
     runtime: python_venv
     python_version: "3.12"
     install: pip install -e .
-    entrypoint: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.baseUrlPath $ROOT_PATH --server.headless true
+    entrypoint: streamlit run app.py --server.port $PORT --server.address 127.0.0.1 --server.baseUrlPath $ROOT_PATH --server.headless true
     health_path: /_stcore/health
     use_cases:
       - 데이터 대시보드 / 시각화
@@ -56,7 +56,7 @@ stacks:
     runtime: python_venv
     python_version: "3.12"
     install: pip install -e .
-    entrypoint: uvicorn app.main:app --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH
+    entrypoint: uvicorn app.main:app --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH
     health_path: /health
     use_cases:
       - 백엔드 마이크로서비스
@@ -79,7 +79,7 @@ stacks:
     python_version: "3.12"
     node_version: "20"
     install: pnpm install --frozen-lockfile && pnpm build && pip install -e ../backend
-    entrypoint: uvicorn app.main:app --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH
+    entrypoint: uvicorn app.main:app --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH
     health_path: /api/health
     base_path_env: ROOT_PATH
     use_cases:
@@ -99,7 +99,7 @@ stacks:
     node_version: "20"
     install: pnpm install --frozen-lockfile
     build: pnpm build
-    entrypoint: node_modules/.bin/next start --port $PORT --hostname 0.0.0.0
+    entrypoint: node_modules/.bin/next start --port $PORT --hostname 127.0.0.1
     health_path: /
     base_path_env: NEXT_PUBLIC_BASE_PATH
     use_cases:
@@ -119,7 +119,7 @@ stacks:
     runtime: python_venv
     python_version: "3.12"
     install: pip install -e .
-    entrypoint: gunicorn --bind 0.0.0.0:$PORT --workers 2 --access-logfile - app:app
+    entrypoint: gunicorn --bind 127.0.0.1:$PORT --workers 2 --access-logfile - app:app
     health_path: /health
     base_path_env: SCRIPT_NAME
     use_cases:
@@ -162,7 +162,7 @@ stacks:
     runtime: dotnet
     dotnet_version: "8.0"
     install: dotnet publish -c Release -o publish
-    entrypoint: dotnet /app/publish/app.dll --urls http://0.0.0.0:$PORT
+    entrypoint: dotnet /app/publish/app.dll --urls http://127.0.0.1:$PORT
     health_path: /health
     use_cases:
       - 기존 ASP.NET Core REST API 마이그레이션
@@ -267,7 +267,7 @@ stacks:
     runtime: python_venv
     python_version: "3.12"
     install: pip install -e .
-    entrypoint: shiny run --host 0.0.0.0 --port $PORT --root-path $ROOT_PATH app.py
+    entrypoint: shiny run --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH app.py
     health_path: /
     base_path_env: ROOT_PATH
     use_cases:

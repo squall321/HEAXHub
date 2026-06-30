@@ -265,6 +265,10 @@ def launch(
     env = os.environ.copy()
     env.update({
         "PORT": str(port),
+        # 앱은 loopback 에만 바인드 — 포트를 외부에 노출하지 말고 리버스프록시(Caddy)
+        # 로만 닿게 한다. argv 로 바인드를 제어 못 하는 스택(dash/node/go 등)은 앱이
+        # 이 $HOST 를 읽어 바인드해야 한다(컨벤션).
+        "HOST": "127.0.0.1",
         "ROOT_PATH": base_path,
         "BASE_URL_PATH": base_path,
         "NEXT_PUBLIC_BASE_PATH": base_path,
@@ -430,6 +434,8 @@ def _launch_via_sif(
     binds: list[tuple[str, str]] = [(str(workspace), "/workspace")]
     env_in_container = {
         "PORT": str(port),
+        # loopback 전용 바인드 컨벤션 — argv 로 못 바꾸는 스택은 앱이 $HOST 를 읽어야 함.
+        "HOST": "127.0.0.1",
         "ROOT_PATH": base_path,
         "BASE_URL_PATH": base_path,
         "NEXT_PUBLIC_BASE_PATH": base_path,

@@ -99,6 +99,15 @@ CSV 포맷 (첫 줄은 헤더이므로 무시, 둘째 줄부터):
 | `dotnet_aspnet` | ASP.NET Core | `dotnet publish/app.dll --urls ...` | `/health` |
 | `java_springboot` | Spring Boot | `java -jar target/app.jar ...` | `/actuator/health` |
 
+> **바인드는 loopback(127.0.0.1) 전용 — 포트를 외부에 노출하지 말 것.**
+> 앱은 `0.0.0.0`이 아니라 `127.0.0.1`(또는 주입되는 `$HOST`)에만 들어야 한다. 그래야
+> Caddy 리버스 프록시(`/apps/<slug>/`)가 유일한 진입점이 되고, `<host>:<port>` 직타로
+> **인증 게이트(SEC-03)를 우회**하는 일이 막힌다. 내장 스택(fastapi/streamlit/flask/
+> nextjs/shiny/dotnet 등)은 런처가 자동으로 `127.0.0.1`에 바인드한다. **앱 코드가 직접
+> 바인드하는 경우(dash `app.run`, Go `ListenAndServe` 등)는 반드시 `$HOST`를 읽어
+> `127.0.0.1`에 바인드**하라. (모든 스택을 앱 협조 없이 강제 차단하려면 네트워크
+> 네임스페이스 격리가 필요 — 후속 과제.)
+
 ### 정적형 (static · 빌드 산출물을 파일서버로)
 
 | stack | 용도 |

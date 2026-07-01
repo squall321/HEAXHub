@@ -263,6 +263,11 @@ def launch(
 
     log_file = LOG_DIR / f"integration_{canonical}.log"
     env = os.environ.copy()
+    # 매니페스트 앱별 env(launch.env) 먼저, HEAXHub 제어 변수는 아래에서 덮는다.
+    env.update({
+        str(k): str(v)
+        for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
+    })
     env.update({
         "PORT": str(port),
         # 앱은 loopback 에만 바인드 — 포트를 외부에 노출하지 말고 리버스프록시(Caddy)
@@ -432,7 +437,14 @@ def _launch_via_sif(
 
     # ── ensure the instance is running ────────────────────────────────
     binds: list[tuple[str, str]] = [(str(workspace), "/workspace")]
-    env_in_container = {
+    # 매니페스트가 선언한 앱별 env(launch.env)를 먼저 깔고 HEAXHub 제어 변수로 덮는다
+    # (PORT/HOST/ROOT_PATH 등은 항상 HEAXHub 가 결정 — 앱이 override 못 함). 앱이
+    # 쓰기 경로가 필요하면 launch.env 로 예: MATERIALTWIN_DATA_DIR=/workspace/data.
+    env_in_container: dict[str, str] = {
+        str(k): str(v)
+        for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
+    }
+    env_in_container.update({
         "PORT": str(port),
         # loopback 전용 바인드 컨벤션 — argv 로 못 바꾸는 스택은 앱이 $HOST 를 읽어야 함.
         "HOST": "127.0.0.1",
@@ -443,7 +455,7 @@ def _launch_via_sif(
         "BASE_PATH": base_path,
         "HEAX_BASE_PATH": base_path,
         "DASH_URL_BASE_PATHNAME": base_path + "/",
-    }
+    })
     # SRV-04: cgroup limits from the manifest's resources block (best-effort —
     # only applied when settings.enforce_instance_limits is on).
     _res = manifest.get("resources") if isinstance(manifest.get("resources"), dict) else {}

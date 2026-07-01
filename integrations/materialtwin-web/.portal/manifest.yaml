@@ -1,0 +1,27 @@
+schema_version: 2
+id: materialtwin_web
+name: "MaterialTwin Web"
+owner: "squall321"
+status: stable
+app_type: web_app
+execution_target: linux_runner
+description: "재료 물성 디지털트윈 웹 (FastAPI + Vite/React)"
+build:
+  stack: fastapi_react
+launch:
+  mode: service
+  env:
+    MATERIALTWIN_DATA_DIR: /workspace/data
+  # command: <기본 entrypoint 대신 직접 지정하려면 주석 해제>
+health_check:
+  path: /api/health
+restart_policy:
+  policy: on_failure
+  max_retries: 3
+source:
+  type: git
+  url: https://github.com/squall321/MaterialTwinWeb
+  ref: main
+  # subpath: ""          # 모노레포면 하위 디렉터리 지정
+permissions:
+  visibility: company     # company | department | team | private

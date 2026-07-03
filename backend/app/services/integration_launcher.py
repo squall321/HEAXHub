@@ -272,11 +272,15 @@ def launch(
         )
 
     # ── compose command ──────────────────────────────────────────────
+    # 실패 경로에서 포트를 release 하지 않는다. allocate_port 의 idempotency(0단계)
+    # 는 이 앱이 이미 물고 있던 — 살아있는 인스턴스가 지금 bind 중일 수도 있는 —
+    # 포트를 돌려줄 수 있다(헬스 프로브가 일시 타임아웃으로 오판해 콜드스타트에
+    # 들어온 경우). 여기서 release 하면 그 live 포트가 다른 앱에 재할당돼 Caddy 가
+    # 교차 라우팅된다. 포트는 앱에 파킹된 상태로 두는 게 불변식 — 재기동 시 같은
+    # 포트를 idempotent 하게 재사용하고, 해제는 프로세스를 실제로 죽이는 stop() 만.
     try:
         argv = _argv_for(workspace, spec, manifest, port=port, base_path=base_path)
     except Exception as exc:
-        # Release the port we just claimed — nobody else can use it otherwise.
-        _safe_release_port(db, port)
         return LaunchResult(
             slug=slug, action="failed", port=None, base_path=base_path,
             error=f"argv build failed: {exc}",
@@ -319,7 +323,6 @@ def launch(
     try:
         log_fh = log_file.open("ab")
     except OSError as exc:
-        _safe_release_port(db, port)
         return LaunchResult(
             slug=slug, action="failed", port=None, base_path=base_path,
             error=f"could not open log {log_file}: {exc}",
@@ -336,7 +339,6 @@ def launch(
         )
     except Exception as exc:
         log_fh.close()
-        _safe_release_port(db, port)
         return LaunchResult(
             slug=slug, action="failed", port=None, base_path=base_path,
             error=f"Popen failed: {exc}",
@@ -451,10 +453,13 @@ def _launch_via_sif(
         )
 
     # ── compose container-side argv ───────────────────────────────────
+    # 실패 경로에서 포트를 release 하지 않는다(호스트 경로와 동일한 불변식).
+    # idempotent allocate 가 살아있는 인스턴스의 포트를 돌려준 상황(헬스 프로브
+    # 일시 오판 → 콜드스타트 재진입)에서 release 하면 그 live 포트가 다른 앱에
+    # 재할당돼 교차 라우팅된다. 포트는 앱에 파킹 — 해제는 stop() 만 한다.
     try:
         container_argv = _sif_argv_for(spec, manifest, stack_name, port=port, base_path=base_path)
     except Exception as exc:
-        _safe_release_port(db, port)
         return LaunchResult(
             slug=slug, action="failed", port=None, base_path=base_path,
             error=f"argv build failed: {exc}",
@@ -510,13 +515,11 @@ def _launch_via_sif(
                 cpus=_cpus,
             )
         except subprocess.CalledProcessError as exc:
-            _safe_release_port(db, port)
             return LaunchResult(
                 slug=slug, action="failed", port=port, base_path=base_path,
                 error=f"apptainer instance start failed: {exc}",
             )
         except FileNotFoundError as exc:
-            _safe_release_port(db, port)
             return LaunchResult(
                 slug=slug, action="failed", port=port, base_path=base_path,
                 error=str(exc),
@@ -526,7 +529,6 @@ def _launch_via_sif(
     try:
         log_fh = log_file.open("ab")
     except OSError as exc:
-        _safe_release_port(db, port)
         return LaunchResult(
             slug=slug, action="failed", port=port, base_path=base_path,
             error=f"could not open log {log_file}: {exc}",
@@ -545,7 +547,6 @@ def _launch_via_sif(
         )
     except Exception as exc:
         log_fh.close()
-        _safe_release_port(db, port)
         return LaunchResult(
             slug=slug, action="failed", port=port, base_path=base_path,
             error=f"apptainer exec failed: {exc}",
@@ -1248,15 +1249,6 @@ def _safe_register_caddy(
             app_id, exc,
         )
         return False
-
-
-def _safe_release_port(db, port: int | None) -> None:
-    if not port:
-        return
-    try:
-        port_allocator.release_port(db, port=int(port))
-    except Exception:
-        logger.exception("release_port failed for port %s", port)
 
 
 def read_manifest(workspace: Path) -> dict[str, Any] | None:

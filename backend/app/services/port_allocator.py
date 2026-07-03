@@ -6,6 +6,14 @@ Algorithm (single DB transaction):
      especially a crash-looping app under restart_policy) allocates a NEW port
      and never releases the old one — leaking the whole pool until no app can
      start. This is the primary guard against pool exhaustion.
+
+     Ownership consequence for callers: a port returned here may be one a LIVE
+     instance is currently bound to (e.g. a transient health-probe miss sent
+     the launcher down the cold-start path). Launch FAILURE paths must
+     therefore NOT release the port — releasing would let another app claim a
+     port that is still being listened on, cross-wiring the reverse proxy. The
+     port stays parked on the app identity (bounded: one per app) and only an
+     actual teardown (``stop()``, which kills the process) releases it.
   1. Reuse: pick the oldest row whose `released_at IS NOT NULL`, with `SELECT FOR UPDATE
      SKIP LOCKED`, mark it active, return its port.
   2. Expand: if no released row available and the pool isn't full, allocate the next

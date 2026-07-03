@@ -61,15 +61,17 @@ def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     class _StubPorts:
         port = 17171
+        released: list[int] = []  # record release calls for invariant tests
 
         @classmethod
         def allocate_port(cls, db, *, app_id, scope):
             return cls.port
 
-        @staticmethod
-        def release_port(db, *, port):
-            return None
+        @classmethod
+        def release_port(cls, db, *, port):
+            cls.released.append(port)
 
+    _StubPorts.released = []  # fresh per test
     monkeypatch.setattr(integration_launcher, "proxy_manager", _StubProxy)
     monkeypatch.setattr(integration_launcher, "port_allocator", _StubPorts)
 
@@ -343,7 +345,66 @@ def test_stop_calls_instance_stop_when_state_has_instance_name(
 
 
 # ---------------------------------------------------------------------------
-# 5. _app_data_dir — persistent per-app volume, traversal-guarded
+# 5. launch failure must NOT release the port (parked-port invariant)
+# ---------------------------------------------------------------------------
+
+
+def test_sif_launch_failure_does_not_release_port(
+    tmp_path: Path,
+    isolated_state: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """idempotent allocate 는 살아있는 인스턴스가 bind 중인 포트를 돌려줄 수 있다
+    (헬스 프로브 일시 오판 → 콜드스타트 재진입). 그 상태에서 launch 가 실패할 때
+    포트를 release 하면 다른 앱이 그 live 포트를 재할당받아 Caddy 가 교차 라우팅
+    된다. 실패 경로는 release 금지 — 포트는 앱에 파킹, 해제는 stop() 만."""
+    ws = tmp_path / "demo_sif"
+    ws.mkdir()
+    sif = tmp_path / "demo_sif.sif"
+    sif.write_bytes(b"fake-sif")
+
+    def fake_instance_list(**_kwargs):
+        return []
+
+    def fake_instance_start(**_kwargs):
+        raise subprocess.CalledProcessError(1, ["instance", "start"])
+
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_list", fake_instance_list)
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_start", fake_instance_start)
+
+    result = integration_launcher.launch(
+        ws, manifest=_manifest(stack="fastapi"), db=None,
+        slug="demo_sif", sif_path=sif,
+    )
+
+    assert result.action == "failed"
+    assert integration_launcher.port_allocator.released == []
+
+
+def test_host_launch_failure_does_not_release_port(
+    tmp_path: Path,
+    isolated_state: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """호스트 프로세스 경로도 동일한 파킹 불변식을 지킨다(Popen 실패 시)."""
+    ws = tmp_path / "demo_sif"
+    ws.mkdir()
+
+    def fake_popen(*_a, **_k):
+        raise OSError("spawn failed")
+
+    monkeypatch.setattr(integration_launcher.subprocess, "Popen", fake_popen)
+
+    result = integration_launcher.launch(
+        ws, manifest=_manifest(stack="fastapi"), db=None, slug="demo_sif",
+    )
+
+    assert result.action == "failed"
+    assert integration_launcher.port_allocator.released == []
+
+
+# ---------------------------------------------------------------------------
+# 6. _app_data_dir — persistent per-app volume, traversal-guarded
 # ---------------------------------------------------------------------------
 
 

@@ -108,6 +108,15 @@ CSV 포맷 (첫 줄은 헤더이므로 무시, 둘째 줄부터):
 > `127.0.0.1`에 바인드**하라. (모든 스택을 앱 협조 없이 강제 차단하려면 네트워크
 > 네임스페이스 격리가 필요 — 후속 과제.)
 
+> **쓰기·영구 데이터는 `$HEAX_DATA_DIR`(컨테이너 `/data`)에만 둘 것.**
+> SIF rootfs 는 read-only 라 앱이 임의 경로에 쓰면 `OSError: Read-only file system`
+> 으로 죽는다. 런처는 앱마다 `var/app_data/<id>/` 를 컨테이너 `/data` 로 bind 하고
+> `HEAX_DATA_DIR=/data` 를 주입한다. 이 디렉터리는 **소스 트리·SIF·fetch 되는 upstream
+> 과 분리된 영구 영역**이라 재스캔·재빌드·소스 재클론 뒤에도 SQLite·업로드 등이 남는다.
+> 앱이 고유 env 를 읽는다면 매니페스트 `launch.env` 로 그 값을 `/data` 로 가리키면 된다
+> (예: `MATERIALTWIN_DATA_DIR: /data`). 절대 `/workspace` 아래(=fetch 시 갱신됨)나 소스
+> 디렉터리에 쓰지 말 것.
+
 ### 정적형 (static · 빌드 산출물을 파일서버로)
 
 | stack | 용도 |

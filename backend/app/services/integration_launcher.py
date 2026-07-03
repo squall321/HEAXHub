@@ -50,8 +50,29 @@ logger = get_logger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 STATE_DIR: Path = _REPO_ROOT / "var" / "integration_state"
 LOG_DIR: Path = _REPO_ROOT / "var" / "logs"
+# 앱별 영구 데이터 루트. var/ 는 gitignore 된 런타임 영역이라 소스 재클론·git clean·
+# upstream 재fetch(rmtree)·SIF 재빌드 어디에도 휩쓸리지 않는다. 앱이 쓰기 상태
+# (SQLite/업로드 등)를 여기 두면 재스캔·재빌드 뒤에도 남는다.
+APP_DATA_ROOT: Path = _REPO_ROOT / "var" / "app_data"
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _app_data_dir(canonical: str) -> Path:
+    """``var/app_data/<canonical>/`` — 앱 전용 영구 쓰기 디렉터리(생성 후 반환).
+
+    SIF 경로에선 컨테이너 ``/data`` 로 bind, 호스트 경로에선 이 절대경로 자체를
+    쓴다. 어느 쪽이든 앱은 주입된 ``HEAX_DATA_DIR`` 로 위치를 발견한다.
+
+    ``canonical`` 은 매니페스트 id 에서 온다 — 파일시스템 경로로 쓰기 전에
+    데이터 루트 밖으로 새지 않는지(traversal) 봉쇄한다.
+    """
+    root = APP_DATA_ROOT.resolve()
+    d = (root / canonical).resolve()
+    if d == root or not d.is_relative_to(root):
+        raise ValueError(f"unsafe app data dir for canonical={canonical!r}")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 _HEALTH_TIMEOUT = 2.0
 _HEALTH_WAIT_SECONDS = 20
@@ -262,6 +283,9 @@ def launch(
         )
 
     log_file = LOG_DIR / f"integration_{canonical}.log"
+    # 호스트 프로세스 경로 — bind mount 가 없으므로 영구 데이터 디렉터리의 호스트
+    # 절대경로 자체를 $HEAX_DATA_DIR 로 준다(SIF 경로의 /data 와 같은 역할).
+    app_data = _app_data_dir(canonical)
     env = os.environ.copy()
     # 매니페스트 앱별 env(launch.env) 먼저, HEAXHub 제어 변수는 아래에서 덮는다.
     env.update({
@@ -274,6 +298,7 @@ def launch(
         # 로만 닿게 한다. argv 로 바인드를 제어 못 하는 스택(dash/node/go 등)은 앱이
         # 이 $HOST 를 읽어 바인드해야 한다(컨벤션).
         "HOST": "127.0.0.1",
+        "HEAX_DATA_DIR": str(app_data),
         "ROOT_PATH": base_path,
         "BASE_URL_PATH": base_path,
         "NEXT_PUBLIC_BASE_PATH": base_path,
@@ -436,10 +461,18 @@ def _launch_via_sif(
         )
 
     # ── ensure the instance is running ────────────────────────────────
-    binds: list[tuple[str, str]] = [(str(workspace), "/workspace")]
+    # SIF rootfs 는 read-only 라 앱이 여기에 못 쓴다. 영구 쓰기 경로를 /data 로
+    # bind 하고 $HEAX_DATA_DIR 로 알려준다(예: SQLite/업로드). var/app_data/<id>/
+    # 라 재스캔·재빌드·upstream 재fetch 뒤에도 데이터가 남는다.
+    app_data = _app_data_dir(canonical)
+    binds: list[tuple[str, str]] = [
+        (str(workspace), "/workspace"),
+        (str(app_data), "/data"),
+    ]
     # 매니페스트가 선언한 앱별 env(launch.env)를 먼저 깔고 HEAXHub 제어 변수로 덮는다
-    # (PORT/HOST/ROOT_PATH 등은 항상 HEAXHub 가 결정 — 앱이 override 못 함). 앱이
-    # 쓰기 경로가 필요하면 launch.env 로 예: MATERIALTWIN_DATA_DIR=/workspace/data.
+    # (PORT/HOST/ROOT_PATH/HEAX_DATA_DIR 등은 항상 HEAXHub 가 결정 — 앱이 override
+    # 못 함). 앱이 쓰기 경로가 필요하면 $HEAX_DATA_DIR(=/data) 아래를 쓰거나,
+    # launch.env 로 앱 고유 변수를 /data 로 가리키면 된다(예: FOO_DATA_DIR: /data).
     env_in_container: dict[str, str] = {
         str(k): str(v)
         for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
@@ -448,6 +481,7 @@ def _launch_via_sif(
         "PORT": str(port),
         # loopback 전용 바인드 컨벤션 — argv 로 못 바꾸는 스택은 앱이 $HOST 를 읽어야 함.
         "HOST": "127.0.0.1",
+        "HEAX_DATA_DIR": "/data",
         "ROOT_PATH": base_path,
         "BASE_URL_PATH": base_path,
         "NEXT_PUBLIC_BASE_PATH": base_path,

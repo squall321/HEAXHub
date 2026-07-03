@@ -101,3 +101,6 @@ deploy/apptainer/cache/
 var/local-demo-repos/
 var/integration_workspaces/
 var/sifs/
+
+# 앱 런타임 데이터(영구 볼륨은 var/app_data/ — 소스 트리에 커밋 금지)
+integrations/*/data/

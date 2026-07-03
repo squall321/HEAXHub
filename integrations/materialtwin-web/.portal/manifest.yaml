@@ -11,7 +11,9 @@ build:
 launch:
   mode: service
   env:
-    MATERIALTWIN_DATA_DIR: /workspace/data
+    # HEAXHub 가 bind 하는 영구 볼륨(/data → var/app_data/materialtwin_web/).
+    # SIF rootfs 는 read-only 라 여기 외엔 못 쓰고, 재빌드·재스캔 뒤에도 남는다.
+    MATERIALTWIN_DATA_DIR: /data
   # command: <기본 entrypoint 대신 직접 지정하려면 주석 해제>
 health_check:
   path: /api/health

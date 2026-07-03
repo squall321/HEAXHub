@@ -36,10 +36,14 @@ def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect STATE_DIR + LOG_DIR + _state_path into tmp_path."""
     state_dir = tmp_path / "state"
     log_dir = tmp_path / "logs"
+    app_data_root = tmp_path / "app_data"
     state_dir.mkdir()
     log_dir.mkdir()
     monkeypatch.setattr(integration_launcher, "STATE_DIR", state_dir)
     monkeypatch.setattr(integration_launcher, "LOG_DIR", log_dir)
+    # 영구 데이터 볼륨 루트를 tmp 로 돌린다 — 안 하면 _app_data_dir 이 실제 repo
+    # var/app_data/ 에 디렉터리를 만들어 테스트가 소스트리를 오염시킨다.
+    monkeypatch.setattr(integration_launcher, "APP_DATA_ROOT", app_data_root)
     monkeypatch.setattr(
         integration_launcher, "_state_path",
         lambda c: state_dir / f"{c}.json",
@@ -153,6 +157,13 @@ def test_starts_instance_when_sif_present_and_not_running(
     assert (str(ws), "/workspace") in s["binds"]
     assert s["env"]["PORT"] == "17171"
     assert s["env"]["ROOT_PATH"] == "/apps/demo_sif"
+    # 영구 데이터 볼륨: var/app_data/<canonical> → /data 로 bind 되고 HEAX_DATA_DIR
+    # 로 알려진다(SIF rootfs 는 read-only 라 앱은 여기 외엔 못 쓴다).
+    data_binds = [h for h, c in s["binds"] if c == "/data"]
+    assert len(data_binds) == 1, s["binds"]
+    assert data_binds[0].endswith("app_data/demo_sif")
+    assert Path(data_binds[0]).is_dir()  # _app_data_dir 이 미리 만들어 둔다
+    assert s["env"]["HEAX_DATA_DIR"] == "/data"
 
     # exec ran the canonical fastapi argv inside that instance.
     assert len(execed) == 1
@@ -329,3 +340,34 @@ def test_stop_calls_instance_stop_when_state_has_instance_name(
     assert stop_calls[0][0] == "heax_app_demo_sif"
     # State file is cleaned up after stop.
     assert integration_launcher._read_state(canonical) is None
+
+
+# ---------------------------------------------------------------------------
+# 5. _app_data_dir — persistent per-app volume, traversal-guarded
+# ---------------------------------------------------------------------------
+
+
+def test_app_data_dir_creates_under_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A normal canonical creates (and returns) var/app_data/<canonical>/."""
+    root = tmp_path / "app_data"
+    monkeypatch.setattr(integration_launcher, "APP_DATA_ROOT", root)
+
+    d = integration_launcher._app_data_dir("materialtwin_web")
+    assert d == (root / "materialtwin_web").resolve()
+    assert d.is_dir()
+
+
+def test_app_data_dir_rejects_traversal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """canonical comes from manifest.id — it must never escape the data root."""
+    root = tmp_path / "app_data"
+    monkeypatch.setattr(integration_launcher, "APP_DATA_ROOT", root)
+
+    for bad in ("../evil", "../../etc", "", "a/../../b"):
+        with pytest.raises(ValueError):
+            integration_launcher._app_data_dir(bad)
+    # nothing outside the root was created
+    assert not (tmp_path / "evil").exists()

@@ -1,6 +1,11 @@
 """Port allocator — atomically hands out reverse-proxy ports from a configured range.
 
 Algorithm (single DB transaction):
+  0. Idempotency: if this app/job already holds an ACTIVE port, return it. One
+     app_id ⇒ one live service ⇒ one port. Without this, every relaunch (and
+     especially a crash-looping app under restart_policy) allocates a NEW port
+     and never releases the old one — leaking the whole pool until no app can
+     start. This is the primary guard against pool exhaustion.
   1. Reuse: pick the oldest row whose `released_at IS NOT NULL`, with `SELECT FOR UPDATE
      SKIP LOCKED`, mark it active, return its port.
   2. Expand: if no released row available and the pool isn't full, allocate the next
@@ -35,6 +40,33 @@ def allocate_port(
     settings = get_settings()
     low = settings.app_port_range_low
     high = settings.app_port_range_high
+
+    # 0) Idempotency — an app/job that already holds an active port keeps it.
+    #    A relaunch (or a crash-loop under restart_policy) must NOT allocate a
+    #    fresh port each time; that leaks the pool. Keyed by app_id (or job_id)
+    #    within the same scope; returns the lowest active port if somehow >1.
+    identity = None
+    if app_id is not None:
+        identity = PortAllocation.app_id == app_id
+    elif job_id is not None:
+        identity = PortAllocation.job_id == job_id
+    if identity is not None:
+        existing = db.execute(
+            select(PortAllocation)
+            .where(
+                identity,
+                PortAllocation.scope == scope,
+                PortAllocation.released_at.is_(None),
+            )
+            .order_by(PortAllocation.port.asc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if existing is not None:
+            logger.info(
+                "reused existing port %d for scope=%s app_id=%s job_id=%s",
+                existing.port, scope, app_id, job_id,
+            )
+            return existing.port
 
     # 1) Try to reuse the oldest released port — row-level lock prevents races.
     reuse_stmt = (

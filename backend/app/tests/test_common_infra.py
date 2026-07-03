@@ -11,6 +11,7 @@ file is still importable, matching the lightweight style of test_smoke.py.
 """
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -21,6 +22,8 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db.models.app import App, AppStatus, AppType, AppVisibility, ExecutionTarget
+from app.db.models.user import AuthSource, User, UserRole, UserStatus
 from app.db.session import engine
 from app.services import interpreter_pool, port_allocator, secret_manager
 
@@ -89,6 +92,66 @@ def test_port_allocator_allocate_release_reuse(db: Session) -> None:
     port_allocator.release_port(db, p1)
     p3 = port_allocator.allocate_port(db, scope="app")
     assert p3 == p1
+
+
+def _seed_app(db: Session) -> App:
+    """Insert a minimal User+App so an ``app_id`` FK can be satisfied."""
+    user = User(
+        email=f"port-{uuid.uuid4().hex[:8]}@example.com",
+        display_name="Port Test",
+        organization="Test",
+        password_hash="x",
+        auth_source=AuthSource.LOCAL,
+        status=UserStatus.ACTIVE,
+        role=UserRole.USER,
+        email_verified=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    app_id = f"port_{uuid.uuid4().hex[:8]}"
+    app = App(
+        id=app_id,
+        name="Port App",
+        owner_user_id=user.id,
+        app_type=AppType.WEB_APP,
+        execution_target=ExecutionTarget.LINUX_RUNNER,
+        status=AppStatus.STABLE,
+        visibility=AppVisibility.COMPANY,
+        upstream_repo_url="https://example.com/repo.git",
+        workspace_path=f"/tmp/{app_id}",
+    )
+    db.add(app)
+    db.commit()
+    return app
+
+
+def test_port_allocator_idempotent_by_app(db: Session) -> None:
+    """Re-allocating for the same app_id returns its EXISTING active port.
+
+    Regression guard for the pool-exhausting leak: a relaunch (and especially a
+    crash-looping app under restart_policy) must not allocate a fresh port each
+    time. One app_id ⇒ one live service ⇒ one port.
+    """
+    db.execute(text("DELETE FROM port_allocations"))
+    db.commit()
+    app = _seed_app(db)
+
+    p1 = port_allocator.allocate_port(db, app_id=app.id, scope="app")
+    p2 = port_allocator.allocate_port(db, app_id=app.id, scope="app")
+    p3 = port_allocator.allocate_port(db, app_id=app.id, scope="app")
+    assert p1 == p2 == p3  # idempotent — no new allocation on re-launch
+
+    active = [
+        r for r in port_allocator.list_allocations(db)
+        if r.app_id == app.id and r.released_at is None
+    ]
+    assert len(active) == 1  # exactly one port held, not three
+
+    # A different app still gets its own distinct port.
+    other = _seed_app(db)
+    p_other = port_allocator.allocate_port(db, app_id=other.id, scope="app")
+    assert p_other != p1
 
 
 # ─── secret_manager ──────────────────────────────────────────────────────────

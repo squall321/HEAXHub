@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# build-requirements.txt 의 pip 패키지를 온라인 빌드 호스트에서 download 해 Google Drive 에 올린다.
-# Docker Hub/PyPI 가 막힌 서버가 Drive 로 폴백해 받게 하는 pip 미러. dist-to-drive.sh 패턴 복제.
+# 온라인 빌드 호스트에서 pip 패키지 + npm 툴체인/스토어를 Google Drive 에 올린다.
+# Docker Hub/PyPI/npm 이 막힌 폐쇄망 서버가 Drive 로 폴백해 받게 하는 미러. dist-to-drive.sh 패턴.
 #
-# 흐름:  stage 생성 → pip download -r build-requirements.txt -d stage/pip/ →
-#         SHA256SUMS.pip → rclone copy → pkgs-<TS>/pip/ (+ latest/pip/ 누적) → 보존정책 purge
+# 나르는 것:
+#   pip : build-requirements.txt 의 패키지  (pip download)          → pkgs-<TS>/pip/  + latest/pip/
+#   npm : node+pnpm vendored tarball + pnpm fetch 오프라인 스토어    → pkgs-<TS>/npm/  + latest/npm/
+#         → 서버가 프론트(Vite/React)를 pnpm 으로 "직접" 빌드할 수 있게 한다(폐쇄망).
 #
 # Run on an ONLINE build host:
 #   ./deploy/apptainer/mirror-to-drive.sh
@@ -20,41 +22,67 @@ HEAX_DRIVE_REMOTE="${HEAX_DRIVE_REMOTE:-$(env_get HEAX_DRIVE_REMOTE)}"
 HEAX_DRIVE_RETAIN="${HEAX_DRIVE_RETAIN:-$(env_get HEAX_DRIVE_RETAIN)}"
 
 command -v rclone >/dev/null 2>&1 || { echo "✗ rclone not installed (https://rclone.org/install/)"; exit 1; }
-command -v pip >/dev/null 2>&1 || command -v pip3 >/dev/null 2>&1 || { echo "✗ pip not installed"; exit 1; }
-PIP="$(command -v pip3 || command -v pip)"
 REMOTE="${HEAX_DRIVE_REMOTE:-}"
 [ -n "$REMOTE" ] || { echo "✗ HEAX_DRIVE_REMOTE not set in .env (e.g. HeaxDrive:HEAXHub/dist)"; exit 1; }
 REMOTE="${REMOTE%/}"
 RETAIN="${HEAX_DRIVE_RETAIN:-3}"
 
-REQ="${BUILD_REQUIREMENTS:-build-requirements.txt}"
-[ -f "$REQ" ] || { echo "✗ $REQ 없음 — repo 루트에 build-requirements.txt 가 있어야 함"; exit 1; }
-# 주석/빈 행을 제외한 실제 패키지가 하나라도 있는지 확인 (없으면 받을 게 없음).
-if ! grep -qvE '^\s*(#.*)?$' "$REQ"; then
-  echo "! $REQ 에 활성 패키지가 없음 (전부 주석/빈 행) — 미러링 생략"
-  exit 0
-fi
-
 TS="$(date -u +%Y%m%d-%H%M%SZ)"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
-mkdir -p "$STAGE/pip"
+PUSHED=0
 
-echo "→ pip download -r $REQ → stage/pip/"
-"$PIP" download -r "$REQ" -d "$STAGE/pip"
+# ── pip 미러 (build-requirements.txt) ─────────────────────────────────────────
+REQ="${BUILD_REQUIREMENTS:-build-requirements.txt}"
+if [ -f "$REQ" ] && grep -qvE '^\s*(#.*)?$' "$REQ"; then
+  PIP="$(command -v pip3 || command -v pip || true)"
+  [ -n "$PIP" ] || { echo "✗ pip not installed (pip 미러에 필요)"; exit 1; }
+  mkdir -p "$STAGE/pip"
+  echo "→ pip download -r $REQ → stage/pip/"
+  "$PIP" download -r "$REQ" -d "$STAGE/pip"
+  shopt -s nullglob; files=("$STAGE"/pip/*); shopt -u nullglob
+  if [ ${#files[@]} -gt 0 ]; then
+    for f in "${files[@]}"; do echo "  · $(basename "$f")"; done
+    ( cd "$STAGE/pip" && sha256sum ./* > SHA256SUMS.pip )
+    echo "→ uploading pip → $REMOTE/pkgs-$TS/pip/ (+ latest/pip/)"
+    rclone copy --progress "$STAGE/pip/" "$REMOTE/pkgs-$TS/pip/"
+    rclone copy --progress "$STAGE/pip/" "$REMOTE/latest/pip/"   # latest 는 누적(copy)
+    PUSHED=1
+  else
+    echo "! pip download 결과 비어 있음 — pip 미러 생략"
+  fi
+else
+  echo "! $REQ 없음/활성 패키지 없음 — pip 미러 생략(npm 은 계속)"
+fi
 
-shopt -s nullglob
-files=("$STAGE"/pip/*)
-[ ${#files[@]} -gt 0 ] || { echo "✗ 받은 패키지가 없음 (pip download 결과 비어 있음)"; exit 1; }
-for f in "${files[@]}"; do echo "  · $(basename "$f")"; done
-shopt -u nullglob
+# ── npm 미러 (node+pnpm 툴체인 + pnpm 오프라인 스토어) ─────────────────────────
+# 폐쇄망 서버가 프론트를 스스로 빌드하도록 node/pnpm 바이너리 + 락파일 기반 스토어를 나른다.
+if [ -f frontend/pnpm-lock.yaml ]; then
+  echo "→ npm 미러 준비 (node+pnpm 툴체인 + pnpm fetch 스토어)"
+  # (1) node+pnpm vendored tarball 보장 (install-node.sh 가 cache/ 에 생성)
+  bash deploy/apptainer/install-node.sh >/dev/null || { echo "✗ install-node.sh 실패"; exit 1; }
+  NODE_CACHE="$(ls -t deploy/apptainer/cache/node-*-linux-*.tar.gz 2>/dev/null | head -1)"
+  [ -n "$NODE_CACHE" ] || { echo "✗ node cache tarball 없음 (install-node.sh 확인)"; exit 1; }
+  VNODE_BIN="$ROOT_DIR/$(ls -d deploy/apptainer/.tools/node-*/bin 2>/dev/null | head -1)"
+  mkdir -p "$STAGE/npm"
+  cp "$NODE_CACHE" "$STAGE/npm/"
+  echo "  · $(basename "$NODE_CACHE") ($(du -h "$NODE_CACHE" | cut -f1))"
+  # (2) pnpm fetch → 락파일 전량을 오프라인 스토어로. CI=true 는 no-TTY 환경 필수.
+  ( cd frontend && CI=true PATH="$VNODE_BIN:$PATH" pnpm fetch --store-dir "$STAGE/store" >/dev/null )
+  tar czf "$STAGE/npm/pnpm-store.tar.gz" -C "$STAGE" store
+  rm -rf "$STAGE/store"
+  echo "  · pnpm-store.tar.gz ($(du -h "$STAGE/npm/pnpm-store.tar.gz" | cut -f1))"
+  ( cd "$STAGE/npm" && sha256sum ./* > SHA256SUMS.npm )
+  echo "→ uploading npm → $REMOTE/pkgs-$TS/npm/ (+ latest/npm/)"
+  rclone copy --progress "$STAGE/npm/" "$REMOTE/pkgs-$TS/npm/"
+  rclone copy --progress "$STAGE/npm/" "$REMOTE/latest/npm/"
+  PUSHED=1
+else
+  echo "! frontend/pnpm-lock.yaml 없음 — npm 미러 생략"
+fi
 
-( cd "$STAGE/pip" && sha256sum ./* > SHA256SUMS.pip )
+[ "$PUSHED" = 1 ] || { echo "✗ 올린 게 없음 (pip·npm 둘 다 비어 있음)"; exit 1; }
 
-echo "→ uploading to $REMOTE/pkgs-$TS/pip/ (+ latest/pip/)"
-rclone copy --progress "$STAGE/pip/" "$REMOTE/pkgs-$TS/pip/"
-# latest/ 는 sync(미러·삭제) 대신 copy(누적) — 부분 푸시가 기존 미러를 지우지 않게.
-rclone copy --progress "$STAGE/pip/" "$REMOTE/latest/pip/"
-
+# ── 보존정책 (오래된 pkgs-<TS>/ purge) ────────────────────────────────────────
 if [ "$RETAIN" -gt 0 ]; then
   echo "→ retention: keep last $RETAIN pkgs set(s)"
   rclone lsf --dirs-only "$REMOTE/" 2>/dev/null | sed 's#/$##' | grep -E '^pkgs-' \
@@ -64,5 +92,5 @@ if [ "$RETAIN" -gt 0 ]; then
 fi
 
 echo
-echo "✓ pushed pip mirror to $REMOTE"
+echo "✓ pushed mirror to $REMOTE"
 echo "  On server:  set HEAX_DRIVE_REMOTE in .env  →  ./deploy/apptainer/mirror-from-drive.sh"

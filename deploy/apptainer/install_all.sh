@@ -121,20 +121,18 @@ if [[ -f "$FRONTEND_DIR/dist/index.html" ]]; then
 elif [[ $SKIP_FE -eq 1 ]]; then
   warn "--skip-build-frontend — dist 없는 상태로 진행 (Caddy 가 빈 SPA 응답)"
 elif [[ "${HEAX_NO_BUILD:-0}" == "1" ]]; then
-  # cae00 등 npm 불가 환경: 빌드하지 말고 Drive 에서 받으라고 안내.
-  err "dist 없음 + HEAX_NO_BUILD=1 — 온라인에서 빌드 후 Drive 로 받으세요:"
-  echo "    (online)  HEAX_BASE_PATH=/heax-hub/ pnpm --dir frontend build && ./deploy/apptainer/dist-to-drive.sh"
-  echo "    (cae00 )  ./deploy/apptainer/dist-from-drive.sh"
+  # HEAX_NO_BUILD=1: 빌드 금지(명시). pre-built dist 를 받거나 오프라인 미러로 직접 빌드.
+  err "dist 없음 + HEAX_NO_BUILD=1 — 빌드하지 않음. 둘 중 하나:"
+  echo "    (A) pre-built dist 수령:  ./deploy/apptainer/dist-from-drive.sh"
+  echo "    (B) 오프라인 직접 빌드:   ./deploy/apptainer/mirror-from-drive.sh \\"
+  echo "                              && HEAX_BASE_PATH=/heax-hub/ ./deploy/apptainer/build-frontend.sh"
   exit 1
-elif command -v pnpm >/dev/null 2>&1; then
-  # HEAX_BASE_PATH=/heax-hub/ → build the SPA for the HWAX portal sub-path (assets/router/api/ws
-  # under the prefix). Empty → root (standalone), unchanged.
-  # Read HEAX_BASE_PATH from .env (set HEAX_BASE_PATH=/heax-hub/ to build for the portal sub-path).
-  [ -f "$ROOT_DIR/.env" ] && { set -a; . "$ROOT_DIR/.env"; set +a; }
-  ok "pnpm install + build${HEAX_BASE_PATH:+ (base ${HEAX_BASE_PATH})}"
-  ( cd "$FRONTEND_DIR" && pnpm install --frozen-lockfile && VITE_BASE_PATH="${HEAX_BASE_PATH:-/}" pnpm build )
 else
-  warn "pnpm 없음 — bundle 에 포함된 dist 가 있어야 합니다."
+  # build-frontend.sh 가 알아서: vendored node+pnpm(.tools) + 오프라인 스토어 우선,
+  # 없으면 시스템 pnpm 온라인. 툴체인이 아예 없으면 명확히 err. HEAX_BASE_PATH(포털
+  # 서브패스)는 build-frontend.sh 가 .env 에서 읽어 VITE_BASE_PATH 로 주입.
+  ok "frontend 빌드 → build-frontend.sh"
+  bash "$ROOT_DIR/deploy/apptainer/build-frontend.sh"
 fi
 
 # ── 4) reset 모드면 기존 stop ─────────────────────────────────────────

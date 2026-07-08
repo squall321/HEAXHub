@@ -57,16 +57,38 @@ mkdir -p var/pkg-mirror/pip
 # ── 1. Postgres ───────────────────────────────────────────────
 if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-pg; then
   echo "→ start heax-pg"
-  "$APPTAINER" instance start \
-    --bind "$PWD/var/pg:/var/lib/postgresql/data" \
-    --bind "$PWD/var/pg_run:/var/run/postgresql" \
-    "$PG_SIF" heax-pg >> var/logs/postgres-start.log 2>&1
+  # (a) preflight: SIF 없으면 조용한 hang 대신 즉시 명확히 실패.
+  if [ ! -f "$PG_SIF" ]; then
+    echo "  ✗ postgres SIF 없음: $PG_SIF" >&2
+    echo "    → 온라인 박스에서 빌드해 Drive/scp 로 서버에 전달하세요." >&2
+    exit 1
+  fi
+  # (b) 스테일 lock 정리: 지금 heax-pg 인스턴스가 안 떠 있으므로 pgdata 의
+  #     postmaster.pid 는 비정상 종료 잔재다. 남아 있으면 postgres 가 기동을 거부해
+  #     아래 준비-대기가 60s 헛돌다 실패한다("start heax-pg 에서 멈춤"의 전형). 제거.
+  rm -f var/pg/pgdata/postmaster.pid 2>/dev/null || true
+  # (c) instance start — 실패하면 조용히 죽지 말고 로그를 띄우고 원인 힌트 후 종료.
+  if ! "$APPTAINER" instance start \
+        --bind "$PWD/var/pg:/var/lib/postgresql/data" \
+        --bind "$PWD/var/pg_run:/var/run/postgresql" \
+        "$PG_SIF" heax-pg >> var/logs/postgres-start.log 2>&1; then
+    echo "  ✗ apptainer instance start heax-pg 실패 — var/logs/postgres-start.log 끝:" >&2
+    tail -n 15 var/logs/postgres-start.log >&2
+    if grep -qiE "namespace|userns|not permitted|clone" var/logs/postgres-start.log 2>/dev/null; then
+      echo "  → 커널 unprivileged user namespaces 문제로 보입니다:" >&2
+      echo "     cat /proc/sys/kernel/unprivileged_userns_clone   # 1 이어야 함" >&2
+    fi
+    exit 1
+  fi
   # First-time init if empty
   if [ ! -d var/pg/pgdata ]; then
-    "$APPTAINER" exec instance://heax-pg sh -c '
-      echo heaxhub > /tmp/pw
-      initdb -D /var/lib/postgresql/data/pgdata -U heaxhub --pwfile=/tmp/pw -A scram-sha-256 -E UTF8
-    '
+    if ! "$APPTAINER" exec instance://heax-pg sh -c '
+          echo heaxhub > /tmp/pw
+          initdb -D /var/lib/postgresql/data/pgdata -U heaxhub --pwfile=/tmp/pw -A scram-sha-256 -E UTF8
+        '; then
+      echo "  ✗ initdb 실패 — var/pg 권한/디스크 확인" >&2
+      exit 1
+    fi
   fi
   # setsid + nohup so postgres detaches from the exec parent. Without this,
   # the "$APPTAINER" exec wrapper returning makes the child get SIGHUP a few
@@ -76,11 +98,20 @@ if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx he
     setsid nohup postgres -D /var/lib/postgresql/data/pgdata -p $PG_PORT -h 0.0.0.0 > /tmp/postgres.log 2>&1 < /dev/null &
   " > /dev/null 2>&1
   sleep 1
-  # wait
+  # (d) 준비-대기 — 안 뜨면 60s 헛돌다 조용히 넘어가지 말고, 데몬 로그를 띄우고 종료.
+  pg_ready=0
   for i in $(seq 1 60); do
-    "$APPTAINER" exec instance://heax-pg pg_isready -h 127.0.0.1 -p $PG_PORT -U heaxhub >/dev/null 2>&1 && break
+    if "$APPTAINER" exec instance://heax-pg pg_isready -h 127.0.0.1 -p $PG_PORT -U heaxhub >/dev/null 2>&1; then
+      pg_ready=1; break
+    fi
     sleep 1
   done
+  if [ "$pg_ready" != 1 ]; then
+    echo "  ✗ postgres 가 :$PG_PORT 에서 60s 내 준비되지 않음 — 데몬 로그(/tmp/postgres.log):" >&2
+    "$APPTAINER" exec instance://heax-pg cat /tmp/postgres.log 2>&1 | tail -n 20 >&2
+    echo "  (흔한 원인: 스테일 lock·권한·포트충돌 — 위 로그 참고)" >&2
+    exit 1
+  fi
   # create db if missing
   if ! "$APPTAINER" exec instance://heax-pg env PGPASSWORD=heaxhub \
         psql -h 127.0.0.1 -p $PG_PORT -U heaxhub -d heaxhub -tAc "SELECT 1" >/dev/null 2>&1; then

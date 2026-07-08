@@ -82,6 +82,25 @@ resolve_apptainer || true
 apptainer() { command "${_HEAX_APPT:-apptainer}" "$@"; }
 export -f apptainer 2>/dev/null || true
 
+# 벤더 apptainer(.tools)의 apptainer.conf 가 없으면 confgen 으로 생성한다.
+# 드라이브 미러링/부분 추출로 usr/etc/ 가 빠지면 이 파일이 없어, 모든 exec/instance 가
+# "couldn't parse configuration file .../apptainer.conf: no such file" 로 즉사한다(→ pg/redis/caddy 전멸).
+ensure_apptainer_conf() {
+  local bin="${_HEAX_APPT:-}" usr conf
+  [[ -n "$bin" ]] || return 0
+  case "$bin" in "$TOOLS_DIR"/*) : ;; *) return 0 ;; esac   # 벤더 설치에만 적용(시스템 apptainer 무손상)
+  usr="$(cd "$(dirname "$bin")/.." 2>/dev/null && pwd)" || return 0   # .../apptainer-<ver>/usr
+  conf="$usr/etc/apptainer/apptainer.conf"
+  [[ -f "$conf" ]] && return 0
+  mkdir -p "$(dirname "$conf")"
+  if "$bin" confgen "$conf" >/dev/null 2>&1 && [[ -s "$conf" ]]; then
+    note "apptainer.conf 누락 → confgen 으로 자동 생성: $conf"
+  else
+    err "apptainer.conf 자동 생성 실패: $conf (bash deploy/apptainer/install-apptainer.sh --force 로 재설치 필요)"
+    return 1
+  fi
+}
+
 require_apptainer() {
   resolve_apptainer || true
   if [[ -z "${_HEAX_APPT:-}" || ! -x "$_HEAX_APPT" ]]; then
@@ -90,6 +109,7 @@ require_apptainer() {
     err "    호스트에 apptainer 1.3.x 를 설치하세요."
     exit 1
   fi
+  ensure_apptainer_conf || true   # conf 누락 시 self-heal (usr/etc 가 빠진 미러링 서버 대비)
   local v
   v="$("$_HEAX_APPT" --version 2>&1 | head -1)"
   note "apptainer: $_HEAX_APPT ($v)"

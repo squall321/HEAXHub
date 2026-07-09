@@ -82,23 +82,45 @@ resolve_apptainer || true
 apptainer() { command "${_HEAX_APPT:-apptainer}" "$@"; }
 export -f apptainer 2>/dev/null || true
 
-# 벤더 apptainer(.tools)의 apptainer.conf 가 없으면 confgen 으로 생성한다.
-# 드라이브 미러링/부분 추출로 usr/etc/ 가 빠지면 이 파일이 없어, 모든 exec/instance 가
-# "couldn't parse configuration file .../apptainer.conf: no such file" 로 즉사한다(→ pg/redis/caddy 전멸).
-ensure_apptainer_conf() {
-  local bin="${_HEAX_APPT:-}" usr conf
+# 벤더 apptainer(.tools)의 런타임 설정(usr/etc/apptainer/*)이 불완전하면 캐시된 .deb 로 복구한다.
+# 드라이브 미러링/부분추출로 usr/etc 가 통째로 빠지면 apptainer.conf 뿐 아니라 capability.json·
+# ecl.toml·seccomp-profiles 등도 없어, exec/instance 가 'no such file' → starter exit 255 로 즉사한다
+# (→ pg/redis/caddy 전멸 → heal.sh '일부 컴포넌트 미복구'). confgen 은 apptainer.conf 하나만 만들 수
+# 있으므로 부족 — 캐시된 .deb 를 prefix 에 재추출해 usr/etc 전체를 되살린다(오프라인, 다운로드 안 함).
+ensure_apptainer_runtime() {
+  local bin="${_HEAX_APPT:-}" usr etc prefix deb
   [[ -n "$bin" ]] || return 0
   case "$bin" in "$TOOLS_DIR"/*) : ;; *) return 0 ;; esac   # 벤더 설치에만 적용(시스템 apptainer 무손상)
   usr="$(cd "$(dirname "$bin")/.." 2>/dev/null && pwd)" || return 0   # .../apptainer-<ver>/usr
-  conf="$usr/etc/apptainer/apptainer.conf"
-  [[ -f "$conf" ]] && return 0
-  mkdir -p "$(dirname "$conf")"
-  if "$bin" confgen "$conf" >/dev/null 2>&1 && [[ -s "$conf" ]]; then
-    note "apptainer.conf 누락 → confgen 으로 자동 생성: $conf"
-  else
-    err "apptainer.conf 자동 생성 실패: $conf (bash deploy/apptainer/install-apptainer.sh --force 로 재설치 필요)"
-    return 1
+  etc="$usr/etc/apptainer"
+  # capability.json 은 confgen 이 못 만드는 핵심 파일 — 이게 있으면 etc 트리가 온전.
+  [[ -f "$etc/apptainer.conf" && -f "$etc/capability.json" ]] && return 0
+
+  warn "apptainer 런타임 설정 불완전(capability.json 등 누락) → 캐시 .deb 로 usr/etc 재추출(오프라인)"
+  prefix="$(dirname "$usr")"   # .../apptainer-<ver>
+  for deb in "$CACHE_DIR"/apptainer_*.deb "$ROOT_DIR"/infra/packages/deb/apptainer_*.deb; do
+    [[ -f "$deb" ]] || continue
+    if dpkg-deb -x "$deb" "$prefix" 2>/dev/null && [[ -f "$etc/capability.json" ]]; then
+      [[ -f "$etc/apptainer.conf" ]] || "$bin" confgen "$etc/apptainer.conf" >/dev/null 2>&1
+      ok "apptainer usr/etc 복구 완료: $(basename "$deb")"
+      return 0
+    fi
+  done
+  # 캐시 .deb 미스 → 레포에 넣어둔 stock etc 템플릿 복사(오프라인 보장 폴백, 다운로드 불필요)
+  local tpl="$APPT_DIR/vendor-apptainer-etc"
+  if [[ -f "$tpl/capability.json" ]]; then
+    mkdir -p "$etc"
+    cp -a "$tpl/." "$etc/" 2>/dev/null
+    rm -f "$etc/README.md"     # 템플릿 설명 파일은 apptainer etc 에 넣지 않음
+    [[ -f "$etc/apptainer.conf" ]] || "$bin" confgen "$etc/apptainer.conf" >/dev/null 2>&1
+    if [[ -f "$etc/capability.json" ]]; then
+      ok "apptainer usr/etc 복구 완료(레포 stock 템플릿: $tpl)"
+      return 0
+    fi
   fi
+  err "apptainer usr/etc 복구 실패 — 캐시 .deb·stock 템플릿 모두 없음. deploy/apptainer/cache/ 에"
+  err "  apptainer_1.3.6_amd64.deb 를 두거나, 온라인에서 bash deploy/apptainer/install-apptainer.sh --force"
+  return 1
 }
 
 require_apptainer() {
@@ -109,7 +131,7 @@ require_apptainer() {
     err "    호스트에 apptainer 1.3.x 를 설치하세요."
     exit 1
   fi
-  ensure_apptainer_conf || true   # conf 누락 시 self-heal (usr/etc 가 빠진 미러링 서버 대비)
+  ensure_apptainer_runtime || true   # usr/etc 누락/불완전 시 self-heal (미러링으로 etc 빠진 서버 대비)
   local v
   v="$("$_HEAX_APPT" --version 2>&1 | head -1)"
   note "apptainer: $_HEAX_APPT ($v)"

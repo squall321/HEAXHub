@@ -115,14 +115,14 @@ ensure_apptainer_runtime() {
     fi
   fi
 
-  # 2) 심링크/디렉토리 (deb 에 없음): usr/etc→../etc, usr/var→../var, var 생성
-  [[ -e "$usr/etc" ]] || ln -sfn ../etc "$usr/etc"
-  # usr/etc 가 심링크가 아닌 빈 실디렉토리 등으로 남아 configs 가 안 잡히면 직접 채운다.
-  if [[ ! -e "$usr/etc/apptainer/capability.json" && -f "$prefix/etc/apptainer/capability.json" ]]; then
-    mkdir -p "$usr/etc/apptainer"; cp -a "$prefix/etc/apptainer/." "$usr/etc/apptainer/" 2>/dev/null
+  # 2) 심링크/디렉토리 (deb 에 없음): 설정이 prefix/etc 에 확보됐을 때만, 이전 부분설치의 실디렉토리
+  #    잔재를 지우고 usr/etc→../etc·usr/var→../var 를 건다(설정 원본은 etc/ 에 있어 제거 무해).
+  if [[ -f "$prefix/etc/apptainer/capability.json" ]]; then
+    for L in etc var; do [[ -L "$usr/$L" || ! -e "$usr/$L" ]] || rm -rf "$usr/$L"; done
+    mkdir -p "$prefix/var"
+    ln -sfn ../etc "$usr/etc"
+    ln -sfn ../var "$usr/var"
   fi
-  mkdir -p "$prefix/var"
-  [[ -e "$usr/var" ]] || ln -sfn ../var "$usr/var"
 
   # 3) 검증
   if [[ -e "$usr/etc/apptainer/capability.json" && -e "$usr/var" ]]; then

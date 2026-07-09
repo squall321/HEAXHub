@@ -112,6 +112,18 @@ mkdir -p "$PREFIX"
 note "→ dpkg-deb -x $DEB $PREFIX"
 dpkg-deb -x "$DEB" "$PREFIX"
 
+# 3b) 런타임 트리 완성 — .deb 는 설정을 etc/apptainer/ 에 담고 usr/bin 만 넣는다. apptainer 바이너리는
+#     usr/etc/apptainer·usr/var 를 찾으므로(relocated prefix 설치) 심링크와 var 를 직접 만든다.
+#     이게 없으면 exec/instance 가 'capability.json/usr/var: no such file' → starter exit 255 로 죽는다.
+#     이전 부분설치로 usr/etc·usr/var 가 실디렉토리로 남아있으면(심링크 아님) 지우고 다시 건다
+#     — 설정 원본은 etc/ 에 안전히 있으므로 usr/etc 실디렉토리 제거는 무해하다.
+for L in etc var; do
+  [[ -L "$PREFIX/usr/$L" || ! -e "$PREFIX/usr/$L" ]] || rm -rf "$PREFIX/usr/$L"
+done
+mkdir -p "$PREFIX/var"
+ln -sfn ../etc "$PREFIX/usr/etc"
+ln -sfn ../var "$PREFIX/usr/var"
+
 # 4) 검증
 if [[ ! -x "$BIN" ]]; then
   err "추출 후에도 $BIN 가 실행 가능하지 않습니다."
@@ -129,6 +141,10 @@ if [[ -z "$VER_OUT" ]]; then
   err "  sudo apt install -y libsubid4 fuse2fs squashfs-tools-ng uidmap"
   exit 1
 fi
+
+# 설정 트리(usr/etc/apptainer 심링크 경유 capability.json)가 실제로 잡히는지 확인
+[[ -e "$PREFIX/usr/etc/apptainer/capability.json" && -e "$PREFIX/usr/var" ]] \
+  || warn "런타임 트리 미완성(usr/etc/apptainer/capability.json 또는 usr/var) — 재설치/재점검 필요"
 
 ok "설치 완료: $VER_OUT"
 ok "binary    : $BIN"

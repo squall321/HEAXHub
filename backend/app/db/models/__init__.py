@@ -8,6 +8,7 @@ from app.db.models.submission import Submission  # noqa: F401
 from app.db.models.user import User  # noqa: F401
 from app.db.models.user_favorite import UserFavorite  # noqa: F401
 from app.db.models.refresh_token import RefreshToken  # noqa: F401
+from app.db.models.personal_access_token import PersonalAccessToken  # noqa: F401
 from app.db.models.port_allocation import PortAllocation  # noqa: F401
 from app.db.models.secret_value import SecretValue  # noqa: F401
 from app.db.models.change_request import ChangeRequest  # noqa: F401

@@ -167,3 +167,25 @@ def verify_github_signature(secret: str, body: bytes, signature: str | None) -> 
         return False
     expected = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
+
+
+# --- personal access tokens (PAT) --------------------------------------------
+# 헤드리스 클라이언트(MCP·CI)용 장수명 토큰. JWT가 아니라 무작위 시크릿이며
+# DB에는 SHA-256 해시만 저장한다 (services/pat_service.py 참조).
+
+PAT_PREFIX = "heax_pat_"
+
+
+def generate_pat_token() -> str:
+    """Return a new plaintext PAT (shown to the user exactly once)."""
+    return PAT_PREFIX + secrets.token_urlsafe(32)
+
+
+def hash_pat_token(token: str) -> str:
+    """SHA-256 hex digest used as the storage/lookup key."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def is_pat_token(token: str | None) -> bool:
+    """PAT 판별 — Bearer 자격증명을 JWT 경로와 PAT 경로로 라우팅하는 스위치."""
+    return bool(token) and token.startswith(PAT_PREFIX)

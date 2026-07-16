@@ -7,7 +7,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.errors import ForbiddenError, UnauthorizedError
-from app.core.security import decode_token
+from app.core.security import decode_token, is_pat_token
 from app.db.models.app import App
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.session import get_db
@@ -27,6 +27,11 @@ def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
 ) -> User:
     token = _extract_bearer(authorization)
+    if is_pat_token(token):
+        # 헤드리스 클라이언트(MCP·CI)의 장수명 PAT — JWT와 동일한 사용자 권한으로 해석.
+        from app.services import pat_service  # 순환 import 방지 지연 로드
+
+        return pat_service.resolve_user(db, token)
     payload = decode_token(token, expected_type="access")
     user = db.get(User, payload["sub"])
     if user is None:

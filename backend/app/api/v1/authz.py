@@ -12,11 +12,11 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Response, status
 
 from app.core.errors import UnauthorizedError
-from app.core.security import decode_token
+from app.core.security import decode_token, is_pat_token
 from app.db.models.app import App, AppStatus, AppVisibility
 from app.db.models.user import User, UserStatus
 from app.deps import DbSession
-from app.services import permission_service
+from app.services import pat_service, permission_service
 
 router = APIRouter(tags=["authz"])
 
@@ -45,6 +45,9 @@ def _user_from_request(
         token = authorization.split(" ", 1)[1].strip()
     if not token:
         return None
+    # 헤드리스 클라이언트(MCP·CI)의 PAT — 세션 JWT와 동일 권한으로 해석 (검증 실패 → 401).
+    if is_pat_token(token):
+        return pat_service.resolve_user(db, token)
     # 검증 실패(만료·위변조)는 미인증으로 취급해 401 로 흐르게 한다.
     payload = decode_token(token, expected_type="access")
     user = db.get(User, payload["sub"])

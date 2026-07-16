@@ -70,3 +70,30 @@ class AuthTokens(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: UserPublic
+
+
+# --- personal access tokens (PAT) --------------------------------------------
+
+
+class PatCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120, description="토큰 용도 라벨 (예: 'claude-mcp')")
+    expires_days: int | None = Field(
+        default=None, ge=1, le=3650,
+        description="만료일수. 생략하면 무기한 (폐기로만 무효화)")
+
+
+class PatPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    token_prefix: str
+    created_at: datetime
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+
+class PatCreated(PatPublic):
+    # 평문 토큰 — 발급 응답에서 단 한 번만 노출된다.
+    token: str

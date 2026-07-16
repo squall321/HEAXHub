@@ -1,7 +1,9 @@
 """Authentication endpoints (local mode)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response, status
+import uuid
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.config import get_settings
 from app.deps import CurrentUser, DbSession, client_ip
@@ -11,12 +13,15 @@ from app.schemas.auth import (
     LogoutRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
+    PatCreated,
+    PatCreateRequest,
+    PatPublic,
     RefreshRequest,
     UserPublic,
     UserRegister,
     VerifyEmailRequest,
 )
-from app.services import audit_service, auth_service
+from app.services import audit_service, auth_service, pat_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -125,4 +130,59 @@ def password_reset_request(payload: PasswordResetRequest, db: DbSession) -> dict
 @router.post("/password/reset", status_code=status.HTTP_204_NO_CONTENT)
 def password_reset(payload: PasswordResetConfirm, db: DbSession) -> None:
     auth_service.confirm_password_reset(db, payload)
+    return None
+
+
+# --- personal access tokens (PAT) --------------------------------------------
+# 헤드리스 클라이언트(MCP·CI)용 장수명 자격증명. 브라우저 SSO 쿠키를 못 타는
+# 클라이언트가 Authorization: Bearer <PAT> 로 /apps/* forward_auth 와 API 를 통과한다.
+
+
+@router.post("/tokens", response_model=PatCreated, status_code=status.HTTP_201_CREATED)
+def create_pat(
+    payload: PatCreateRequest,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
+) -> PatCreated:
+    """PAT 발급. 평문 토큰은 이 응답에서 단 한 번만 반환된다."""
+    row, plaintext = pat_service.issue(
+        db, user=user, name=payload.name, expires_days=payload.expires_days
+    )
+    audit_service.log(
+        db,
+        actor_user_id=user.id,
+        action="user.pat_issued",
+        target_type="personal_access_token",
+        target_id=str(row.id),
+        meta={"name": row.name, "expires_at": row.expires_at.isoformat() if row.expires_at else None},
+        ip_address=client_ip(request),
+    )
+    return PatCreated(token=plaintext, **PatPublic.model_validate(row).model_dump())
+
+
+@router.get("/tokens", response_model=list[PatPublic])
+def list_pats(user: CurrentUser, db: DbSession) -> list[PatPublic]:
+    """내 PAT 목록 (평문은 반환하지 않는다 — token_prefix로 식별)."""
+    return [PatPublic.model_validate(r) for r in pat_service.list_for_user(db, user.id)]
+
+
+@router.delete("/tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_pat(
+    token_id: uuid.UUID,
+    user: CurrentUser,
+    db: DbSession,
+    request: Request,
+) -> None:
+    """PAT 폐기 (소유자 또는 admin). 즉시 무효화된다."""
+    if not pat_service.revoke(db, actor=user, token_id=token_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+    audit_service.log(
+        db,
+        actor_user_id=user.id,
+        action="user.pat_revoked",
+        target_type="personal_access_token",
+        target_id=str(token_id),
+        ip_address=client_ip(request),
+    )
     return None

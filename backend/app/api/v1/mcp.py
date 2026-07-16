@@ -69,6 +69,8 @@ def list_mcp_servers(db: DbSession, user: CurrentUser) -> dict[str, Any]:
                 "name": app.name,
                 "path": f"/apps/{app.id}{sub}",
                 "transport": str(mcp.get("transport", "streamable_http")),
+                # 게이트웨이 그룹 필터 슬롯 — 비면 전체 공개, 있으면 caller groups 교집합 필요.
+                "allowed_groups": list(mcp.get("allowed_groups") or []),
             }
         )
     return {"servers": servers}

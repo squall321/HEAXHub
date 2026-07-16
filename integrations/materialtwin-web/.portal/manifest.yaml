@@ -22,8 +22,15 @@ restart_policy:
   max_retries: 3
 source:
   type: git
-  url: https://github.com/squall321/MaterialTwinWeb
+  # 로컬 git 참조 — push 없이 로컬 커밋을 SIF 빌드에 반영 (GitHub push 후 https URL로 복원 가능)
+  url: file:///home/koopark/claude/MaterialTwinWeb
   ref: main
   # subpath: ""          # 모노레포면 하위 디렉터리 지정
 permissions:
   visibility: company     # company | department | team | private
+
+# HWAX MCP Gateway 자동탐지 opt-in (웹앱 /mcp 마운트, 삭제 툴 비노출 기본)
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http

@@ -23,6 +23,7 @@ Algorithm (single DB transaction):
 from __future__ import annotations
 
 import logging
+import socket
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -32,6 +33,21 @@ from app.config import get_settings
 from app.db.models.port_allocation import PortAllocation
 
 logger = logging.getLogger(__name__)
+
+
+def _port_is_free(port: int, host: str = "127.0.0.1") -> bool:
+    """OS 레벨에서 해당 포트가 실제로 비어 있는지 bind 시도로 확인.
+
+    DB 추적만으로는 HEAXHub가 관리하지 않는 외부 리스너(예: Prometheus
+    node_exporter=9100)를 알 수 없어, 점유 포트를 그대로 배정하는 문제가 있었다.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
 
 
 def allocate_port(
@@ -77,15 +93,17 @@ def allocate_port(
             return existing.port
 
     # 1) Try to reuse the oldest released port — row-level lock prevents races.
+    #    OS 레벨에서 점유된 포트(외부 리스너)는 건너뛰고 다음 released 포트를 시도.
     reuse_stmt = (
         select(PortAllocation)
         .where(PortAllocation.released_at.is_not(None))
         .order_by(PortAllocation.released_at.asc())
-        .limit(1)
         .with_for_update(skip_locked=True)
     )
-    candidate = db.execute(reuse_stmt).scalar_one_or_none()
-    if candidate is not None:
+    for candidate in db.execute(reuse_stmt).scalars():
+        if not _port_is_free(candidate.port):
+            logger.warning("released port %d now OS-occupied, skipping", candidate.port)
+            continue
         candidate.app_id = app_id
         candidate.job_id = job_id
         candidate.scope = scope
@@ -96,8 +114,12 @@ def allocate_port(
         return candidate.port
 
     # 2) Otherwise allocate a fresh port at the high-water mark + 1, within range.
+    #    OS 레벨에서 점유된 포트(예: Prometheus node_exporter=9100)는 건너뛴다.
     max_port = db.execute(select(func.max(PortAllocation.port))).scalar_one()
     next_port = low if max_port is None else max(low, int(max_port) + 1)
+    while next_port <= high and not _port_is_free(next_port):
+        logger.warning("port %d occupied at OS level, skipping", next_port)
+        next_port += 1
     if next_port > high:
         db.rollback()
         raise RuntimeError("port pool exhausted")

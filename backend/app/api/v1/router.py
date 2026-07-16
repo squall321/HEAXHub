@@ -13,6 +13,7 @@ from app.api.v1 import (
     installers,
     jobs,
     launcher_agents,
+    mcp,
     portal_sso,
     submissions,
     users,
@@ -25,6 +26,7 @@ api_router.include_router(authz.router)
 api_router.include_router(portal_sso.router)
 api_router.include_router(users.router)
 api_router.include_router(apps.router)
+api_router.include_router(mcp.router)
 api_router.include_router(jobs.router)
 api_router.include_router(submissions.router)
 api_router.include_router(admin.router)

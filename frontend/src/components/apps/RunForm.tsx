@@ -67,7 +67,10 @@ export function RunForm({ appId, manifest }: RunFormProps) {
 
   if (isService) {
     const openService = () => {
-      window.open(`/apps/${appId}/`, "_blank");
+      // base-aware: 포털 뒤에선 BASE_URL="/heax-hub/" 이므로 절대 "/apps/…" 는 포털 루트로
+      // 튕겨 400 이 난다. BASE_URL 을 접두어로 붙여 허브 오리진 기준 경로로 연다.
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      window.open(`${base}/apps/${appId}/`, "_blank");
     };
     return (
       <Card>

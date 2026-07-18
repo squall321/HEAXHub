@@ -19,9 +19,19 @@ STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 [ -f "$STAGE/app-data.tar.gz" ] || { echo "· Drive에 app-data 없음 — 복원 생략(첫 배포면 정상)"; exit 0; }
 
 APPDATA="$ROOT_DIR/var/app_data"; mkdir -p "$APPDATA"
-if [ -n "$(ls -A "$APPDATA" 2>/dev/null)" ]; then      # 직전 상태 안전백업(AIDH restore 패턴)
+NONEMPTY=""; [ -n "$(ls -A "$APPDATA" 2>/dev/null)" ] && NONEMPTY=1
+
+# ⚠ 데이터 보존 기본값: cae00 이 실사용처(양쪽에서 재료 등록)라, 이미 데이터가 있으면
+#   Drive(dev 스냅샷)로 '덮어쓰지 않는다'. 덮어쓰면 cae00 에 쌓인 재료가 사라진다(SF DB 와
+#   동일 정책). 빈 상태(첫 배포)면 시드로 복원. 명시적 갱신만 HEAX_RESTORE_APPDATA=1.
+if [ -n "$NONEMPTY" ] && [ "${HEAX_RESTORE_APPDATA:-0}" != "1" ]; then
+  echo "· var/app_data 에 기존 데이터 존재 → 복원 생략(보존). 강제 갱신은 HEAX_RESTORE_APPDATA=1"
+  exit 0
+fi
+
+if [ -n "$NONEMPTY" ]; then      # 강제 복원 경로 — 직전 상태 안전백업(AIDH restore 패턴)
   BK="$ROOT_DIR/var/app_data.bak-$(date -u +%Y%m%d-%H%M%SZ)"
-  cp -a "$APPDATA" "$BK"; echo "· 직전 app_data → $BK"
+  cp -a "$APPDATA" "$BK"; echo "· 직전 app_data → $BK (롤백용)"
 fi
 tar -xzf "$STAGE/app-data.tar.gz" -C "$APPDATA"
 echo "✓ app-data 복원됨 → var/app_data (materialtwin 재료 DB 등)"

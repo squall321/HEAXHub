@@ -5,8 +5,10 @@
 # + optional service SIFs (HEAX_DRIVE_WITH_SIFS). latest/ accumulates (copy, not mirror).
 #
 # Run on an ONLINE build host, AFTER building the SPA for the portal sub-path:
-#   HEAX_BASE_PATH=/heax-hub/ pnpm --dir frontend build      # base baked into frontend/dist
+#   VITE_BASE_PATH=/heax-hub/ pnpm --dir frontend build      # base baked into frontend/dist
 #   ./deploy/apptainer/dist-to-drive.sh
+# (vite.config 는 VITE_BASE_PATH 를 읽는다 — 과거 HEAX_BASE_PATH 표기는 무효라 루트 base
+#  dist 가 업로드돼 포털 서브패스에서 자산 404를 냈다. 아래 가드가 재발을 차단한다.)
 #
 # Needs in .env:  HEAX_DRIVE_REMOTE=HeaxDrive:HEAXHub/dist   (rclone remote+path)
 # rclone must be configured once (`rclone config` → drive). Reuses any existing remote alias.
@@ -25,6 +27,18 @@ REMOTE="${HEAX_DRIVE_REMOTE:-}"
 [ -n "$REMOTE" ] || { echo "✗ HEAX_DRIVE_REMOTE not set in .env (e.g. HeaxDrive:HEAXHub/dist)"; exit 1; }
 REMOTE="${REMOTE%/}"
 RETAIN="${HEAX_DRIVE_RETAIN:-3}"
+
+# ── base 가드: 포털 서브패스(/heax-hub/)로 빌드되지 않은 dist 는 업로드를 거부한다 ──
+# (루트 base dist 가 배포되면 포털에서 자산 404 전면 장애. 의도적 루트 배포는
+#  HEAX_DIST_ALLOW_ROOT_BASE=1 로만 허용.)
+if [ -f frontend/dist/index.html ] && [ "${HEAX_DIST_ALLOW_ROOT_BASE:-0}" != "1" ]; then
+  if ! grep -q '"/heax-hub/assets/' frontend/dist/index.html; then
+    echo "✗ frontend/dist 가 /heax-hub/ base 로 빌드되지 않음 — 포털 배포 시 자산 404가 난다."
+    echo "  다시 빌드:  VITE_BASE_PATH=/heax-hub/ pnpm --dir frontend build"
+    echo "  (의도적 루트 배포면 HEAX_DIST_ALLOW_ROOT_BASE=1)"
+    exit 1
+  fi
+fi
 
 TS="$(date -u +%Y%m%d-%H%M%SZ)"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT

@@ -47,4 +47,22 @@ export const authApi = {
 
   updateProfile: (payload: { display_name?: string; organization?: string }) =>
     api.patch<User>("/users/me", payload),
+
+  // ── PAT (개인 액세스 토큰) — MCP 게이트웨이 연동에도 이 토큰을 그대로 쓴다 ──
+  listTokens: () => api.get<PatPublic[]>("/auth/tokens"),
+  createToken: (name: string, expiresDays?: number | null) =>
+    api.post<PatCreated>("/auth/tokens", { name, expires_days: expiresDays ?? null }),
+  revokeToken: (id: string) => api.del<void>(`/auth/tokens/${id}`),
 };
+
+export interface PatPublic {
+  id: string;
+  name: string;
+  token_prefix: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at?: string | null;
+}
+export interface PatCreated extends PatPublic {
+  token: string; // 평문 — 발급 응답에서 단 한 번만.
+}

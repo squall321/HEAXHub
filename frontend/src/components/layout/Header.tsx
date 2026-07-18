@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { LogIn, LogOut, Search, Settings, User as UserIcon } from "lucide-react";
+import { KeyRound, LogIn, LogOut, Search, Settings, User as UserIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   CommandDialog,
@@ -95,6 +95,9 @@ export function Header() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => navigate({ to: "/submit" })}>
                   <Settings className="mr-2 h-4 w-4" /> 새 앱 신청
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate({ to: "/settings/tokens" })}>
+                  <KeyRound className="mr-2 h-4 w-4" /> API 토큰
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => logout()}>

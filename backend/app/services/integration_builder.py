@@ -411,11 +411,61 @@ def _build_nodejs(
     scripts = json.loads(pkg_json.read_text(encoding="utf-8")).get("scripts", {})
     if "build" in scripts:
         build_cmd = [pnpm, "build"] if use_pnpm else [pnpm, "run", "build"]
+        # 앱은 /apps/{id} 로 프록시되고 strip_prefix 로 루트에서 서빙되므로, 프론트 자산은
+        # 반드시 '상대 base' 여야 서브패스든 루트든 index.html 기준으로 해석돼 404가 안 난다.
+        # vite/rolldown 은 `-- --base=./` 를 항상 존중하고, --cleanenv SIF 안에서도 argv 는
+        # 살아남으므로(env 는 안 들어감) base 를 CLI 로 강제한다. 자체 base 를 굽는 스택
+        # (Next/Streamlit 등)은 애초 이 노드 빌더가 아닌 strip_prefix=False 경로라 무관.
+        if _is_vite_app(workspace, scripts):
+            build_cmd = build_cmd + ["--", "--base=./"]
+            logger.info("vite app — forcing relative base (--base=./): %s", workspace.name)
         logger.info("running %s in %s", build_cmd, workspace.name)
         _run(build_cmd, cwd=workspace, log_path=log_path, sif=sif)
+        _assert_relative_base(workspace, log_path)
 
     _write_sentinel_hash(sentinel, current_hash)
     return True
+
+
+def _is_vite_app(workspace: Path, scripts: dict[str, Any]) -> bool:
+    """vite(또는 rolldown-vite) 프론트인지 — base 강제 대상 판별. 자체 base 를 굽는
+    Next.js/Streamlit 등은 제외(그 스택은 strip_prefix=False 로 전체 경로를 받는다)."""
+    if (workspace / "vite.config.ts").exists() or (workspace / "vite.config.js").exists():
+        return True
+    build_script = str(scripts.get("build", ""))
+    if "vite" in build_script:
+        return True
+    if "next" in build_script or "streamlit" in build_script:
+        return False
+    # package.json deps 에 vite 가 있으면 vite 로 간주
+    try:
+        pkg = json.loads((workspace / "package.json").read_text(encoding="utf-8"))
+        deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+        return any(k == "vite" or k.endswith("-vite") or "vite" in k for k in deps)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _assert_relative_base(workspace: Path, log_path: Path) -> None:
+    """빌드 산출물이 루트 절대경로(/assets…)를 참조하면 규약 위반 — 빌드를 실패시켜
+    (sentinel 미기록) 조용한 자산-404 배포를 차단한다. dist 위치는 흔한 후보를 탐색."""
+    for dist in ("dist", "build", "frontend/dist", "web/dist", "app/dist"):
+        idx = workspace / dist / "index.html"
+        if not idx.exists():
+            continue
+        html = idx.read_text(encoding="utf-8", errors="replace")
+        # 루트 절대경로 자산 참조가 있으면 위반. 상대(./assets) / 데이터URI 는 허용.
+        if re.search(r'(?:src|href)\s*=\s*["\']/(?:assets|static)/', html):
+            msg = (f"app build produced ROOT-absolute asset paths in {dist}/index.html — "
+                   f"must be relative (./). vite 앱이면 빌더가 --base=./ 를 주입한다; "
+                   f"커스텀 빌드면 상대 base 로 설정하라.")
+            try:
+                with log_path.open("ab") as logf:
+                    logf.write(f"\n✗ {msg}\n".encode())
+            except Exception:  # noqa: BLE001
+                pass
+            raise RuntimeError(msg)
+        return  # 첫 dist 검증 통과
 
 
 # ---------------------------------------------------------------------------

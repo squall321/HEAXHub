@@ -2,7 +2,9 @@
 # Push HEAXHub fallback artifacts to Google Drive via rclone, so a server that reaches Drive but
 # NOT Docker Hub/PyPI/GitHub can still pull them and run. Pushes: frontend dist + vendored runtimes
 # (apptainer.deb, python.tar.gz from deploy/apptainer/cache/) + app-build base SIFs (base_*.sif)
-# + optional service SIFs (HEAX_DRIVE_WITH_SIFS). latest/ accumulates (copy, not mirror).
+# + optional service SIFs (HEAX_DRIVE_WITH_SIFS) + per-app SIFs (var/sifs/<slug>.sif, 데모 제외 —
+# HEAX_DRIVE_WITH_APP_SIFS=1 기본). latest/ accumulates (copy, not mirror).
+# → 폐쇄망 서버는 dist-from-drive 로 앱 SIF 까지 받아 git·빌드 없이 앱을 바로 띄운다.
 #
 # Run on an ONLINE build host, AFTER building the SPA for the portal sub-path:
 #   VITE_BASE_PATH=/heax-hub/ pnpm --dir frontend build      # base baked into frontend/dist
@@ -77,6 +79,30 @@ if [ "${HEAX_DRIVE_WITH_BASE:-1}" = "1" ]; then
   for b in "$SIFDIR"/base_*.sif; do
     [ -f "$b" ] && { cp "$b" "$STAGE/"; echo "  · including $(basename "$b")"; }
   done
+fi
+
+# ── per-app SIFs (등록 앱: materialtwin·laminate·thermal-shock 등) ─────────────
+# 폐쇄망 서버가 git·빌드 없이 최신 앱 SIF 를 받아 그대로 띄우게 한다(var/sifs/<slug>.sif
+# + .sif.hash). 데모(heax-demo-*)는 제외. 끄기: HEAX_DRIVE_WITH_APP_SIFS=0 ·
+# 명시목록: HEAX_DRIVE_APP_SIFS="materialtwin-web thermal-shock-mcp".
+if [ "${HEAX_DRIVE_WITH_APP_SIFS:-1}" = "1" ]; then
+  APP_SIF_DIR="$ROOT_DIR/var/sifs"
+  _ship_app_sif() {  # $1=절대 sif 경로
+    local f="$1" b; b="$(basename "$f")"
+    cp "$f" "$STAGE/"; echo "  · app SIF: $b ($(du -h "$f" | cut -f1))"
+    [ -f "$f.hash" ] && cp "$f.hash" "$STAGE/"
+  }
+  if [ -n "${HEAX_DRIVE_APP_SIFS:-}" ]; then          # 명시 목록
+    for slug in $HEAX_DRIVE_APP_SIFS; do
+      [ -f "$APP_SIF_DIR/$slug.sif" ] && _ship_app_sif "$APP_SIF_DIR/$slug.sif"
+    done
+  else                                                # 기본: 데모 제외한 전체 앱 SIF
+    for f in "$APP_SIF_DIR"/*.sif; do
+      [ -f "$f" ] || continue
+      case "$(basename "$f")" in heax-demo-*) continue;; esac
+      _ship_app_sif "$f"
+    done
+  fi
 fi
 
 ( cd "$STAGE" && sha256sum ./* > SHA256SUMS )

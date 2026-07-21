@@ -63,5 +63,17 @@ for b in "$STAGE"/base_*.sif; do
 done
 shopt -u nullglob
 
+# per-app SIFs → var/sifs/  (heaxhub_*/base_* 아닌 *.sif = 등록 앱 SIF).
+# 폐쇄망 서버가 git·빌드 없이 이 SIF 로 앱을 바로 띄운다(.sif.hash 도 함께 = 스캔이
+# 커밋 일치로 인식해 재빌드 스킵). start.sh/스캔이 var/sifs/<slug>.sif 를 그대로 사용.
+mkdir -p "$ROOT_DIR/var/sifs"
+shopt -s nullglob
+for s in "$STAGE"/*.sif; do
+  case "$(basename "$s")" in heaxhub_*|base_*) continue;; esac
+  cp "$s" "$ROOT_DIR/var/sifs/"; echo "  ✓ app SIF $(basename "$s") → var/sifs/"
+  [ -f "$s.hash" ] && cp "$s.hash" "$ROOT_DIR/var/sifs/"
+done
+shopt -u nullglob
+
 echo
 echo "✓ dist ready — now run:  bash deploy/apptainer/start.sh   (Caddy serves it; no build)"

@@ -1,0 +1,69 @@
+schema_version: 2
+id: thermal_shock_mcp
+name: Thermal Shock SED Predictor MCP
+version: 0.1.0
+owner: cae-automation
+status: stable
+app_type: web_app
+execution_target: linux_runner
+
+description: |
+  AP/UFS 패키지와 상대 패키지의 배치·치수·타입 정보로 열충격 SED(Strain Energy Density)를
+  ML 회귀 모델로 예측하는 MCP 서버. 시뮬레이션 없이 수 초 내 예측 + 판정을 제공하며,
+  신규 실측 데이터 추가→재학습→모델 버전 관리(롤백)까지 도구로 수행하는 학습-추론 수명주기 서버다.
+  - 판정 기준(모든 예측 응답에 병기): SED > 2.2 → FAIL(기준 아웃), 2.0 < SED ≤ 2.2 → WARNING(경고), 그 외 OK.
+  - MCP 엔드포인트: /apps/thermal_shock_mcp/mcp (streamable HTTP)
+    에이전트 등록 예) claude mcp add --transport http thermal-shock <포털베이스>/apps/thermal_shock_mcp/mcp
+  - 헬스체크: /health. 웹 UI 없음(JSON API + MCP 전용).
+  - Tool 11종: predict_sed(단건 진입점), predict_sed_batch, parse_raw_rows(원본 표 텍스트 구조화),
+    add_training_data(중복 제거+선택적 재학습), train_model(후보 4종 5-fold CV 비교),
+    get_model_info, list_models, activate_model(버전 롤백), get_dataset_summary,
+    get_training_data, remove_training_data.
+  - 학습 범위 밖 입력은 out_of_range 외삽 경고(수치 범위·미학습 카테고리 모두 감지).
+  - 데이터셋(data/dataset.json)·모델 레지스트리(models/)는 서버 로컬 단일 진실 원천.
+  fastapi 스택 기본 entrypoint(uvicorn app.main:app --root-path $ROOT_PATH)를 그대로 사용하며,
+  loopback 바인드 + Caddy 경계 전제로 MCP DNS-rebinding Host 검증은 비활성화되어 있다.
+
+tags:
+  - thermal-shock
+  - sed
+  - package-reliability
+  - machine-learning
+  - mcp
+  - llm-tools
+  - cae
+
+build:
+  type: python_venv
+  stack: fastapi
+  python_version: "3.12"
+
+launch:
+  mode: service
+  health_check:
+    type: http
+    path: /health
+  restart_policy:
+    policy: on_failure
+    max_attempts: 3
+
+permissions:
+  visibility: team
+
+resources:
+  cpu: 1
+  memory_gb: 1
+  gpu: false
+
+# 등록 방식: HEAXHub/integrations/thermal-shock-mcp 심볼릭 링크로 발견되고,
+# 빌드 소스는 GitHub — HEAXHub 최신화(재스캔/재빌드) 시 main 브랜치 최신 커밋을 받아온다.
+source:
+  type: git
+  url: https://github.com/squall321/ThermalShockMCP.git
+  ref: main
+
+# HWAX MCP Gateway 자동탐지 opt-in
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http

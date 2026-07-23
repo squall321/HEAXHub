@@ -1,0 +1,60 @@
+schema_version: 2
+id: voice_recorder
+name: "VoiceRecorder — 내레이션 음성 생성"
+version: 0.1.0
+owner: "squall321"
+status: draft
+app_type: web_app
+execution_target: linux_runner
+
+description: |
+  영상 내레이션 스크립트를 붙여넣으면 씬 단위로 나눠 한국어 음성을 만들고,
+  씬별로 화자·속도·무음 간격을 조정한 뒤 병합 mp3 와 SRT 자막으로 내보낸다.
+  `01 오프닝 (0:00–0:08) "본문"` 형식을 그대로 인식해 목표 타임코드 대비 실제 길이
+  차이를 보여주므로 영상 편집 타임라인에 바로 맞출 수 있다.
+
+  TTS 는 상업 이용 가능한 MIT 라이선스 모델만 쓴다:
+    - Chatterbox Multilingual (Resemble AI) — 코드·가중치 모두 MIT, 한국어 포함 23개 언어
+    - MeloTTS (MyShell) — MIT, CPU 사이드카 (선택 설치)
+
+tags:
+  - tts
+  - narration
+  - korean
+  - audio
+
+build:
+  stack: fastapi_react
+
+launch:
+  mode: service
+  env:
+    # HEAXHub 가 bind 하는 영구 볼륨(/data → var/app_data/voice_recorder/).
+    # SIF rootfs 는 read-only 라 DB·오디오·모델 캐시를 전부 여기에 둔다.
+    VOICEREC_DATA_DIR: /data
+    VOICEREC_MODELS_DIR: /data/models
+    # 폐쇄망(cae00)에서는 HuggingFace 에 못 닿는다. 가중치는 Drive 로 미리 받아두고
+    # 런타임이 네트워크를 아예 타지 않게 막는다 (scripts/models-from-drive.sh).
+    HF_HOME: /data/models
+    HF_HUB_OFFLINE: "1"
+
+health_check:
+  path: /api/health
+
+restart_policy:
+  policy: on_failure
+  max_retries: 3
+
+source:
+  type: git
+  url: https://github.com/squall321/VoiceRecorder.git
+  ref: main
+
+permissions:
+  visibility: company
+
+resources:
+  cpu: 4
+  memory_gb: 8
+  # GPU 가 있으면 자동으로 쓰고, 없거나 VRAM 이 모자라면 CPU 로 폴백한다.
+  gpu: true

@@ -22,8 +22,9 @@ restart_policy:
   max_retries: 3
 source:
   type: git
-  # 로컬 git 참조 — push 없이 로컬 커밋을 SIF 빌드에 반영 (GitHub push 후 https URL로 복원 가능)
-  url: file:///home/koopark/claude/MaterialTwinWeb
+  # GitHub URL — prod 가 git pull 후 이 주소로 clone·SIF 빌드·갱신한다(로컬 file:// 는
+  # 로컬 개발 박스에만 유효해 prod 갱신 불가였음). 로컬 커밋은 push 후 반영.
+  url: https://github.com/squall321/MaterialTwinWeb.git
   ref: main
   # subpath: ""          # 모노레포면 하위 디렉터리 지정
 permissions:

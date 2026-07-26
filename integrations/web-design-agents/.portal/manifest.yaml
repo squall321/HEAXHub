@@ -1,0 +1,60 @@
+schema_version: 2
+id: web_design_agents
+name: "WebDesignAgents — 전문가 심의 발표자료 생성"
+version: 0.1.0
+owner: "squall321"
+status: draft
+app_type: web_app
+execution_target: linux_runner
+
+description: |
+  ReportArchive 보고서 JSON 을 붙여넣으면 웹디자인 페르소나 14인 회의체가
+  시나리오를 심의·집필하고, 씬 템플릿 라이브러리로 90초급 모션 영상(mp4)과
+  PPT(16:9)를 자동 생성한다. 웹 콘솔에서 파이프라인 실행·브라우저 프리뷰·
+  품질 게이트(QA 7종)·회의록 열람·모듈 갤러리를 제공한다.
+
+  내레이션은 VoiceRecorder(voice_recorder) API 를 소비하고, 무인 심의는
+  GLM-5-2 vLLM(HWAXPortal env-kits 상속)으로 오프로드한다.
+
+tags:
+  - presentation
+  - video
+  - deliberation
+  - multi-agent
+
+build:
+  stack: fastapi_react
+
+launch:
+  mode: service
+  env:
+    # HEAXHub 영구 볼륨(/data) — 회의록·파이프라인·렌더 산출물 전부 여기에
+    WDA_DATA_DIR: /data
+    # 형제 서비스 — 포탈 경유가 정석이나 서비스 계정 PAT 확정 전까지 로컬 직결
+    WDA_TTS_BASE_URL: http://127.0.0.1:8177
+
+health_check:
+  path: /api/health
+
+restart_policy:
+  policy: on_failure
+  max_retries: 3
+
+source:
+  type: git
+  url: https://github.com/squall321/WebDesignAgents.git
+  ref: main
+
+permissions:
+  visibility: company
+
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http
+
+resources:
+  cpu: 4
+  memory_gb: 8
+  # 렌더는 헤드리스 chromium(CPU) — GPU 불필요
+  gpu: false

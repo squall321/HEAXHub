@@ -112,7 +112,10 @@ function AppDetailPage() {
                 return (
                   <Button asChild>
                     <a
-                      href={`/apps/${appId}/`}
+                      // 포털 서브패스(/heax-hub/) 하에선 앱은 /heax-hub/apps/<id>/ 로 서빙된다.
+                      // BASE_URL(끝에 / 포함: 포털=/heax-hub/, standalone=/) 를 앞에 붙여야
+                      // 포털 루트(/apps/<id>/)로 열려 404 나는 것을 막는다.
+                      href={`${import.meta.env.BASE_URL}apps/${appId}/`}
                       target="_blank"
                       rel="noreferrer"
                     >

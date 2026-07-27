@@ -41,6 +41,18 @@ while IFS= read -r sdb; do
   fi
 done < <(find "$STAGE/src" -name "*.db" 2>/dev/null)
 
+# 비-DB 앱데이터(모델 가중치·커브 parquet·레지스트리 json 등)는 위 .db merge 가 통째로 누락한다.
+# 라이브에 '없는' 파일만 시드 복사(비파괴 — 기존 파일은 건드리지 않는다). 이게 없어서:
+#   · thermal_shock predict_sed → /data/models 비어 'E400 학습된 모델이 없습니다'
+#   · materialtwin 응력-변형 커브(*.parquet) 누락 → 커브 플롯/피팅 실패
+while IFS= read -r sf; do
+  rel="${sf#"$STAGE/src/"}"
+  live="$APPDATA/$rel"
+  [ -f "$live" ] && continue   # 기존 파일 보존(merge 대상 아님)
+  mkdir -p "$(dirname "$live")"
+  if cp "$sf" "$live" 2>/dev/null; then echo "  · seed(non-db): $rel"; fi
+done < <(find "$STAGE/src" -type f ! -name "*.db" 2>/dev/null)
+
 [ "$rc" = 0 ] && echo "✓ app-data merge 완료 — dev 신규 반영 + cae00 데이터 보존" \
              || echo "⚠ 일부 merge 실패 — 위 로그 확인(운영 DB 는 안전백업으로 롤백 가능)"
 exit "$rc"

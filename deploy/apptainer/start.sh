@@ -201,6 +201,12 @@ fi
 
 # ── 5. Backend + Worker + Frontend ────────────────────────────
 if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
+  # 배포 마이그레이션 — 과거엔 alembic 이 install_all.sh(최초설치)에만 있어, 이미 떠 있던
+  # cae00 DB 엔 신규 마이그레이션이 영영 반영 안 됐다(스키마 드리프트). 백엔드 기동 직전 멱등
+  # upgrade 로 항상 최신화. 백엔드가 이미 떠 있으면(워치독) 이 블록 자체가 skip 돼 부담 없음.
+  echo "→ alembic upgrade head (배포 마이그레이션)"
+  ( set -a; . .env 2>/dev/null; set +a; cd backend && .venv/bin/alembic upgrade head ) \
+    >> var/logs/backend.log 2>&1 || echo "  ⚠ alembic upgrade 실패 — var/logs/backend.log 확인"
   echo "→ start backend (uvicorn :$API_PORT)"
   nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port '"$API_PORT" \
     > var/logs/backend.log 2>&1 &

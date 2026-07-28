@@ -45,6 +45,22 @@ From: python:3.12-slim
     cd /app/backend
     pip install --no-cache-dir -e .
 
+    # Stage 3 (opt-in): app-provided container build hook. Runs
+    # backend/scripts/heaxhub-build.sh (or scripts/heaxhub-build.sh) if the repo
+    # ships one — for heavy/special deps kept OUT of pyproject (e.g.
+    # voice_recorder installs torch + chatterbox-tts here because their GPU
+    # build + install order can't live in the normal deps). Installs into the
+    # container's system python (NOT a venv). No script ⇒ no-op (other apps
+    # unaffected). Must be network-reachable at build time — build the fat SIF
+    # on an ONLINE box, then ship it via dist-to-drive (per-app SIF).
+    if [ -f /app/backend/scripts/heaxhub-build.sh ]; then
+        echo "→ app container build hook: backend/scripts/heaxhub-build.sh"
+        bash /app/backend/scripts/heaxhub-build.sh
+    elif [ -f /app/scripts/heaxhub-build.sh ]; then
+        echo "→ app container build hook: scripts/heaxhub-build.sh"
+        bash /app/scripts/heaxhub-build.sh
+    fi
+
 %environment
     export PYTHONUNBUFFERED=1
     export NODE_ENV=production

@@ -26,7 +26,7 @@ from app.db.models.app import App, AppStatus
 from app.db.models.app_version import AppVersion
 from app.deps import CurrentUser, DbSession
 from app.services import permission_service
-from app.services.integration_launcher import _is_alive, _read_state
+from app.services.integration_launcher import _read_state
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -34,19 +34,18 @@ router = APIRouter(prefix="/mcp", tags=["mcp"])
 _EXPOSE_STATUSES = (AppStatus.BETA, AppStatus.STABLE)
 
 
-def _instance_alive(app_id: str) -> bool:
-    """manifest 선언이 아니라 **실체** 기준 판정 — 인스턴스가 실제로 떠 있는가.
+def _ever_launched(app_id: str) -> bool:
+    """기동 이력(state 파일) 유무 — 선언만 있고 한 번도 뜬 적 없는 앱을 걸러낸다.
 
-    streamable_http MCP 는 실행 중인 프로세스 없이는 서빙될 수 없으므로, mcp 노출
-    앱에 한해 기동 이력 없음(state 파일 부재)도 부적격으로 본다. 선언만 있고 실체
-    없는 앱(미완성·빌드 실패)이 게이트웨이 백엔드 다운으로 계속 표시되던 문제의
-    구조적 해소다. 재시작 중 잠깐 빠지는 것은 게이트웨이 revive 루프(60s)가
-    자동 복원하므로 무해하다(폴링 실패 None 과 구분되는 정상 목록 축소).
+    streamable_http MCP 는 실행 중 프로세스 없이 서빙될 수 없으므로, 기동된 적 없는
+    앱(미완성·빌드 실패)을 노출하면 게이트웨이에 영구 다운 백엔드가 생긴다.
+
+    현재 pid 생존까지 보지는 **않는다**. 재빌드·재기동하는 수십 초 동안 목록에서 빠지면
+    게이트웨이가 그 백엔드를 제거해 사용자에겐 "그런 도구 없습니다"로 보인다 — 37b3f55
+    가 폴링 실패에서 막은 것과 같은 증상을 앱 단위로 재현하는 셈이다. 일시적 다운은
+    게이트웨이 revive 루프가 재연결하므로 목록에 남겨두고, 실체가 아예 없는 앱만 뺀다.
     """
-    state = _read_state(app_id)
-    if state is None:
-        return False
-    return _is_alive(state.get("pid"))
+    return _read_state(app_id) is not None
 
 
 @router.get("/servers")
@@ -76,8 +75,8 @@ def list_mcp_servers(db: DbSession, user: CurrentUser) -> dict[str, Any]:
         mcp = (manifest or {}).get("mcp")
         if not isinstance(mcp, dict) or not mcp.get("expose"):
             continue
-        if not _instance_alive(app.id):
-            continue  # 선언만 있고 인스턴스가 없는 앱 — 게이트웨이에 죽은 백엔드를 만들지 않는다
+        if not _ever_launched(app.id):
+            continue  # 선언만 있고 기동 이력이 없는 앱 — 영구 다운 백엔드를 만들지 않는다
         sub = str(mcp.get("path", "/mcp"))
         if not sub.startswith("/"):
             sub = "/" + sub

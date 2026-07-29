@@ -28,6 +28,12 @@ From: node:20-slim
         echo "WARN[STK-05]: no pnpm-lock.yaml; installing --no-frozen-lockfile" >&2
         pnpm install --no-frozen-lockfile
     fi
+    # Next 는 basePath/assetPrefix 를 **빌드 시점에** HTML·청크 URL 에 굽는다. 런처가 주는
+    # NEXT_PUBLIC_BASE_PATH 는 런타임이라 라우팅(308·200)만 맞고 자산은 루트 /_next/... 로
+    # 나갔고, 프록시 아래에서 그 경로가 포털 SPA 로 떨어져 JS 자리에 HTML 이 반환됐다.
+    # 앱은 항상 /apps/<app_id> 에 마운트되고 app_id 는 slug 의 '-' 를 '_' 로 바꾼 값이다.
+    export NEXT_PUBLIC_BASE_PATH="/apps/$(printf '%s' '{{SLUG}}' | tr '-' '_')"
+    echo "[heaxhub] building with NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH"
     pnpm build
 
 %environment

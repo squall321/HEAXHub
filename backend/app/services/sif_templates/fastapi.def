@@ -5,7 +5,21 @@ From: python:3.12-slim
     {{UPSTREAM_DIR}} /app
 
 %post
+    set -eux
     cd /app && pip install --no-cache-dir -e "{{PIP_TARGET}}"
+
+    # Stage 2 (opt-in): app-provided container build hook — fastapi_react.def 와 대칭.
+    # pyproject 밖의 무거운/특수 의존성(예: web_design_agents 는 여기서 playwright +
+    # chromium + ffmpeg + fonts 를 컨테이너에 심는다)을 컨테이너 system python 에 설치한다.
+    # 스크립트 없으면 no-op(다른 fastapi 앱 무영향). 빌드 시점에 네트워크가 닿아야 하므로
+    # ONLINE 박스에서 fat SIF 빌드 후 dist-to-drive(per-app SIF)로 폐쇄망에 나른다.
+    if [ -f /app/backend/scripts/heaxhub-build.sh ]; then
+        echo "→ app container build hook: backend/scripts/heaxhub-build.sh"
+        bash /app/backend/scripts/heaxhub-build.sh
+    elif [ -f /app/scripts/heaxhub-build.sh ]; then
+        echo "→ app container build hook: scripts/heaxhub-build.sh"
+        bash /app/scripts/heaxhub-build.sh
+    fi
 
 %environment
     export PYTHONUNBUFFERED=1

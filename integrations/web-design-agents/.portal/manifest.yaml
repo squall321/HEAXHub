@@ -29,10 +29,14 @@ build:
   # 런처가 범용 폴백 ./.portal/run.sh 를 실행했고 그 파일도 없어 exit 127 로 45초마다 재시도만
   # 반복했다 — '열기'를 눌러도 제자리인 이유. 파이썬 서비스로 고정한다.
   stack: fastapi
-  # uvicorn/fastapi 가 이 레포의 optional-dependencies.web 에만 있다 — 선언하지 않으면
-  # `pip install -e .` 로 안 깔려 SIF 안에서 "uvicorn: executable file not found" 로 죽는다.
+  # 런타임 의존성이 전부 optional-dependencies 에만 있다 — 선언 안 하면 `pip install -e .` 로
+  # 안 깔린다. web(uvicorn/fastapi) 없으면 "uvicorn: executable file not found", render(playwright/
+  # pptx/pillow) 없으면 렌더가 죽고, mcp/llm 은 심의·MCP 노출에 필요하다.
   extras:
     - web
+    - render
+    - mcp
+    - llm
 
 launch:
   mode: service
@@ -44,6 +48,10 @@ launch:
     WDA_DATA_DIR: /data
     # 형제 서비스 — 포탈 경유가 정석이나 서비스 계정 PAT 확정 전까지 로컬 직결
     WDA_TTS_BASE_URL: http://127.0.0.1:8177
+    # 렌더 훅(scripts/heaxhub-build.sh)이 chromium 을 /opt/ms-playwright 에 구워 뒀다.
+    # 런타임도 같은 경로를 보게 하고, 다운로드 시도를 원천 차단해 폐쇄망에서 재현시킨다.
+    PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
   # health_check·restart_policy 는 반드시 launch: 아래 — 런처와 서비스매니저는
   # launch.health_check / launch.restart_policy 만 읽으므로 top-level 선언은 조용히
   # 무시되고, 스택 기본값 /health 로 프로브돼 404 만 쌓인다(재시작 정책도 미적용).

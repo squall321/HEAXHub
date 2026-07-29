@@ -212,11 +212,16 @@ if curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
   RUNNING_REV="$(cat "$BACKEND_REV_FILE" 2>/dev/null || echo none)"
   if [ "$HEAD_REV" != "unknown" ] && [ "$RUNNING_REV" != "$HEAD_REV" ]; then
     echo "→ backend 코드 변경 감지($RUNNING_REV → $HEAD_REV) — 재기동"
-    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+    # ⚠ 패턴을 좁게. "uvicorn app.main:app" 만으로는 heax 데모 앱(fastapi/fastapi_react 도
+    # 같은 모듈 경로로 뜬다)과 다른 프로젝트 서비스까지 잡혀 무관한 서비스를 죽인다(실측).
+    # 포트까지 포함해 이 백엔드 하나만 지목한다.
+    pkill -f "uvicorn app.main:app --host 0.0.0.0 --port $API_PORT" 2>/dev/null || true
     # celery 도 같이 내려야 한다. beat 가 45초마다 reconcile_integrations 를 돌려 Caddy
     # 라우트를 재등록하는데, 워커가 옛 코드면 고친 라우트를 45초 안에 옛 모양으로 되돌린다
     # (실측: WS 수정이 반복적으로 403 으로 회귀). 워커는 uvicorn 과 별도 프로세스라
     # 백엔드만 재기동해서는 영영 옛 코드가 남는다.
+    # celery 패턴은 앱 고유(app.workers.celery_app)라 충돌 없음 — 다만 cwd 가 이 레포인
+    # 프로세스만 대상이 되도록 -f 전체 경로 매칭을 유지한다.
     pkill -f "celery -A app.workers.celery_app" 2>/dev/null || true
     for _i in $(seq 1 15); do
       curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1 || break

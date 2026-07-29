@@ -325,7 +325,11 @@ def _build_and_launch(
                         status=BuildStatus.SUCCESS,
                         rebuilt=False,
                         sif_path=str(existing_sif),
-                        commit=commit,
+                        # ⚠ commit 은 여기서 기록하지 않는다 — git_commit_hash 는
+                        # "실제 빌드 성공" 의 증거로만 존재해야 위 commit_ok 판정이
+                        # 성립한다. 스킵 경로가 이를 백필하면 빌드 없이 이력이
+                        # 위조되어(실사례: WDA cc3370f) 고착 가드가 무력화된다.
+                        commit=None,
                     ),
                 )
                 _maybe_launch(

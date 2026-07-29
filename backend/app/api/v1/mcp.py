@@ -26,11 +26,27 @@ from app.db.models.app import App, AppStatus
 from app.db.models.app_version import AppVersion
 from app.deps import CurrentUser, DbSession
 from app.services import permission_service
+from app.services.integration_launcher import _is_alive, _read_state
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 # 게이트웨이에 노출할 published 상태 (draft/deprecated/archived 제외).
 _EXPOSE_STATUSES = (AppStatus.BETA, AppStatus.STABLE)
+
+
+def _instance_alive(app_id: str) -> bool:
+    """manifest 선언이 아니라 **실체** 기준 판정 — 인스턴스가 실제로 떠 있는가.
+
+    streamable_http MCP 는 실행 중인 프로세스 없이는 서빙될 수 없으므로, mcp 노출
+    앱에 한해 기동 이력 없음(state 파일 부재)도 부적격으로 본다. 선언만 있고 실체
+    없는 앱(미완성·빌드 실패)이 게이트웨이 백엔드 다운으로 계속 표시되던 문제의
+    구조적 해소다. 재시작 중 잠깐 빠지는 것은 게이트웨이 revive 루프(60s)가
+    자동 복원하므로 무해하다(폴링 실패 None 과 구분되는 정상 목록 축소).
+    """
+    state = _read_state(app_id)
+    if state is None:
+        return False
+    return _is_alive(state.get("pid"))
 
 
 @router.get("/servers")
@@ -60,6 +76,8 @@ def list_mcp_servers(db: DbSession, user: CurrentUser) -> dict[str, Any]:
         mcp = (manifest or {}).get("mcp")
         if not isinstance(mcp, dict) or not mcp.get("expose"):
             continue
+        if not _instance_alive(app.id):
+            continue  # 선언만 있고 인스턴스가 없는 앱 — 게이트웨이에 죽은 백엔드를 만들지 않는다
         sub = str(mcp.get("path", "/mcp"))
         if not sub.startswith("/"):
             sub = "/" + sub

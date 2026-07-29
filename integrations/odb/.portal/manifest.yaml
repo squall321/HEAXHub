@@ -1,0 +1,35 @@
+schema_version: 2
+id: odb
+name: "ODB++ 자동화 허브"
+version: 1.0.0
+owner: koopark
+status: stable
+app_type: external_link
+execution_target: external_url
+
+description: |
+  외부에서 이미 도는 ODB++ 자동화 허브(FastAPI + React, :8010)를 HEAXHub 하위 경로
+  /apps/odb/ 로 reverse_proxy 한다. ODB 서버 코드는 건드리지 않는다(proxy 모드 — SIF
+  빌드·기동 없음). MCP 엔드포인트(/mcp)를 게이트웨이 레지스트리에 노출한다.
+  - MCP: <포털베이스>/apps/odb/mcp (streamable HTTP)
+  - upstream 은 서버-로컬(127.0.0.1:8010) — 각 서버에서 ODB 가 :8010 에 떠 있어야 한다.
+
+build:
+  stack: external_proxy
+
+launch:
+  mode: proxy
+  # ODB 는 자기 경로 프리픽스를 모르므로 strip_prefix(=Caddy 가 /apps/odb 를 벗기고 전달).
+  upstream: http://127.0.0.1:8010
+  strip_prefix: true
+
+# HWAX MCP Gateway 자동탐지 opt-in — /api/v1/mcp/servers 레지스트리에 노출.
+# 앱 미완성 상태라 노출 보류(expose: false) — 게이트웨이 백엔드 다운으로 계속 표시되던 문제.
+# 완성 후 true 로 되돌리면 게이트웨이가 60초 내 자동 발견한다.
+mcp:
+  expose: false
+  path: /mcp
+  transport: streamable_http
+
+permissions:
+  visibility: company

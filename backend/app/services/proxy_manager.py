@@ -67,7 +67,13 @@ def _forward_auth_handler() -> dict[str, Any]:
                     "X-Forwarded-Method": ["{http.request.method}"],
                     "X-Forwarded-Uri": ["{http.request.uri}"],
                     "X-Forwarded-Host": ["{http.request.host}"],
-                }
+                },
+                # 서브요청은 인바운드의 복사본이라 WebSocket 업그레이드 헤더까지 따라온다.
+                # 그러면 authz(uvicorn, 평범한 GET 핸들러)가 업그레이드 요청으로 보고 4xx 를
+                # 내고, handle_response 의 2xx 매칭에 걸리지 않아 그 오류가 그대로 클라이언트로
+                # 반환된다 — streamlit 등 WS 앱이 '열기' 후 연결에 실패하던 원인(실측: 앱 직접
+                # 101, Caddy 경유 403). authz 는 경로·쿠키만 보면 되므로 여기서 떼어낸다.
+                "delete": ["Connection", "Upgrade"],
             }
         },
         # 2xx만 매칭 → 다음 핸들러로 통과. 매칭되지 않은 4xx/5xx 는 reverse_proxy 가

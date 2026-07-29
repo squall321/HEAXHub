@@ -419,6 +419,14 @@ def _build_nodejs(
         if _is_vite_app(workspace, scripts):
             build_cmd = build_cmd + ["--", "--base=./"]
             logger.info("vite app — forcing relative base (--base=./): %s", workspace.name)
+        elif _is_next_app(workspace, scripts):
+            # Next 는 basePath/assetPrefix 를 **빌드 시점에** HTML·청크에 굽는다. 런처가 주는
+            # NEXT_PUBLIC_BASE_PATH 는 런타임 값이라 라우팅(308·200)만 맞고 자산은 여전히
+            # 루트 `/_next/...` 로 나가, 프록시 아래에서 포털 SPA HTML 이 JS 자리에 반환됐다.
+            # 빌드 컨테이너는 --cleanenv 라 호스트 env 가 안 들어가므로 argv 로 주입한다.
+            base_path = "/apps/" + workspace.name.replace("-", "_")
+            build_cmd = ["env", f"NEXT_PUBLIC_BASE_PATH={base_path}"] + build_cmd
+            logger.info("next app — baking basePath %s: %s", base_path, workspace.name)
         logger.info("running %s in %s", build_cmd, workspace.name)
         _run(build_cmd, cwd=workspace, log_path=log_path, sif=sif)
         _assert_relative_base(workspace, log_path)
@@ -442,6 +450,20 @@ def _is_vite_app(workspace: Path, scripts: dict[str, Any]) -> bool:
         pkg = json.loads((workspace / "package.json").read_text(encoding="utf-8"))
         deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
         return any(k == "vite" or k.endswith("-vite") or "vite" in k for k in deps)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _is_next_app(workspace: Path, scripts: dict[str, Any]) -> bool:
+    """Next.js 프론트인지 — basePath 를 빌드 시점에 구워 넣어야 하는 대상 판별."""
+    if (workspace / "next.config.js").exists() or (workspace / "next.config.mjs").exists():
+        return True
+    if "next" in str(scripts.get("build", "")):
+        return True
+    try:
+        pkg = json.loads((workspace / "package.json").read_text(encoding="utf-8"))
+        deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+        return "next" in deps
     except Exception:  # noqa: BLE001
         return False
 

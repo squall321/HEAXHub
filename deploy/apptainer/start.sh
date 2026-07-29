@@ -200,6 +200,31 @@ else
 fi
 
 # ── 5. Backend + Worker + Frontend ────────────────────────────
+# 코드가 바뀌었는데 백엔드가 이미 떠 있으면 아래 블록을 통째로 skip 해, 배포해도 옛 코드가
+# 계속 돈다. 실제로 Caddy forward-auth 수정(WS 업그레이드 헤더 제거)이 cae00 에 영영 반영
+# 안 되는 구멍이었다 — 라우트는 백엔드가 기동 시 reconcile 로 재주입하므로, 백엔드가 새
+# 코드로 뜨지 않으면 라우트 모양도 옛것 그대로다. 그래서 실행 중인 백엔드가 어느 커밋으로
+# 떴는지 기록해 두고, HEAD 와 다르면 재기동한다(워치independent — 워치독 재실행 때는 커밋이
+# 같으므로 그대로 skip 된다).
+BACKEND_REV_FILE="var/run/backend.rev"
+HEAD_REV="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+if curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
+  RUNNING_REV="$(cat "$BACKEND_REV_FILE" 2>/dev/null || echo none)"
+  if [ "$HEAD_REV" != "unknown" ] && [ "$RUNNING_REV" != "$HEAD_REV" ]; then
+    echo "→ backend 코드 변경 감지($RUNNING_REV → $HEAD_REV) — 재기동"
+    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+    # celery 도 같이 내려야 한다. beat 가 45초마다 reconcile_integrations 를 돌려 Caddy
+    # 라우트를 재등록하는데, 워커가 옛 코드면 고친 라우트를 45초 안에 옛 모양으로 되돌린다
+    # (실측: WS 수정이 반복적으로 403 으로 회귀). 워커는 uvicorn 과 별도 프로세스라
+    # 백엔드만 재기동해서는 영영 옛 코드가 남는다.
+    pkill -f "celery -A app.workers.celery_app" 2>/dev/null || true
+    for _i in $(seq 1 15); do
+      curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1 || break
+      sleep 1
+    done
+  fi
+fi
+
 if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
   # 배포 마이그레이션 — 과거엔 alembic 이 install_all.sh(최초설치)에만 있어, 이미 떠 있던
   # cae00 DB 엔 신규 마이그레이션이 영영 반영 안 됐다(스키마 드리프트). 백엔드 기동 직전 멱등
@@ -213,11 +238,16 @@ if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
   disown
   # readiness 대기 — 백엔드가 부팅 중 죽으면(시크릿 가드/임포트 등) 조용한 502 대신
   # 즉시 크래시 로그를 보여준다(가이드라인 10: 추측 말고 실제 로그).
-  for _i in $(seq 1 25); do
+  # 기동 시 reconcile(앱 15개 헬스체크 + 라우트 재등록)이 도는 동안 /health 가 안 뜬다.
+  # 25초로는 모자라 "미응답"으로 오판하고 rev 기록까지 건너뛰어, 다음 배포가 매번 재기동을
+  # 반복했다. 여유를 준다.
+  for _i in $(seq 1 90); do
     curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1 && break
     sleep 1
   done
   if curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
+    # 어느 커밋으로 떴는지 남긴다 — 다음 배포가 이 값으로 재기동 필요를 판정한다.
+    mkdir -p "$(dirname "$BACKEND_REV_FILE")" && printf '%s' "$HEAD_REV" > "$BACKEND_REV_FILE"
     echo "  ✓ backend up (:$API_PORT)"
   else
     echo "  ✗ backend /health 미응답 — 크래시 로그 마지막 40줄 (var/logs/backend.log)" >&2

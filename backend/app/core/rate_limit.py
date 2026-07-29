@@ -47,6 +47,9 @@ class _Rule:
 
 # Rules are evaluated in order; the first match wins. The final catch-all rule
 # is kept last so the auth-specific rules always take precedence.
+# Caddy forward-auth 전용 엔드포인트 — 아래 dispatch 에서 무조건 통과시킨다.
+_AUTHZ_PATH = "/api/v1/authz"
+
 ROUTE_RULES: list[_Rule] = [
     _Rule("POST", "/api/v1/auth/login",                   "ip", 5,   60),
     _Rule("POST", "/api/v1/auth/register",                "ip", 3,   3600),
@@ -164,6 +167,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if method == "OPTIONS":
                 return await call_next(request)
             path = request.url.path
+            # forward-auth 는 절대 throttle 하지 않는다. Caddy 가 프록시하는 **모든** 앱
+            # 요청(HTML 1개 + 자산 수십 개)마다 /api/v1/authz 를 부르는데, 이게 catch-all
+            # (ip, 200/60s)에 걸리면 429 가 나고 handle_response 는 2xx 만 통과시키므로 그
+            # 429 가 그대로 사용자에게 반환된다 — 앱이 산발적으로 죽는다. 게다가 호출자는
+            # 항상 Caddy(127.0.0.1)라 모든 사용자가 IP 버킷 하나를 공유해, 사람이 늘수록
+            # 서로를 굶긴다(실측: 초당 4요청 탐침만으로 429 발생). 이 엔드포인트는 인증을
+            # '검사'만 하고 상태를 바꾸지 않으며 루프백에서만 닿으므로 제한할 이유가 없다.
+            if path == _AUTHZ_PATH:
+                return await call_next(request)
             for rule in ROUTE_RULES:
                 if not _match_path(rule, method, path):
                     continue

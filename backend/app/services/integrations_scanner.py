@@ -306,9 +306,18 @@ def _build_and_launch(
         # build — skip straight to relaunch. This sidesteps build_sif's
         # whole-manifest hash, which is too eager (a description edit would
         # otherwise rebuild). We still backfill metadata so the row catches up.
+        #
+        # ⚠ "fetch 가 skipped" ≠ "빌드할 것 없음". fetch 는 지난 사이클에 이미 당긴
+        # 커밋을 두고도 skipped 라 보고하므로, 그 사이클의 빌드가 실패/중단됐다면
+        # SIF 는 낡은 채 이 게이트가 영구히 빌드를 막는다(실사례: WebDesignAgents
+        # /mcp 커밋이 fetch 만 되고 SIF 에 못 들어감). 그래서 스킵은 "이 커밋으로
+        # 빌드 성공 이력이 있다"(AppVersion.git_commit_hash 일치)일 때만 허용한다.
+        # 커밋 정보가 없는 소스(비 git)는 종전대로 SIF 존재만으로 스킵한다.
         if commit_gated and fr.action == "skipped":
             existing_sif = _existing_sif_path(slug)
-            if existing_sif is not None:
+            built_commit = (version.git_commit_hash or "") if version else ""
+            commit_ok = not commit or built_commit == commit[:64]
+            if existing_sif is not None and commit_ok:
                 logger.debug("commit unchanged for %s — skipping SIF build", app.id)
                 outcome = _record_build(
                     db, app=app, version=version, manifest=manifest,

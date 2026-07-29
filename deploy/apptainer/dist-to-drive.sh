@@ -2,7 +2,7 @@
 # Push HEAXHub fallback artifacts to Google Drive via rclone, so a server that reaches Drive but
 # NOT Docker Hub/PyPI/GitHub can still pull them and run. Pushes: frontend dist + vendored runtimes
 # (apptainer.deb, python.tar.gz from deploy/apptainer/cache/) + app-build base SIFs (base_*.sif)
-# + optional service SIFs (HEAX_DRIVE_WITH_SIFS) + per-app SIFs (var/sifs/<slug>.sif, 데모 제외 —
+# + optional service SIFs (HEAX_DRIVE_WITH_SIFS) + per-app SIFs (var/sifs/<slug>.sif, 데모 포함 기본 —
 # HEAX_DRIVE_WITH_APP_SIFS=1 기본). latest/ accumulates (copy, not mirror).
 # → 폐쇄망 서버는 dist-from-drive 로 앱 SIF 까지 받아 git·빌드 없이 앱을 바로 띄운다.
 #
@@ -81,10 +81,11 @@ if [ "${HEAX_DRIVE_WITH_BASE:-1}" = "1" ]; then
   done
 fi
 
-# ── per-app SIFs (등록 앱: materialtwin·laminate·thermal-shock 등) ─────────────
+# ── per-app SIFs (등록 앱 + 데모) ─────────────────────────────────────────────
 # 폐쇄망 서버가 git·빌드 없이 최신 앱 SIF 를 받아 그대로 띄우게 한다(var/sifs/<slug>.sif
-# + .sif.hash). 데모(heax-demo-*)는 제외. 끄기: HEAX_DRIVE_WITH_APP_SIFS=0 ·
-# 명시목록: HEAX_DRIVE_APP_SIFS="materialtwin-web thermal-shock-mcp".
+# + .sif.hash). 기본은 **데모 포함 전체**(폐쇄망 서버가 빌드 없이 데모까지 다 뜨게).
+#   끄기(전체): HEAX_DRIVE_WITH_APP_SIFS=0 · 명시목록: HEAX_DRIVE_APP_SIFS="a b"
+#   데모만 빼기(용량 절약): HEAX_DRIVE_SKIP_DEMO_SIFS=1
 if [ "${HEAX_DRIVE_WITH_APP_SIFS:-1}" = "1" ]; then
   APP_SIF_DIR="$ROOT_DIR/var/sifs"
   _ship_app_sif() {  # $1=절대 sif 경로
@@ -96,10 +97,13 @@ if [ "${HEAX_DRIVE_WITH_APP_SIFS:-1}" = "1" ]; then
     for slug in $HEAX_DRIVE_APP_SIFS; do
       [ -f "$APP_SIF_DIR/$slug.sif" ] && _ship_app_sif "$APP_SIF_DIR/$slug.sif"
     done
-  else                                                # 기본: 데모 제외한 전체 앱 SIF
+  else                                                # 기본: 전체(데모 포함)
     for f in "$APP_SIF_DIR"/*.sif; do
       [ -f "$f" ] || continue
-      case "$(basename "$f")" in heax-demo-*) continue;; esac
+      # 데모는 HEAX_DRIVE_SKIP_DEMO_SIFS=1 일 때만 제외(기본은 포함 → 서버에서 뜸).
+      case "$(basename "$f")" in
+        heax-demo-*) [ "${HEAX_DRIVE_SKIP_DEMO_SIFS:-0}" = "1" ] && continue ;;
+      esac
       _ship_app_sif "$f"
     done
   fi

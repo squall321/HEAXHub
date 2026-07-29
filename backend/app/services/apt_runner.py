@@ -166,6 +166,7 @@ def instance_start(
     env: Mapping[str, str] | None = None,
     memory: str | None = None,
     cpus: str | None = None,
+    nv: bool = False,
     **kwargs,
 ) -> subprocess.CompletedProcess:
     """Start a persistent apptainer instance.
@@ -191,6 +192,11 @@ def instance_start(
     args: list[str] = ["instance", "start"]
     if cleanenv:
         args.append("--cleanenv")
+    # GPU: manifest resources.gpu → --nv (nvidia libs/devices into the container).
+    # 호출자(launcher)가 호스트 GPU 존재를 이미 판정한 뒤에만 nv=True 를 넘긴다 —
+    # GPU 없는 호스트에서 --nv 를 붙이면 apptainer 가 "no nv files" 로 경고/실패하므로.
+    if nv:
+        args.append("--nv")
     if get_settings().enforce_instance_limits:
         if memory:
             args.extend(["--memory", str(memory)])

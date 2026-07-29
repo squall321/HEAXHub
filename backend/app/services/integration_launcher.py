@@ -58,6 +58,17 @@ STATE_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _host_has_nvidia() -> bool:
+    """호스트에 NVIDIA GPU 가 붙어 있는지(그래서 ``--nv`` 를 켜도 되는지) 판정한다.
+
+    ``resources.gpu: true`` 매니페스트라도 GPU 없는 호스트에서 ``apptainer instance
+    start --nv`` 를 하면 "no nv files" 로 경고·실패한다. 그래서 여기서 디바이스
+    노드(``/dev/nvidiactl`` 또는 ``/dev/nvidia0``) 존재로 게이트해, 없으면 CPU 로
+    조용히 폴백한다(앱의 torch 는 CUDA 미탐지 → CPU 로 돈다).
+    """
+    return Path("/dev/nvidiactl").exists() or Path("/dev/nvidia0").exists()
+
+
 def _app_data_dir(canonical: str) -> Path:
     """``var/app_data/<canonical>/`` — 앱 전용 영구 쓰기 디렉터리(생성 후 반환).
 
@@ -504,6 +515,9 @@ def _launch_via_sif(
     _cpu = _res.get("cpu")
     _memory = f"{int(float(_mem_gb) * 1024)}m" if _mem_gb else None
     _cpus = str(_cpu) if _cpu else None
+    # GPU: 매니페스트가 resources.gpu 를 요청하고 호스트에 실제 NVIDIA 가 있을 때만
+    # --nv 를 켠다. GPU 없으면 CPU 폴백(앱 torch 가 CUDA 미탐지로 CPU 로 돈다).
+    _nv = bool(_res.get("gpu")) and _host_has_nvidia()
 
     if instance_name not in running_instances:
         try:
@@ -515,6 +529,7 @@ def _launch_via_sif(
                 env=env_in_container,
                 memory=_memory,
                 cpus=_cpus,
+                nv=_nv,
             )
         except subprocess.CalledProcessError as exc:
             return LaunchResult(

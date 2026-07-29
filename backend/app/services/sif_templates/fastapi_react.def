@@ -43,7 +43,7 @@ From: python:3.12-slim
     # via StaticFiles at /). Editable install so app.main:app stays importable
     # the same way as the fastapi.def template.
     cd /app/backend
-    pip install --no-cache-dir -e .
+    pip install --no-cache-dir -e "{{PIP_TARGET}}"
 
     # Stage 3 (opt-in): app-provided container build hook. Runs
     # backend/scripts/heaxhub-build.sh (or scripts/heaxhub-build.sh) if the repo

@@ -627,6 +627,22 @@ def _sif_argv_for(
     # context intact. stacks.yaml entrypoints were synced to these values for
     # documentation accuracy; a safe single-sourcing needs argv tokenization +
     # explicit cwd, tracked as future work.
+    # 매니페스트가 진입점을 직접 선언했으면 그것을 쓴다. 이걸 무시하면 스택 기본값
+    # (fastapi=app.main:app 등)과 다른 레이아웃의 앱은 영영 못 뜬다 — 실측: WebDesignAgents 는
+    # 모듈이 wdweb.app:app 이라 하드코딩 argv 로는 기동 불가였고, 매니페스트에 command 를
+    # 넣어도 이 함수가 무시해 증상이 그대로였다. $PORT/$ROOT_PATH/$HOST 는 여기서 치환한다.
+    _cmd = (manifest.get("launch") or {}).get("command")
+    if isinstance(_cmd, str) and _cmd.strip():
+        import shlex as _shlex
+        _subst = {"PORT": str(port), "ROOT_PATH": base_path, "HOST": "127.0.0.1"}
+        _argv = []
+        for tok in _shlex.split(_cmd):
+            for k, v in _subst.items():
+                tok = tok.replace(f"${{{k}}}", v).replace(f"${k}", v)
+            _argv.append(tok)
+        if _argv:
+            return _argv
+
     if stack_name == "streamlit":
         return [
             "streamlit", "run", "app.py",

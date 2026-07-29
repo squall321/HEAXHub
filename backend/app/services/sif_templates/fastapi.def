@@ -5,7 +5,7 @@ From: python:3.12-slim
     {{UPSTREAM_DIR}} /app
 
 %post
-    cd /app && pip install --no-cache-dir -e .
+    cd /app && pip install --no-cache-dir -e "{{PIP_TARGET}}"
 
 %environment
     export PYTHONUNBUFFERED=1

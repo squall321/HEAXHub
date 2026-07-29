@@ -244,7 +244,18 @@ def build_sif(
             )
     entrypoint = _entrypoint(manifest)
 
+    # pip extras — 앱의 런타임 의존성이 optional-dependencies 에만 있는 경우가 있다.
+    # 예: WebDesignAgents 는 uvicorn/fastapi 가 [project.optional-dependencies].web 에만 있어
+    # `pip install -e .` 로는 안 깔리고, SIF 안에서 "uvicorn: executable file not found" 로
+    # 기동이 실패했다. manifest 의 build.extras: [web] 로 선언하면 `-e .[web]` 로 설치한다.
+    _extras = (manifest.get("build") or {}).get("extras") or []
+    if isinstance(_extras, str):
+        _extras = [_extras]
+    _extras = [str(e).strip() for e in _extras if str(e).strip()]
+    pip_target = f".[{','.join(_extras)}]" if _extras else "."
+
     placeholders = {
+        "{{PIP_TARGET}}": pip_target,
         "{{UPSTREAM_DIR}}": str(upstream_dir),
         "{{SUBPATH}}": str(subpath),
         "{{ENTRYPOINT}}": str(entrypoint),

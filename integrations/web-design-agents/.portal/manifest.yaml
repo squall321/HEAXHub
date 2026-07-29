@@ -23,10 +23,22 @@ tags:
   - multi-agent
 
 build:
-  stack: fastapi_react
+  # fastapi_react 가 아니다 — 이 레포의 frontend/ 에는 package.json 이 없고 사전빌드된 dist/ 만
+  # 있다. fastapi_react 스택은 pnpm 으로 프론트를 빌드하려 해서 SIF 빌드가 항상 실패했다
+  # (실측: "ERR_PNPM_NO_PKG_MANIFEST No package.json found in /app/frontend"). 빌드가 없으니
+  # 런처가 범용 폴백 ./.portal/run.sh 를 실행했고 그 파일도 없어 exit 127 로 45초마다 재시도만
+  # 반복했다 — '열기'를 눌러도 제자리인 이유. 파이썬 서비스로 고정한다.
+  stack: fastapi
+  # uvicorn/fastapi 가 이 레포의 optional-dependencies.web 에만 있다 — 선언하지 않으면
+  # `pip install -e .` 로 안 깔려 SIF 안에서 "uvicorn: executable file not found" 로 죽는다.
+  extras:
+    - web
 
 launch:
   mode: service
+  # 스택 기본 진입점은 app.main:app 이지만 이 패키지는 src/wdweb/app.py 의 `app` 이다.
+  # StaticFiles 로 frontend/dist 를 직접 서빙하고 ROOT_PATH 도 스스로 반영한다.
+  command: uvicorn wdweb.app:app --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH
   env:
     # HEAXHub 영구 볼륨(/data) — 회의록·파이프라인·렌더 산출물 전부 여기에
     WDA_DATA_DIR: /data

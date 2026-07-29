@@ -212,7 +212,11 @@ def _idempotent_put_or_insert(
     After the write, always call :func:`_ensure_spa_last` so the SPA catch-all
     never shadows an ``app-*`` route — adding one demo must not break another.
     """
-    resp = client.put(_admin_url(f"/id/{route_id}"), json=route)
+    # Caddy admin 에서 PUT 은 '삽입' 의미다 — 이미 있는 @id 에 PUT 하면 항상
+    # 400 {"error":"indexing config: duplicate ID ..."} 가 난다(실측 26/26 400).
+    # 그 결과 매 reconcile(45초)마다 모든 앱 라우트가 DELETE 후 재삽입돼, 그 사이
+    # 라우트가 존재하지 않는 창이 생겼다. 제자리 교체는 PATCH 다 — 창이 생기지 않는다.
+    resp = client.patch(_admin_url(f"/id/{route_id}"), json=route)
     if 200 <= resp.status_code < 300:
         _ensure_spa_last(client)
         return

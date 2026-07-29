@@ -241,6 +241,11 @@ if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
   nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port '"$API_PORT" \
     > var/logs/backend.log 2>&1 &
   disown
+  # rev 는 '띄운 즉시' 기록한다. 준비완료 뒤에 기록하면, 기동 시 reconcile 이 오래 걸려
+  # readiness 를 못 채운 경우 rev 가 안 남고 → 매분 도는 워치독이 start.sh 를 부를 때마다
+  # 'rev 불일치'로 판단해 backend+celery 를 계속 재기동하는 루프가 된다(실측: 워커 PID 가
+  # 3분마다 바뀜). 기록은 '이 커밋으로 띄웠다'는 사실이지 '건강하다'는 뜻이 아니다.
+  mkdir -p "$(dirname "$BACKEND_REV_FILE")" && printf '%s' "$HEAD_REV" > "$BACKEND_REV_FILE"
   # readiness 대기 — 백엔드가 부팅 중 죽으면(시크릿 가드/임포트 등) 조용한 502 대신
   # 즉시 크래시 로그를 보여준다(가이드라인 10: 추측 말고 실제 로그).
   # 기동 시 reconcile(앱 15개 헬스체크 + 라우트 재등록)이 도는 동안 /health 가 안 뜬다.
@@ -251,8 +256,6 @@ if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
     sleep 1
   done
   if curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
-    # 어느 커밋으로 떴는지 남긴다 — 다음 배포가 이 값으로 재기동 필요를 판정한다.
-    mkdir -p "$(dirname "$BACKEND_REV_FILE")" && printf '%s' "$HEAD_REV" > "$BACKEND_REV_FILE"
     echo "  ✓ backend up (:$API_PORT)"
   else
     echo "  ✗ backend /health 미응답 — 크래시 로그 마지막 40줄 (var/logs/backend.log)" >&2

@@ -292,6 +292,7 @@ def launch(
     app_data = _app_data_dir(canonical)
     env = os.environ.copy()
     # 매니페스트 앱별 env(launch.env) 먼저, HEAXHub 제어 변수는 아래에서 덮는다.
+    env.update(_inherited_env())          # 공용 LLM 설정(있을 때만)
     env.update({
         str(k): str(v)
         for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
@@ -478,10 +479,11 @@ def _launch_via_sif(
     # (PORT/HOST/ROOT_PATH/HEAX_DATA_DIR 등은 항상 HEAXHub 가 결정 — 앱이 override
     # 못 함). 앱이 쓰기 경로가 필요하면 $HEAX_DATA_DIR(=/data) 아래를 쓰거나,
     # launch.env 로 앱 고유 변수를 /data 로 가리키면 된다(예: FOO_DATA_DIR: /data).
-    env_in_container: dict[str, str] = {
+    env_in_container: dict[str, str] = dict(_inherited_env())   # 공용 LLM 설정(있을 때만)
+    env_in_container.update({
         str(k): str(v)
         for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
-    }
+    })
     env_in_container.update({
         "PORT": str(port),
         # loopback 전용 바인드 컨벤션 — argv 로 못 바꾸는 스택은 앱이 $HOST 를 읽어야 함.
@@ -601,6 +603,27 @@ def _instance_name_for(canonical: str) -> str:
     """
     safe = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in canonical)
     return f"heax_app_{safe}"
+
+
+# 호스팅 앱에 물려줄 LLM 설정. 앱은 "env-kits 상속"을 전제로 LLM_BASE_URL / LLM_MODEL 을
+# 읽는데(예: WebDesignAgents 무인 심의), 런처가 주입하지 않아 앱이 자체 기본값
+# (dev: 127.0.0.1:8000/v1, qwen2.5-7b-dev)으로 폴백했다 — cae00 처럼 그 주소에 아무것도 없는
+# 환경에서는 조용히 실패한다. --cleanenv 컨테이너라 명시 전달 외에는 들어갈 방법이 없다.
+#
+# ⚠ 호스트 쪽 이름을 HEAX_APP_LLM_* 로 분리한 이유: HEAXHub 자신도 LLM_MODEL 을 쓰기 때문에
+# 같은 이름을 쓰면 둘이 서로 덮어쓴다(실측: .env 에 LLM_MODEL 이 이미 있었다).
+# 호스트 HEAX_APP_LLM_BASE_URL → 컨테이너 LLM_BASE_URL 로 이름을 바꿔 넣는다.
+_APP_LLM_ENV = {
+    "HEAX_APP_LLM_BASE_URL": "LLM_BASE_URL",
+    "HEAX_APP_LLM_MODEL": "LLM_MODEL",
+    "HEAX_APP_LLM_API_KEY": "LLM_API_KEY",
+    "HEAX_APP_LLM_DISABLE_STREAMING": "LLM_DISABLE_STREAMING",
+}
+
+
+def _inherited_env() -> dict[str, str]:
+    """호스트에 설정된 HEAX_APP_LLM_* 만 골라 앱이 읽는 이름으로 바꿔 돌려준다."""
+    return {dst: os.environ[src] for src, dst in _APP_LLM_ENV.items() if os.environ.get(src)}
 
 
 def _sif_argv_for(

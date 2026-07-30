@@ -6,6 +6,14 @@ From: python:3.12-slim
 
 %post
     set -eux
+    # Hermetic Python: ignore the host user-site (~/.local) at build time so the
+    # FULL runtime closure is installed into the image's system python
+    # (/usr/local), not skipped because pip saw a copy under ~/.local. Apptainer
+    # mounts $HOME at runtime, so ~/.local otherwise shadows the image's packages
+    # on sys.path — a host env drift (e.g. a package major bump or a missing
+    # transitive dep) then crashes the deployed app even though the SIF is intact.
+    # Paired with the %environment export below, the container is fully hermetic.
+    export PYTHONNOUSERSITE=1
     # Need Node 20 + pnpm for the Vite/React frontend build, and Python
     # tooling (already provided by python:3.12-slim) for the FastAPI backend.
     apt-get update
@@ -65,6 +73,11 @@ From: python:3.12-slim
     export PYTHONUNBUFFERED=1
     export NODE_ENV=production
     export PATH=/usr/local/bin:$PATH
+    # Hermetic runtime: ignore the host user-site (~/.local) so the container uses
+    # only its bundled packages. Apptainer mounts $HOME (even with --cleanenv), so
+    # without this ~/.local shadows the image's site-packages on sys.path and a
+    # host drift breaks the app. Survives --cleanenv (baked into the SIF env).
+    export PYTHONNOUSERSITE=1
 
 %runscript
     cd /app/backend

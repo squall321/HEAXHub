@@ -14,6 +14,10 @@ launch:
     # HEAXHub 가 bind 하는 영구 볼륨(/data → var/app_data/materialtwin_web/).
     # SIF rootfs 는 read-only 라 여기 외엔 못 쓰고, 재빌드·재스캔 뒤에도 남는다.
     MATERIALTWIN_DATA_DIR: /data
+    # hermetic 런타임 — 컨테이너가 호스트 ~/.local(user-site)을 무시하고 SIF 패키지만 쓰게 한다.
+    # apptainer가 $HOME을 마운트해 ~/.local의 mcp가 SIF의 것을 가리던 문제를 차단.
+    # (SIF는 pyproject의 mcp<2 핀 + backend/scripts/heaxhub-build.sh로 정상 mcp 1.x·httpx를 번들.)
+    PYTHONNOUSERSITE: "1"
   # command: <기본 entrypoint 대신 직접 지정하려면 주석 해제>
 health_check:
   path: /api/health

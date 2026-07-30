@@ -5,9 +5,11 @@ From: python:3.12-slim
     {{UPSTREAM_DIR}} /app
 
 %post
+    export PYTHONNOUSERSITE=1  # hermetic 빌드: 호스트 ~/.local 무시하고 /usr/local 에 전체 설치
     cd /app && pip install --no-cache-dir -e .
 
 %environment
+    export PYTHONNOUSERSITE=1  # hermetic 런타임: 호스트 ~/.local(user-site) 무시, SIF 패키지만
     export PYTHONUNBUFFERED=1
     export PATH=/usr/local/bin:$PATH
 

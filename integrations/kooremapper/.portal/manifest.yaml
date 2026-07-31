@@ -1,0 +1,16 @@
+schema_version: 2
+id: kooremapper
+name: "KooRemapper"
+owner: "koo.park"
+status: stable
+app_type: external_link
+execution_target: external_url
+description: "LS-DYNA K파일 메시·재료 연산 플랫폼 — 46개 op(리맵·조립·재료DB·C-clip 등)를 웹 UI/REST API/MCP로 제공. 업로드한 K파일에 대해 검사·변환·초기응력 생성 등을 실행한다."
+build:
+  stack: external_link
+launch:
+  mode: url
+  url: https://110.15.177.120:8443
+  open_in: new_tab
+permissions:
+  visibility: company     # company | department | team | private

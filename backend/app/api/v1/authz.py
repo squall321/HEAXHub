@@ -102,7 +102,12 @@ def authz(
         return Response(status_code=status.HTTP_401_UNAUTHORIZED)
 
     if permission_service.can_view_app(db, app, user):
-        return Response(status_code=status.HTTP_200_OK)
+        # portal_auth 프록시 앱용 identity 전파 — forward_auth 게이트가 2xx 응답의
+        # 이 헤더들을 업스트림 요청으로 복사한다 (proxy_manager._forward_auth_handler).
+        ok = Response(status_code=status.HTTP_200_OK)
+        ok.headers["X-Heax-User-Email"] = user.email or ""
+        ok.headers["X-Heax-User-Name"] = user.display_name or ""
+        return ok
     return Response(status_code=status.HTTP_403_FORBIDDEN)
 
 

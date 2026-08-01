@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     public_host: str = "localhost"
     public_port: int = 4180
     caddy_admin_url: str = "http://127.0.0.1:2019"
+    # portal_auth 프록시 앱의 업스트림에 주입하는 정적 게이트웨이 시크릿 —
+    # 업스트림 앱이 X-Heax-* identity 헤더를 신뢰해도 되는 요청인지 판별하는 근거.
+    # 비우면 미주입(identity 복사만 동작).
+    gateway_shared_secret: str = ""
     secret_encryption_key: str = ""  # Fernet base64-encoded 32 bytes
     interpreters_config: Path = Path("config/interpreters.yaml")
 

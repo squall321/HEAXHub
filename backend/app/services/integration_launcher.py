@@ -177,12 +177,16 @@ def launch(
             )
         base_path = f"/apps/{canonical}"
         strip_prefix = bool(launch_section.get("strip_prefix", True))
+        # launch.portal_auth: true — 포탈 forward_auth 게이트 + X-Heax-* identity
+        # 전파 + 게이트웨이 시크릿 주입 (업스트림 앱 SSO 자동 로그인용).
+        portal_auth = bool(launch_section.get("portal_auth", False))
         try:
             res = proxy_manager.register_external_proxy_route(
                 app_id=canonical,
                 upstream_url=str(upstream),
                 base_path=base_path,
                 strip_prefix=strip_prefix,
+                portal_auth=portal_auth,
             )
         except Exception as exc:
             return LaunchResult(

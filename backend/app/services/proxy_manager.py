@@ -41,7 +41,11 @@ _AUTHZ_URI = "/api/v1/authz"
 _AUTHZ_DIAL = "127.0.0.1:4040"
 
 
-def _forward_auth_handler() -> dict[str, Any]:
+# portal_auth 시 업스트림으로 복사하는 identity 헤더 (authz 2xx 응답이 싣는다).
+_IDENTITY_HEADERS = ("X-Heax-User-Email", "X-Heax-User-Name")
+
+
+def _forward_auth_handler(*, copy_identity: bool = False) -> dict[str, Any]:
     """Build the Caddy ``forward_auth`` gate as native JSON.
 
     In Caddy's JSON config there is no ``forward_auth`` handler — that
@@ -56,7 +60,25 @@ def _forward_auth_handler() -> dict[str, Any]:
     automatically (the auth subrequest is a copy of the inbound request); we
     additionally surface the original URI/host via ``X-Forwarded-*`` so the
     authz endpoint can extract the ``/apps/{slug}`` it must authorize.
+
+    ``copy_identity=True`` 는 Caddyfile ``forward_auth ... copy_headers`` 의
+    JSON 전개형 — authz 2xx 응답의 X-Heax-* identity 헤더를 업스트림 요청으로
+    복사한다. ``set`` 이라 클라이언트가 위조해 보낸 동명 헤더는 항상 덮인다
+    (익명 공개앱 통과 시 authz 가 헤더를 안 실으므로 빈 값으로 덮임).
     """
+    handle_response_routes: list[dict[str, Any]] = []
+    if copy_identity:
+        handle_response_routes.append({
+            "handle": [{
+                "handler": "headers",
+                "request": {
+                    "set": {
+                        h: [f"{{http.reverse_proxy.header.{h}}}"]
+                        for h in _IDENTITY_HEADERS
+                    }
+                },
+            }],
+        })
     return {
         "handler": "reverse_proxy",
         "rewrite": {"method": "GET", "uri": _AUTHZ_URI},
@@ -79,7 +101,7 @@ def _forward_auth_handler() -> dict[str, Any]:
         # 2xx만 매칭 → 다음 핸들러로 통과. 매칭되지 않은 4xx/5xx 는 reverse_proxy 가
         # authz 응답 그대로 클라이언트에 반환하고 체인을 종료한다.
         "handle_response": [
-            {"match": {"status_code": [2]}, "routes": []},
+            {"match": {"status_code": [2]}, "routes": handle_response_routes},
         ],
     }
 
@@ -289,6 +311,7 @@ def _build_external_proxy_route(
     base_path: str | None,
     *,
     strip_prefix: bool = True,
+    portal_auth: bool = False,
 ) -> dict[str, Any]:
     """Build a Caddy route reverse-proxying to an external ``upstream_url``.
 
@@ -296,6 +319,11 @@ def _build_external_proxy_route(
     an arbitrary ``host[:port]`` parsed out of ``upstream_url``. When the
     upstream is https we also attach an http+tls transport so Caddy talks
     SNI/TLS to the origin instead of plain TCP.
+
+    ``portal_auth=True`` (manifest ``launch.portal_auth``) 는 내부 앱과 동일한
+    forward_auth 게이트를 앞단에 세우고, authz 2xx 의 X-Heax-* identity 헤더를
+    업스트림으로 복사하며, 설정된 gateway_shared_secret 을 정적 헤더로 주입한다
+    — 업스트림 앱의 SSO 자동 로그인 근거.
     """
     from urllib.parse import urlparse
 
@@ -315,8 +343,16 @@ def _build_external_proxy_route(
     match_paths = [path, f"{path}/*"]
 
     handle_chain: list[dict[str, Any]] = []
+    if portal_auth:
+        handle_chain.append(_forward_auth_handler(copy_identity=True))
     if strip_prefix:
         handle_chain.append({"handler": "rewrite", "strip_path_prefix": path})
+
+    request_set: dict[str, list[str]] = {"Host": [parsed.hostname]}
+    if portal_auth:
+        secret = get_settings().gateway_shared_secret
+        if secret:
+            request_set["X-Heax-Gateway-Secret"] = [secret]
 
     reverse_proxy: dict[str, Any] = {
         "handler": "reverse_proxy",
@@ -324,7 +360,7 @@ def _build_external_proxy_route(
         # Many SaaS upstreams virtual-host route on the Host header — without
         # this they 404 because they see HEAXHub's hostname instead of their own.
         "headers": {
-            "request": {"set": {"Host": [parsed.hostname]}},
+            "request": {"set": request_set},
         },
     }
     if is_tls:
@@ -347,6 +383,7 @@ def register_external_proxy_route(
     base_path: str | None = None,
     *,
     strip_prefix: bool = True,
+    portal_auth: bool = False,
 ) -> ProxyResult:
     """Register a Caddy route ``/apps/{app_id}/*`` -> external ``upstream_url``.
 
@@ -355,7 +392,8 @@ def register_external_proxy_route(
     """
     try:
         route = _build_external_proxy_route(
-            app_id, upstream_url, base_path, strip_prefix=strip_prefix,
+            app_id, upstream_url, base_path,
+            strip_prefix=strip_prefix, portal_auth=portal_auth,
         )
     except ValueError as exc:
         logger.warning("external proxy route invalid for app=%s: %s", app_id, exc)

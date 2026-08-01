@@ -198,6 +198,20 @@ def launch(
                 slug=slug, action="failed", port=None, base_path=base_path,
                 error=f"caddy register failed: {getattr(res, 'reason', 'unknown')}",
             )
+        # 기동 이력(state)을 남긴다. HEAX 가 프로세스를 띄우지 않는 proxy 라도, MCP 레지스트리의
+        # _ever_launched 게이트(state 파일 유무)를 통과해야 /api/v1/mcp/servers 에 노출된다 —
+        # 없으면 mcp.expose:true 를 선언해도 외부 연계 앱이 게이트웨이에서 영원히 안 보인다.
+        # 프로세스가 없으므로 pid/port 는 None, 실체는 외부 upstream 이 담당한다.
+        _write_state(canonical, {
+            "schema_version": _STATE_SCHEMA_VERSION,
+            "slug": canonical,
+            "pid": None,
+            "port": None,
+            "base_path": base_path,
+            "mode": "proxy",
+            "upstream": str(upstream),
+            "caddy_registered": True,
+        })
         return LaunchResult(
             slug=slug, action="started", port=None, base_path=base_path,
         )

@@ -349,6 +349,12 @@ def _build_external_proxy_route(
         handle_chain.append({"handler": "rewrite", "strip_path_prefix": path})
 
     request_set: dict[str, list[str]] = {"Host": [parsed.hostname]}
+    if strip_prefix:
+        # 프리픽스를 떼고 넘기므로 업스트림은 자기 서브패스를 알 길이 없다(내부 앱은
+        # `--root-path /apps/<id>` 로 받는 그 값). 동일한 신호를 헤더로 줘서 업스트림이
+        # (uvicorn --proxy-headers, Starlette root_path 등) base_path 하드코딩 없이
+        # 서브패스를 인식하게 한다 — 외부 연계 규약(Tier 0) 서브패스 안전의 근거.
+        request_set["X-Forwarded-Prefix"] = [path]
     if portal_auth:
         secret = get_settings().gateway_shared_secret
         if secret:

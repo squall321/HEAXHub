@@ -135,10 +135,13 @@ def test_external_proxy_registers_route_with_upstream_dial(
     ws.mkdir()
 
     calls: list[dict] = []
+    states: list[tuple] = []
 
     class _CaptureProxy:
         @staticmethod
-        def register_external_proxy_route(*, app_id, upstream_url, base_path, strip_prefix=True):
+        def register_external_proxy_route(
+            *, app_id, upstream_url, base_path, strip_prefix=True, portal_auth=False
+        ):
             calls.append({
                 "app_id": app_id,
                 "upstream_url": upstream_url,
@@ -149,6 +152,11 @@ def test_external_proxy_registers_route_with_upstream_dial(
 
     monkeypatch.setattr(integration_launcher, "proxy_manager", _CaptureProxy)
     monkeypatch.setattr(integration_launcher, "port_allocator", _NoCallPorts)
+    # proxy launch 도 기동 이력(state)을 남겨야 MCP 레지스트리의 _ever_launched 게이트를
+    # 통과한다(외부 연계 MCP 앱 노출 전제). 파일 부작용 없이 캡처만 한다.
+    monkeypatch.setattr(
+        integration_launcher, "_write_state", lambda canon, st: states.append((canon, st))
+    )
 
     manifest = {
         "id": "ext_proxy",
@@ -167,6 +175,10 @@ def test_external_proxy_registers_route_with_upstream_dial(
     assert calls[0]["upstream_url"] == "https://internal-tool.corp:8443/"
     assert calls[0]["base_path"] == "/apps/ext_proxy"
     assert calls[0]["strip_prefix"] is True
+    # proxy 도 state 를 남긴다 — 외부 MCP 앱이 게이트웨이(/api/v1/mcp/servers)에 뜨기 위한 전제.
+    assert states and states[0][0] == "ext_proxy"
+    assert states[0][1]["mode"] == "proxy"
+    assert states[0][1]["upstream"] == "https://internal-tool.corp:8443/"
 
 
 def test_external_proxy_missing_upstream_fails(
@@ -220,6 +232,17 @@ def test_external_proxy_route_builds_host_dial_with_tls() -> None:
     assert rp["transport"]["tls"]["server_name"] == "internal-tool.corp"
     # Host header override so the upstream sees its own hostname
     assert rp["headers"]["request"]["set"]["Host"] == ["internal-tool.corp"]
+    # 서브패스를 떼고 넘기므로 X-Forwarded-Prefix 로 프리픽스를 알린다(내부 --root-path 동치).
+    assert rp["headers"]["request"]["set"]["X-Forwarded-Prefix"] == ["/apps/ext_proxy"]
+
+
+def test_external_proxy_no_forwarded_prefix_when_not_stripping() -> None:
+    """strip_prefix=False 면 앱이 전체 경로를 그대로 받으므로 X-Forwarded-Prefix 를 주지 않는다."""
+    route = proxy_manager._build_external_proxy_route(
+        "ext_np", "http://127.0.0.1:9000", "/apps/ext_np", strip_prefix=False,
+    )
+    rp = route["handle"][0]["routes"][0]["handle"][-1]
+    assert "X-Forwarded-Prefix" not in rp["headers"]["request"]["set"]
 
 
 def test_external_proxy_route_rejects_non_http_scheme() -> None:

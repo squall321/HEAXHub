@@ -1,0 +1,26 @@
+schema_version: 2
+id: kooremapper_mcp
+name: "KooRemapper MCP"
+version: "1.8.0"
+owner: "koo.park"
+status: stable
+app_type: external_link
+execution_target: external_url
+description: "KooRemapper MCP 엔드포인트 — 47개 op(리맵·조립·재료DB·C-clip·modelmeta 등)를 Claude 등 MCP 클라이언트에 노출. kr_ PAT(개인 액세스 토큰)로 인증한다."
+build:
+  stack: external_proxy
+launch:
+  mode: proxy
+  upstream: http://127.0.0.1:8701     # MCP streamable-http 서버(별도 인스턴스)
+  strip_prefix: true
+  # portal_auth 없음 — MCP 는 요청의 Authorization: Bearer kr_… 를 REST(:8700)로
+  # 전달해 검증하므로 자체 인증이 강제된다. 여기에 forward_auth 를 걸면 kr_ PAT 가
+  # HEAX 자격증명으로 오인돼 401 로 막힌다.
+permissions:
+  visibility: company     # company | department | team | private
+
+# HWAX MCP Gateway 자동탐지 — /apps/kooremapper_mcp/mcp 를 포탈 챗/Claude 에 노출.
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http

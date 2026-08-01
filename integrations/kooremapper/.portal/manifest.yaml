@@ -16,3 +16,5 @@ launch:
   portal_auth: true                    # 포탈 forward_auth + X-Heax-* identity 전파 → 앱 SSO 자동 로그인
 permissions:
   visibility: company     # company | department | team | private
+# MCP 는 별도 엔트리(kooremapper-mcp)로 노출한다 — MCP 는 자체 kr_ PAT 인증을
+# 쓰므로 웹의 portal_auth forward_auth 게이트와 분리해야 충돌하지 않는다.

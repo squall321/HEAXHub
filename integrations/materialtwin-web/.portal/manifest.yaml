@@ -1,6 +1,7 @@
 schema_version: 2
 id: materialtwin_web
 name: "MaterialTwin Web"
+version: "0.1.0"   # 앱 실버전(backend FastAPI·frontend package.json)과 일치 — 버전 올릴 때 함께 갱신
 owner: "squall321"
 status: stable
 app_type: web_app

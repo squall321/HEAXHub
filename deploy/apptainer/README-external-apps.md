@@ -4,6 +4,9 @@
 HEAXHub 하위 경로 `/apps/ext_<id>/` 로 연동한다. 컨테이너/빌드/소스클론을 강제하지 않는다 — 그쪽은
 서비스만 띄우고, HEAX 는 IP 를 물어 reverse_proxy 한다.
 
+> 연동되는 앱이 지켜야 할 조건(서브패스 안전·health·MCP 등)은 [EXTERNAL-INTEGRATION-CONTRACT.md](EXTERNAL-INTEGRATION-CONTRACT.md) 참고.
+> 이 문서는 "운영자가 어떻게 등록하는가", 규약 문서는 "앱이 무엇을 만족해야 하는가"를 다룬다.
+
 ## 왜 별도 파일인가 — 라이프사이클 분리
 
 | | 내 관리 앱 | 운영팀 외부 연계 앱 |

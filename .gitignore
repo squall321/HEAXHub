@@ -104,3 +104,8 @@ var/sifs/
 
 # 앱 런타임 데이터(영구 볼륨은 var/app_data/ — 소스 트리에 커밋 금지)
 integrations/*/data/
+
+# 운영서버 외부 연계(proxy) 앱 — register-external.sh 가 var/external-apps.yaml 에서
+# 자동 생성. gitignore 라 update-all(git reset --hard)이 못 건드려 운영팀 등록분이 보존된다.
+# (내 관리 앱과 라이프사이클 완전 분리 — 별도 apply 로만 갱신.)
+integrations/ext_*/

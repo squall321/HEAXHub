@@ -462,8 +462,73 @@ def _maybe_launch(
                         app.id, lr.pid, lr.port)
         else:
             logger.debug("integration %s: %s", app.id, lr.action)
+        if lr.action != "failed":
+            # 카탈로그 버전 라벨 대조 — 실패해도 스캔은 계속(부가 진단이지 게이트가 아니다).
+            try:
+                _check_version_drift(db, app=app, manifest=manifest, lr=lr)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("version drift check skipped for %s: %r", app.id, exc)
     except Exception as exc:  # noqa: BLE001
         logger.exception("launcher crashed for %s: %s", app.id, exc)
+
+
+_VERSION_KEYS = ("version", "app_version")
+
+
+def _health_version(port: int | None, base_path: str, health_path: str) -> str | None:
+    """앱이 헬스 응답에 노출한 **실제** 버전. 노출하지 않으면 None(대조 생략)."""
+    if not port:
+        return None
+    import httpx  # noqa: PLC0415 — 런처와 동일하게 지연 import
+
+    for url in (f"http://127.0.0.1:{port}{health_path}",
+                f"http://127.0.0.1:{port}{base_path}{health_path}"):
+        try:
+            r = httpx.get(url, timeout=3.0, follow_redirects=False)
+            if r.status_code >= 400:
+                continue
+            payload = r.json()
+        except Exception:  # noqa: BLE001 — 미노출·비JSON·다운은 전부 '대조 불가'
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for src in (payload, payload.get("server"), payload.get("data")):
+            if isinstance(src, dict):
+                for k in _VERSION_KEYS:
+                    v = src.get(k)
+                    if isinstance(v, str) and v.strip():
+                        return v.strip()
+    return None
+
+
+def _check_version_drift(db: Session, *, app: App, manifest: dict[str, Any], lr: Any) -> None:
+    """manifest version 과 앱이 헬스에 노출한 실제 버전을 대조해 경고하고 흔적을 남긴다.
+
+    카탈로그는 manifest 기준으로 버전을 표시한다. 그래서 앱만 새로 배포되고 manifest 를
+    안 올리면 카탈로그가 조용히 구버전을 계속 보여준다 — 지금까지 사람이 매번 수동으로
+    맞춰 왔다. 앱이 헬스에 버전을 노출하면 여기서 자동으로 잡아 경고하고,
+    ``App.extra['version_drift']`` 에 남겨 UI/조회에서도 드러나게 한다.
+    버전을 노출하지 않는 앱은 조용히 건너뛴다(선택 기능 — 강제하지 않는다).
+    """
+    declared = str(manifest.get("version") or "").strip()
+    health_path = ((manifest.get("launch") or {}).get("health_check") or {}).get("path") or "/health"
+    actual = _health_version(getattr(lr, "port", None), getattr(lr, "base_path", "") or "", health_path)
+    if not declared or not actual:
+        return
+    extra = dict(app.extra or {})
+    if actual == declared:
+        if extra.pop("version_drift", None) is not None:
+            app.extra = extra          # 드리프트 해소 — 표시 제거
+            db.commit()
+        return
+    logger.warning(
+        "version drift %s: manifest=%s / health=%s — 카탈로그가 구버전을 표시합니다"
+        " (manifest 의 version 을 올리거나 앱 버전을 확인하세요)",
+        app.id, declared, actual,
+    )
+    extra["version_drift"] = {"manifest": declared, "health": actual}
+    app.extra = extra
+    db.commit()
 
 
 def _record_build(

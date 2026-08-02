@@ -60,7 +60,21 @@ services:
 | 변경 | 즉시(스크립트가 backend/.venv 사용 시) | 자동(비트) |
 |---|---|---|
 | 추가/수정 | reconcile 즉시 당김 → 라우트 바로 | 라우트 ≤45s(reconcile), 카탈로그 ≤5분(scan) |
-| 삭제 | 라우트 즉시 해제 | 카탈로그 행은 다음 `stop.sh`/`start.sh` 재동기 때 정리 |
+| 삭제(레지스트리에서 제거) | 라우트 즉시 해제 | 카탈로그 DB 행은 **안 지워짐**(아래 참고) |
 
 즉시 반영이 필요한데 `backend/.venv` 가 없으면(host python3 만) 매니페스트만 갱신되고 위 비트로 자동 반영된다.
 관리자 UI 의 "프록시 동기화"(reconcile) 로도 즉시 당길 수 있다.
+
+## 앱을 완전히 지우려면 (카탈로그에서도 사라지게)
+
+스캐너는 **App 행을 절대 삭제하지 않는다**(upsert-only). `register-external.sh` 로 레지스트리에서
+빼면 라우트는 즉시 끊기지만, 카탈로그(`/apps` 목록)엔 그 앱이 계속 남는다. 완전히 지우려면.
+
+```bash
+bash deploy/apptainer/deprovision-app.sh <app_id>
+```
+
+Caddy 라우트 해제 + state 파일 삭제 + DB 행 삭제(참조 job 이 있으면 삭제 대신 `ARCHIVED` 전환,
+job 이력은 보존)까지 한 번에 처리한다. **순서 주의** — 매니페스트 디렉터리(`integrations/ext_<id>/`)를
+먼저 지운 뒤 실행해야 한다(안 지우면 재조정 비트가 라우트를 도로 살릴 수 있다는 경고가 뜬다).
+내 관리 앱(`integrations/<slug>/`)에도 동일하게 쓸 수 있다 — id 는 `ext_` 접두 유무만 다르다.

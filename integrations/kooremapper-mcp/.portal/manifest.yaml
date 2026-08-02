@@ -1,12 +1,12 @@
 schema_version: 2
 id: kooremapper_mcp
-name: "KooRemapper MCP"
+name: "DynaForge MCP"
 version: "1.8.0"
 owner: "koo.park"
 status: stable
 app_type: external_link
 execution_target: external_url
-description: "KooRemapper MCP 엔드포인트 — 47개 op(리맵·조립·재료DB·C-clip·modelmeta 등)를 Claude 등 MCP 클라이언트에 노출. kr_ PAT(개인 액세스 토큰)로 인증한다."
+description: "DynaForge MCP 엔드포인트 — LS-DYNA K파일 전처리 47개 op(재료·메시·초기응력·해석 세팅·모델 메타)를 Claude 등 MCP 클라이언트에 노출. kr_ PAT(개인 액세스 토큰)로 인증한다."
 build:
   stack: external_proxy
 launch:

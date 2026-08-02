@@ -1,12 +1,12 @@
 schema_version: 2
 id: kooremapper
-name: "KooRemapper"
+name: "DynaForge"
 version: "1.8.0"
 owner: "koo.park"
 status: stable
 app_type: external_link
 execution_target: external_url
-description: "LS-DYNA K파일 메시·재료 연산 플랫폼 — 47개 op(리맵·조립·재료DB·C-clip·modelmeta 등)를 웹 UI/REST API/MCP로 제공. 업로드한 K파일에 대해 검사·변환·초기응력 생성 등을 실행한다."
+description: "DynaForge — LS-DYNA K파일 전처리 자동화 플랫폼. 47개 op(재료DB 치환·메시 변환/재메시·조립/눌림/굽힘 초기응력(squeeze/cclip/prestress/warpage)·해석 세팅·모델 메타/연결도)를 웹 UI/REST API/MCP로 제공."
 build:
   stack: external_proxy
 launch:

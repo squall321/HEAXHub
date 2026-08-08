@@ -80,10 +80,15 @@ def list_mcp_servers(db: DbSession, user: CurrentUser) -> dict[str, Any]:
         sub = str(mcp.get("path", "/mcp"))
         if not sub.startswith("/"):
             sub = "/" + sub
+        # 앱 단위 도구 선택 UI 는 이름과 설명이 사용자가 보는 전부다. 설명을 주지 않으면
+        # 게이트웨이가 빈 문자열을 싣고, 사용자는 앱 이름만으로 무엇을 하는 앱인지 추측하게 된다.
+        # mcp.description(그 MCP 가 무엇을 제공하는지)이 있으면 그것을, 없으면 앱 설명을 쓴다.
+        desc = str(mcp.get("description") or app.description or "").strip()
         servers.append(
             {
                 "id": app.id,
                 "name": app.name,
+                "description": desc[:300],
                 "path": f"/apps/{app.id}{sub}",
                 "transport": str(mcp.get("transport", "streamable_http")),
                 # 게이트웨이 그룹 필터 슬롯 — 비면 전체 공개, 있으면 caller groups 교집합 필요.

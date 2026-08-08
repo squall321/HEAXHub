@@ -1,0 +1,73 @@
+schema_version: 2
+id: web_research_mcp
+name: "웹 리서치 브로커"
+version: "0.1.0"
+owner: "koo.park"
+# 스캐너가 신규 앱을 STABLE 로 하드코딩 생성하므로 이 값은 이 경로에선 장식이다.
+# (그래도 실제 성숙도를 적어 둔다 — 나중에 스캐너가 존중하게 되면 그때 올린다.)
+status: beta
+app_type: web_app
+execution_target: linux_runner
+
+description: |
+  인터넷 검색·페이지 수집을 담당하는 외부 리서치 브로커. 이 조직에서 외부로 나가는
+  유일한 출구이며, 나간 질의는 전량 기록된다.
+
+  소스는 셋으로 나뉘고 각각 따로 켠다 — 사내 자산(나가지 않음), 공공 학술 API
+  (arXiv·PubMed 등, 승인 불필요), 일반 웹(보안 승인 필요). 한 스위치로 묶지 않는 이유는
+  나가는 곳도 승인도 위험도도 다르기 때문이다.
+
+  현재 P2(골격) 단계로 외부 호출 경로는 구현돼 있지 않다. SEARCH_MODE 기본값은 offline 이다.
+
+tags:
+  - research
+  - search
+  - egress-broker
+
+build:
+  # type 은 스키마 v2 필수, stack 은 스택 리졸버가 읽는 키 — 둘 다 선언한다.
+  # stack 이 빠지면 스캐너가 앱을 통째로 skip 한다(조용히 사라진다).
+  type: python_venv
+  stack: fastapi
+  python_version: "3.12"
+
+launch:
+  mode: service
+  # 스택 기본 진입점이 app.main:app 이라 그대로 쓴다.
+  command: uvicorn app.main:app --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH
+  env:
+    # 전역 하드 차단 스위치. 승인 전까지 offline 을 유지한다 — 대화 단위 토글은 이 위에서
+    # 좁히기만 하고 넓히지 못한다.
+    SEARCH_MODE: offline
+  # health_check·restart_policy 는 반드시 launch: 아래여야 한다. top-level 로 두면
+  # 조용히 무시되고 스택 기본값 /health 로 프로브돼 404 만 쌓인다.
+  # 재시도 횟수 키는 max_attempts 다 — max_retries 는 읽히지 않는다.
+  health_check:
+    path: /api/health
+  restart_policy:
+    policy: on_failure
+    max_attempts: 3
+
+source:
+  type: git
+  # 로컬 git 저장소. 외부 공개 없이 검증된 git 메커니즘을 그대로 쓴다.
+  # GitHub 으로 옮기려면 이 url 한 줄만 바꾸면 된다(cae00 은 SIF 를 Drive 로 받으므로
+  # 소스 접근이 필요 없다 — 다만 cae00 자체 재빌드는 불가능해진다).
+  url: file:///home/koopark/claude/WebResearchMCP
+  ref: main
+
+permissions:
+  visibility: company
+
+# HWAX MCP Gateway 자동탐지 opt-in — /apps/web_research_mcp/mcp 를 포탈 챗/Claude 에 노출.
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http
+  # 앱 단위 선택 UI 는 이름과 설명이 사용자가 보는 전부다. 비우면 이름만 뜬다.
+  description: "인터넷 검색·페이지 수집 브로커. 사내 자산·공공 학술 API·일반 웹을 소스별로 켜고 끈다. 나간 질의는 전량 기록된다."
+
+resources:
+  cpu: 2
+  memory_gb: 4
+  gpu: false

@@ -52,10 +52,10 @@ launch:
 
 source:
   type: git
-  # 로컬 git 저장소. 외부 공개 없이 검증된 git 메커니즘을 그대로 쓴다.
-  # GitHub 으로 옮기려면 이 url 한 줄만 바꾸면 된다(cae00 은 SIF 를 Drive 로 받으므로
-  # 소스 접근이 필요 없다 — 다만 cae00 자체 재빌드는 불가능해진다).
-  url: file:///home/koopark/claude/WebResearchMCP
+  # private 레포. 형제 MCP 앱 4개와 같은 방식이라 cae00 이 스스로 clone·빌드한다.
+  # 로컬 경로(file://)는 쓸 수 없다 — 스캐너가 SIF 존재 확인보다 **먼저** fetch 를 시도하고,
+  # 실패하면 즉시 FAILED 로 빠져 SIF 를 보내 놔도 앱이 뜨지 않는다(코드 실측).
+  url: https://github.com/squall321/WebResearchMCP.git
   ref: main
 
 permissions:

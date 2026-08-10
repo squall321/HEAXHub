@@ -36,9 +36,11 @@ launch:
   # 스택 기본 진입점이 app.main:app 이라 그대로 쓴다.
   command: uvicorn app.main:app --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH
   env:
-    # 전역 하드 차단 스위치. 승인 전까지 offline 을 유지한다 — 대화 단위 토글은 이 위에서
-    # 좁히기만 하고 넓히지 못한다.
-    SEARCH_MODE: offline
+    # 전역 하드 차단 스위치. 대화 단위 토글은 이 위에서 좁히기만 하고 넓히지 못한다.
+    #   offline      외부 호출 전면 금지(캐시는 계속 동작).
+    #   domain_only  공공 학술 API 만 — 무인증·약관 명시허용이라 보안 승인이 필요 없다.
+    #   full         일반 웹까지. **보안 승인 + 시크릿 경로 결정 전까지 올리지 않는다.**
+    SEARCH_MODE: domain_only
   # health_check·restart_policy 는 반드시 launch: 아래여야 한다. top-level 로 두면
   # 조용히 무시되고 스택 기본값 /health 로 프로브돼 404 만 쌓인다.
   # 재시도 횟수 키는 max_attempts 다 — max_retries 는 읽히지 않는다.

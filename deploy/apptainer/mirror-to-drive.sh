@@ -60,9 +60,11 @@ if [ -f frontend/pnpm-lock.yaml ]; then
   echo "→ npm 미러 준비 (node+pnpm 툴체인 + pnpm fetch 스토어)"
   # (1) node+pnpm vendored tarball 보장 (install-node.sh 가 cache/ 에 생성)
   bash deploy/apptainer/install-node.sh >/dev/null || { echo "✗ install-node.sh 실패"; exit 1; }
-  NODE_CACHE="$(ls -t deploy/apptainer/cache/node-*-linux-*.tar.gz 2>/dev/null | head -1)"
+  # `| head -1` + pipefail 은 생산자가 SIGPIPE(rc=141)를 받으면 set -e 로 스크립트를 죽인다.
+    # 출력 한 줄 없이 끝나므로 원인 추적이 불가능하다(deploy-all 에서 실제로 그랬다).
+    NODE_CACHE="$(ls -t deploy/apptainer/cache/node-*-linux-*.tar.gz 2>/dev/null | head -1 || true)"
   [ -n "$NODE_CACHE" ] || { echo "✗ node cache tarball 없음 (install-node.sh 확인)"; exit 1; }
-  VNODE_BIN="$ROOT_DIR/$(ls -d deploy/apptainer/.tools/node-*/bin 2>/dev/null | head -1)"
+  VNODE_BIN="$ROOT_DIR/$(ls -d deploy/apptainer/.tools/node-*/bin 2>/dev/null | head -1 || true)"
   mkdir -p "$STAGE/npm"
   cp "$NODE_CACHE" "$STAGE/npm/"
   echo "  · $(basename "$NODE_CACHE") ($(du -h "$NODE_CACHE" | cut -f1))"

@@ -93,8 +93,19 @@ require_python_venv
 
 # Postgres 가 떠 있어야 alembic 이 동작 — start.sh 로 PG 먼저 띄움
 if ! instance_running heax-pg; then
-  ok "Postgres 인스턴스 기동 (heax-pg)"
-  bash "$APPT_DIR/start.sh" 2>&1 | sed -n '/heax-pg\|postgres on/p' || true
+  # ok(=성공 표시)를 시도 '전에' 찍고, start.sh 출력을 sed 로 두 줄만 남긴 뒤 || true 로
+  # 삼켰다. PG 가 안 떠도 초록으로 보이고 실패 원인은 화면에 남지 않는다.
+  # 로그로 받아 두고 실패했을 때만 꼬리를 보여준다.
+  echo "→ Postgres 인스턴스 기동 (heax-pg)"
+  _pg_log="$(mktemp)"
+  if bash "$APPT_DIR/start.sh" >"$_pg_log" 2>&1; then
+    sed -n '/heax-pg\|postgres on/p' "$_pg_log"
+    ok "Postgres 인스턴스 기동 (heax-pg)"
+  else
+    echo "  ✗ start.sh 실패 — 아래는 마지막 로그다" >&2
+    tail -12 "$_pg_log" | sed 's/^/    /' >&2
+  fi
+  rm -f "$_pg_log"
 fi
 
 # Postgres readiness wait

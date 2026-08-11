@@ -58,7 +58,13 @@ if [ -n "$NPM_SRC" ]; then
   NODE_TB="$(ls "$NDEST"/node-*-linux-*.tar.gz 2>/dev/null | head -1 || true)"
   if [ -n "$NODE_TB" ]; then
     mkdir -p deploy/apptainer/cache; cp "$NODE_TB" deploy/apptainer/cache/
-    bash deploy/apptainer/install-node.sh >/dev/null && echo "  ✓ node+pnpm → .tools/ 설치"
+    # `&& echo ✓` 만 있어 실패하면 아무 말도 안 나온다 — 오프라인 빌드의 전제인 node/pnpm 이
+    # 없는 채로 다음 단계가 진행되고, 나중에 pnpm not found 로 엉뚱한 데서 터진다.
+    if bash deploy/apptainer/install-node.sh >/dev/null 2>&1; then
+      echo "  ✓ node+pnpm → .tools/ 설치"
+    else
+      echo "  ✗ install-node.sh 실패 — .tools/ 에 node·pnpm 이 없다(오프라인 빌드가 깨진다)" >&2
+    fi
   fi
   # pnpm 오프라인 스토어 추출 → var/pkg-mirror/npm/store
   if [ -f "$NDEST/pnpm-store.tar.gz" ]; then

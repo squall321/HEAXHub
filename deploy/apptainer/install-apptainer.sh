@@ -134,6 +134,12 @@ fi
 
 # apptainer 가 정상 동작하는지 확인 — 일부 1.3.x .deb 는 libsubid 등 의존성 필요
 VER_OUT="$("$BIN" --version 2>&1 || true)"
+# 빈 출력만 실패로 봤다. 의존성이 없으면 --version 이 'error while loading shared libraries…'
+# 같은 문구를 내는데 그건 빈 값이 아니라서 '정상'으로 통과했다. 실제 버전 문자열인지 본다.
+if [[ -n "$VER_OUT" && ! "$VER_OUT" =~ ^apptainer[[:space:]]+version ]]; then
+  warn "$BIN --version 이 버전 문자열이 아니다: ${VER_OUT%%$'\n'*}"
+  VER_OUT=""
+fi
 if [[ -z "$VER_OUT" ]]; then
   warn "$BIN --version 빈 결과. ldd 진단:"
   ldd "$BIN" 2>&1 | grep -E "not found|=>" | head -10 >&2 || true

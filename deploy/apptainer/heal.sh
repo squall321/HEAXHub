@@ -28,12 +28,16 @@ REDIS_PORT="${REDIS_PORT:-6479}"
 CADDY_ADMIN_PORT="${CADDY_ADMIN_PORT:-2019}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-4180}"
 API_PORT="${API_PORT:-4040}"
+MAIL_UI_PORT="${MAIL_UI_PORT:-8126}"   # start.sh:47 과 동일 상수
 
 # ── 헬스 프로브 ───────────────────────────────────────────────────────────────
 record_exists() { apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$1"; }
 pg_ok()    { apptainer exec instance://heax-pg pg_isready -h 127.0.0.1 -p "$PG_PORT" -U heaxhub >/dev/null 2>&1; }
 redis_ok() { [ "$(apptainer exec instance://heax-redis redis-cli -p "$REDIS_PORT" ping 2>/dev/null)" = "PONG" ]; }
 caddy_ok() { curl -sf -m 3 "http://127.0.0.1:${CADDY_ADMIN_PORT}/config/" >/dev/null 2>&1; }
+# mailhog 는 이 목록에서 통째로 빠져 있었다 — 스테일 정리도 검증도 안 됐다(실측: 인스턴스는 살아 있다).
+# MailHog 는 -api-bind-addr 를 UI 포트와 같이 잡으므로 /api/v2/messages 로 확인한다.
+mailhog_ok() { curl -sf -m 3 "http://127.0.0.1:${MAIL_UI_PORT}/api/v2/messages?limit=1" >/dev/null 2>&1; }
 backend_code() { curl -s -o /dev/null -w '%{http_code}' -m 6 "http://localhost:${API_PORT}/health" 2>/dev/null; }
 
 # 헬스 함수를 몇 번 재시도(일시 부하로 정상 인프라를 스테일로 오판하지 않게).
@@ -59,6 +63,9 @@ clean_stale() {  # $1=instance 이름  $2=헬스함수
 clean_stale heax-pg    pg_ok
 clean_stale heax-redis redis_ok
 clean_stale heax-caddy caddy_ok
+# heax-mailhog 가 목록에서 빠져 있었다 — 스테일 인스턴스 정리도, 기동 검증도 안 됐다.
+# 실제로 살아 있는 인스턴스다(apptainer instance list 에 heax-mailhog 존재).
+clean_stale heax-mailhog mailhog_ok
 
 # ── 2) 파이썬 3종 종료(새 코드로 재기동 준비) ─────────────────────────────────
 # start.sh 는 이미 도는 worker/beat 를 pgrep 으로 skip 하므로, 코드 갱신을 확실히

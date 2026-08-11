@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import os
+
 import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,7 +58,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 INTEGRATIONS_ROOT: Path = _REPO_ROOT / "integrations"
 
 
-ScanAction = Literal["created", "updated", "unchanged", "skipped"]
+ScanAction = Literal["created", "updated", "unchanged", "skipped", "launch_failed"]
 
 
 @dataclass(slots=True)
@@ -208,6 +210,8 @@ class BuildOutcome:
     sif_path: str | None = None
     build_log_path: str | None = None
     commit: str | None = None
+    # 기동 실패는 빌드 상태와 별개다. 이게 없어서 앱이 안 떠도 요약이 'unchanged' 로 찍혔다.
+    launch_failed: bool = False
     error: str | None = None
 
 
@@ -332,10 +336,13 @@ def _build_and_launch(
                         commit=None,
                     ),
                 )
-                _maybe_launch(
+                # 이 경로(커밋 불변 → SIF 재빌드 생략 → 곧장 재기동)가 안정 운영 중인
+                # 앱이 실제로 타는 길이다. 여기서 실패를 안 올리면 요약이 계속 'unchanged'다.
+                if _maybe_launch(
                     db, app=app, stack=stack, integration_dir=integration_dir,
                     manifest=manifest, source=source, sif_path=str(existing_sif),
-                )
+                ) == "failed":
+                    outcome.launch_failed = True
                 return outcome
 
         # ── build per-demo SIF via apptainer ──────────────────────────
@@ -414,10 +421,11 @@ def _build_and_launch(
         ),
     )
 
-    _maybe_launch(
+    if _maybe_launch(
         db, app=app, stack=stack, integration_dir=integration_dir,
         manifest=manifest, source=source, sif_path=sif_path,
-    )
+    ) == "failed":
+        outcome.launch_failed = True
     return outcome
 
 
@@ -438,11 +446,14 @@ def _maybe_launch(
     manifest: dict[str, Any],
     source: "SourceSpec | None",
     sif_path: str | None,
-) -> None:
+) -> str | None:
     """Launch service-mode integrations (best-effort, never raises).
 
     The launcher's own ``already_running`` liveness probe makes this idempotent
     for healthy services, so it is safe to call on every scan.
+
+    런처의 action("started"/"already_running"/"failed"…)을 그대로 돌려준다 — 예전엔 None 만
+    반환해서 호출부가 기동 실패를 알 방법이 없었고, 그래서 스캔 요약이 'unchanged' 로 찍혔다.
     """
     if stack.launch_mode != "service":
         return
@@ -457,6 +468,12 @@ def _maybe_launch(
         )
         if lr.action == "failed":
             logger.warning("launch failed for %s: %s", app.id, lr.error)
+            # 빌드 실패는 audit + 메일로 내구 기록이 남는데(_notify_build_failed) 기동 실패는
+            # 이 WARNING 한 줄이 전부였다. 그래서 카탈로그 DB 는 stable/success 를 유지하고
+            # 앱이 며칠째 죽어 있어도(실측: heax_demo_go 7/27~, nextjs 8/2~) 아무도 모른다.
+            # 다만 이 경로는 45초(reconcile)·5분(scan) 주기로 돌므로 매번 남기면 audit 이
+            # 폭주한다 — 같은 앱·같은 오류는 _LAUNCH_FAIL_COOLDOWN_S 동안 한 번만 남긴다.
+            _audit_launch_failed(db, app=app, error=lr.error)
         elif lr.action == "started":
             logger.info("integration started: %s pid=%s port=%s",
                         app.id, lr.pid, lr.port)
@@ -468,8 +485,10 @@ def _maybe_launch(
                 _check_version_drift(db, app=app, manifest=manifest, lr=lr)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("version drift check skipped for %s: %r", app.id, exc)
+        return getattr(lr, "action", None)
     except Exception as exc:  # noqa: BLE001
         logger.exception("launcher crashed for %s: %s", app.id, exc)
+        return "failed"   # 런처가 예외로 죽은 것도 기동 실패다 — 요약에 드러나야 한다
 
 
 _VERSION_KEYS = ("version", "app_version")
@@ -568,6 +587,36 @@ def _record_build(
             log_path=outcome.build_log_path, error=outcome.error,
         )
     return outcome
+
+
+# 기동 실패 감사기록 쿨다운(초) — 같은 앱의 같은 오류를 이 간격 안에는 한 번만 남긴다.
+_LAUNCH_FAIL_COOLDOWN_S = int(os.environ.get("HEAX_LAUNCH_FAIL_COOLDOWN", "3600"))
+_LAUNCH_FAIL_SEEN: dict[str, tuple[float, str]] = {}
+
+
+def _audit_launch_failed(db: Session, *, app: App, error: str | None) -> None:
+    """기동 실패를 audit 에 남긴다 — 빌드 실패(_notify_build_failed)와 대칭.
+
+    프로세스 재시작 시 한 번 더 남을 수 있으나, 없는 것보다 낫다(운영자가 볼 창구가
+    worker.log grep 뿐이었다).
+    """
+    import time  # noqa: PLC0415
+
+    key = app.id
+    err = (error or "")[:1000]
+    now = time.monotonic()
+    prev = _LAUNCH_FAIL_SEEN.get(key)
+    if prev and prev[1] == err and (now - prev[0]) < _LAUNCH_FAIL_COOLDOWN_S:
+        return
+    _LAUNCH_FAIL_SEEN[key] = (now, err)
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action="integration.launch.failed",
+        target_type="app",
+        target_id=str(app.id),
+        meta={"app_id": app.id, "error": err},
+    )
 
 
 def _notify_build_failed(
@@ -763,8 +812,11 @@ def _process_dir(
         commit_gated=True,
     )
 
-    if created_app:
-        action: ScanAction = "created"
+    if outcome.launch_failed:
+        # 기동 실패가 'unchanged' 로 묻히면 5분마다 도는 요약 로그가 '전부 정상'으로 보인다.
+        action: ScanAction = "launch_failed"
+    elif created_app:
+        action = "created"
     elif outcome.rebuilt:
         action = "updated"
     else:

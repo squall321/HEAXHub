@@ -17,7 +17,22 @@ RCLONE="$(command -v rclone || true)"; [ -n "$RCLONE" ] || { echo "· rclone 없
 
 APPDATA="$ROOT_DIR/var/app_data"
 # 모델을 별도 Drive 경로로 나르는 앱 목록(런타임 모델 dir 이 app-data tar 밖).
-APPS="${HEAX_MODEL_APPS:-voice_recorder}"
+# 기본값이 voice_recorder 하드코딩이었고 오버라이드하는 호출자가 어디에도 없다.
+# 그런데 실제 가중치를 가진 앱은 thermal_shock_mcp(16M) 하나이고 voice_recorder/models 는
+# 비어 있다 — 스크립트는 '비어있음 — 생략' 만 찍고 끝나 정작 대상은 스캔조차 안 됐다.
+# 그 문구는 '아직 안 받아둔 정상 상태'로 읽혀 경고로 보이지도 않는다.
+# 목록을 하드코딩하지 말고 내용이 있는 models/ 를 가진 앱을 실측으로 잡는다 —
+# 앱이 늘어도 목록 갱신을 잊을 수 없다. 명시 지정은 HEAX_MODEL_APPS 로 계속 가능하다.
+_scan_model_apps() {
+  local d
+  for d in "$ROOT_DIR"/var/app_data/*/models; do
+    [ -d "$d" ] || continue
+    [ -n "$(ls -A "$d" 2>/dev/null)" ] || continue
+    basename "$(dirname "$d")"
+  done
+}
+APPS="${HEAX_MODEL_APPS:-$(_scan_model_apps | tr "\n" " ")}"
+[ -n "${APPS// /}" ] || echo "  · models/ 에 내용이 있는 앱 없음 — 반입 대상 없음"
 
 for app in $APPS; do
   src="$REMOTE/models/$app"

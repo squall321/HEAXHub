@@ -19,8 +19,8 @@ launch:
   mode: service
   command: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
     --server.baseUrlPath=$ROOT_PATH --browser.gatherUsageStats=false
-health_check:
-  path: /_stcore/health
+  health_check:
+    path: /_stcore/health
 restart_policy:
   policy: on_failure
   max_retries: 3

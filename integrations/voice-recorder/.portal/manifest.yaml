@@ -38,9 +38,9 @@ launch:
     HF_HOME: /data/models
     HF_HUB_OFFLINE: "1"
 
-health_check:
-  path: /api/health
 
+  health_check:
+    path: /api/health
 restart_policy:
   policy: on_failure
   max_retries: 3

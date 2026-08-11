@@ -20,8 +20,8 @@ launch:
     # (SIF는 pyproject의 mcp<2 핀 + backend/scripts/heaxhub-build.sh로 정상 mcp 1.x·httpx를 번들.)
     PYTHONNOUSERSITE: "1"
   # command: <기본 entrypoint 대신 직접 지정하려면 주석 해제>
-health_check:
-  path: /api/health
+  health_check:
+    path: /api/health
 restart_policy:
   policy: on_failure
   max_retries: 3

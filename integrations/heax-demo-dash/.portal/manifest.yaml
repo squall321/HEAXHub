@@ -18,8 +18,8 @@ build:
   stack: dash_plotly
 launch:
   mode: service
-health_check:
-  path: /
+  health_check:
+    path: /
 restart_policy:
   policy: on_failure
   max_retries: 3

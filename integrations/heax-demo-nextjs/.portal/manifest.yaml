@@ -25,10 +25,10 @@ build:
 launch:
   mode: service
   command: pnpm start -- --port $PORT --hostname 0.0.0.0
-health_check:
-  path: /
-  interval_seconds: 10
-  timeout_seconds: 3
+  health_check:
+    path: /
+    interval_seconds: 10
+    timeout_seconds: 3
 restart_policy:
   policy: on_failure
   max_retries: 3

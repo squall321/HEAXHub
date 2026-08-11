@@ -13,8 +13,8 @@ build:
 launch:
   mode: service
   command: ./heax-demo-go
-health_check:
-  path: /health
+  health_check:
+    path: /health
 restart_policy:
   policy: on_failure
   max_retries: 3

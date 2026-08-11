@@ -12,7 +12,10 @@ build:
   stack: go_service
 launch:
   mode: service
-  command: ./heax-demo-go
+  # SIF 안 바이너리는 /app/bin/server 다 — 빌드 산출물 이름이 매니페스트와 달랐다.
+  # ./heax-demo-go 를 부르던 탓에 2026-07-27 부터 매 기동이
+  # "FATAL: stat /app/heax-demo-go: no such file or directory" 로 죽었다.
+  command: ./bin/server
   health_check:
     path: /health
 restart_policy:

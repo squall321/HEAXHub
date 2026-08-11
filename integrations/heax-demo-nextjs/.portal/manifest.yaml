@@ -24,7 +24,11 @@ build:
   basePath_env: NEXT_PUBLIC_BASE_PATH
 launch:
   mode: service
-  command: pnpm start -- --port $PORT --hostname 0.0.0.0
+  # `pnpm start -- --port` 의 `--` 가 next start 에 리터럴 인자로 넘어가
+  # "Invalid project directory provided, no such directory: /app/--port" 로 죽었다
+  # (2026-08-02 부터). package.json 의 start 는 그냥 `next start` 라, pnpm exec 로
+  # next 를 직접 부르면 구분자 없이 인자가 그대로 전달된다.
+  command: pnpm exec next start --port $PORT --hostname 0.0.0.0
   health_check:
     path: /
     interval_seconds: 10

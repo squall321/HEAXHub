@@ -504,6 +504,11 @@ def _launch_via_sif(
         (str(workspace), "/workspace"),
         (str(app_data), "/data"),
     ]
+    # 사내 CA 번들 — 프록시가 TLS 를 재서명하는 환경에서 컨테이너 기본 CA 로는 검증이 깨진다.
+    # 호스트 파일을 컨테이너 고정 경로로 bind 해야 앱이 읽을 수 있다(경로만 넘기면 안 보인다).
+    _ca_host = _ca_bundle_host_path()
+    if _ca_host:
+        binds.append((_ca_host, _CA_IN_CONTAINER))
     # 매니페스트가 선언한 앱별 env(launch.env)를 먼저 깔고 HEAXHub 제어 변수로 덮는다
     # (PORT/HOST/ROOT_PATH/HEAX_DATA_DIR 등은 항상 HEAXHub 가 결정 — 앱이 override
     # 못 함). 앱이 쓰기 경로가 필요하면 $HEAX_DATA_DIR(=/data) 아래를 쓰거나,
@@ -526,6 +531,10 @@ def _launch_via_sif(
         "HEAX_BASE_PATH": base_path,
         "DASH_URL_BASE_PATHNAME": base_path + "/",
     })
+    # CA 를 bind 한 경우에만 각 런타임이 보는 변수를 채운다. bind 없이 변수만 세우면
+    # 존재하지 않는 경로를 가리켜 TLS 가 통째로 실패한다 — 안 넣느니만 못하다.
+    if _ca_host:
+        env_in_container.update({k: _CA_IN_CONTAINER for k in _CA_ENV_TARGETS})
     # SRV-04: cgroup limits from the manifest's resources block (best-effort —
     # only applied when settings.enforce_instance_limits is on).
     _res = manifest.get("resources") if isinstance(manifest.get("resources"), dict) else {}
@@ -654,9 +663,41 @@ _APP_LLM_ENV = {
 }
 
 
+# 사내 프록시 — 운영 박스는 프록시 뒤에 있고 컨테이너는 --cleanenv 로 뜨므로,
+# 호스트에 HTTPS_PROXY 를 설정해도 앱 안에는 들어가지 않는다. 그래서 인터넷을 쓰는 앱
+# (웹 리서치 등)이 '연결은 되는데 아무것도 못 가져오는' 상태가 된다.
+# 대소문자 둘 다 넘긴다 — urllib 은 소문자 http_proxy 도 보고, 라이브러리마다 참조가 다르다.
+# NO_PROXY 를 빠뜨리면 사내 목적지까지 프록시로 나가 되레 막힌다.
+_PROXY_ENV = (
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+)
+# 사내 프록시가 TLS 를 중간에서 재서명하면 컨테이너 기본 CA 로는 검증에 실패한다.
+# 인증서 검증을 끄는 것은 답이 아니므로(MITM 무조건 신뢰), 사내 루트 CA 를 넣어 준다.
+# 호스트 HEAX_APP_CA_BUNDLE 에 파일 경로를 두면 컨테이너로 bind 하고 아래 변수들을 채운다.
+_CA_ENV_TARGETS = ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
+_CA_IN_CONTAINER = "/etc/heax-ca-bundle.crt"
+
+
 def _inherited_env() -> dict[str, str]:
-    """호스트에 설정된 HEAX_APP_LLM_* 만 골라 앱이 읽는 이름으로 바꿔 돌려준다."""
-    return {dst: os.environ[src] for src, dst in _APP_LLM_ENV.items() if os.environ.get(src)}
+    """호스트에서 앱 컨테이너로 물려줄 환경변수.
+
+    HEAX_APP_LLM_* 은 앱이 읽는 이름으로 바꿔 넣고, 프록시 설정은 이름 그대로 넘긴다.
+    """
+    out = {dst: os.environ[src] for src, dst in _APP_LLM_ENV.items() if os.environ.get(src)}
+    out.update({k: os.environ[k] for k in _PROXY_ENV if os.environ.get(k)})
+    return out
+
+
+def _ca_bundle_host_path() -> str | None:
+    """사내 CA 번들 경로(호스트). 설정돼 있고 실제로 읽히는 파일일 때만 돌려준다."""
+    p = (os.environ.get("HEAX_APP_CA_BUNDLE") or "").strip()
+    if not p:
+        return None
+    if not os.path.isfile(p):
+        logger.warning("HEAX_APP_CA_BUNDLE 이 가리키는 파일이 없다: %s — CA 주입 생략", p)
+        return None
+    return p
 
 
 def _sif_argv_for(

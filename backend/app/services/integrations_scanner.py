@@ -747,10 +747,37 @@ def _process_dir(
         logger.info("integrations scan: created app %s (stack=%s)", app_id, stack.name)
     else:
         # Keep workspace_path and visibility in sync with what's on disk.
-        # Don't touch owner/tags/name on an existing row — operators may have
-        # tweaked those through the admin UI.
         if app.workspace_path != workspace_path:
             app.workspace_path = workspace_path
+
+        # name/description 은 예전엔 아예 안 건드렸다 — 관리자가 admin UI 로 바꿨을 수 있어서다.
+        # 그 의도는 맞지만 부작용이 컸다: 매니페스트에서 이름을 바꿔도 이미 등록된 박스에는
+        # 영원히 반영되지 않는다. 실제로 kooremapper→DynaForge 로 바꾼 뒤에도 cae00 UI 는
+        # 계속 'KooRemapper' 로 떴다(dev 는 행이 새로 생성돼 우연히 맞았다).
+        #
+        # '사람이 바꾼 적 없으면 매니페스트를 따라간다' 로 좁힌다. 마지막으로 동기화한
+        # 매니페스트 값을 extra 에 남겨 두고, 현재 DB 값이 그것과 같을 때만 갱신한다.
+        # 다르면 관리자가 손댄 것이므로 그대로 둔다.
+        # ⚠ 매니페스트가 '명시한' 값만 정본이다. name 은 없으면 app_id 로 폴백되므로
+        # (715행 `manifest.get("name") or app_id`) 그걸 그대로 반영하면 'Demo · N(0,1)
+        # Sampler (C++17)' 같은 멀쩡한 이름을 'heax_demo_cpp' 로 덮어쓴다(실측으로 겪음).
+        # 매니페스트에 키가 있을 때만 동기화한다.
+        _ex = dict(app.extra or {})
+        _declared = {
+            "name": str(manifest["name"]).strip() if manifest.get("name") else None,
+            "description": description if manifest.get("description") else None,
+        }
+        for _field, _new in _declared.items():
+            _cur = getattr(app, _field)
+            _last = _ex.get(f"manifest_{_field}")
+            # 마커가 없으면(이 코드 이전에 만들어진 행) 매니페스트를 정본으로 본다 —
+            # 그러지 않으면 이름 변경이 영영 반영되지 않는다.
+            if _new and _cur != _new and (_last is None or _cur == _last):
+                setattr(app, _field, _new)
+                logger.info("integrations scan: %s %s '%s' → '%s' (매니페스트 반영)",
+                            app_id, _field, _cur, _new)
+            _ex[f"manifest_{_field}"] = _new
+        app.extra = _ex
 
     # Look for an existing version row with the same string version.
     existing_version = db.execute(

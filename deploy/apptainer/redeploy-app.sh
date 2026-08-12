@@ -73,10 +73,13 @@ with SessionLocal() as db:
         # 하위경로로 서빙하는 앱(dash·streamlit·flask)이 멀쩡한데도 404/500 으로 찍힌다
         # (실측: :9145/health=500 이지만 :9145/apps/heax_demo_flask/health=200).
         Path("/tmp/.redeploy_port").write_text(f"{port}\t{hp}\t/apps/{canonical}")
+    # 프록시형은 port 가 없어 위 파일이 안 써진다 — 모드를 따로 남겨 셸이 구분하게 한다.
+    Path("/tmp/.redeploy_mode").write_text(str((manifest.get("launch") or {}).get("mode") or ""))
 PYEOF
 
 # 헬스 확인.
 INFO="$(cat /tmp/.redeploy_port 2>/dev/null || true)"; rm -f /tmp/.redeploy_port
+_LAUNCH_MODE="$(cat /tmp/.redeploy_mode 2>/dev/null || true)"; rm -f /tmp/.redeploy_mode
 if [[ -n "$INFO" ]]; then
   PORT="$(printf '%s' "$INFO" | cut -f1)"
   HP="$(printf '%s' "$INFO" | cut -f2)"
@@ -104,6 +107,14 @@ if [[ -n "$INFO" ]]; then
     exit 1
   fi
 else
-  echo "[WARN] 포트 확인 실패 — 로그 확인 필요." >&2
-  exit 1
+  # 프록시형 앱(launch.mode: proxy)은 자체 포트가 없다 — HEAXHub 는 별도로 떠 있는
+  # 서버로 라우팅만 한다. port=None 이 정상이므로 실패가 아니다. 오늘 넣은 exit 1 이
+  # 이걸 오탐으로 찍었다(cae00 실측: "kooremapper_mcp 재배포 실패").
+  if [ "${_LAUNCH_MODE:-}" = "proxy" ]; then
+    echo "✓ 라우트 등록 완료 — 프록시형 앱이라 자체 포트가 없다."
+    echo "  업스트림 생존은 이 스크립트가 판정하지 않는다(별도로 떠 있어야 하는 서버다)."
+  else
+    echo "[WARN] 포트 확인 실패 — 로그 확인 필요." >&2
+    exit 1
+  fi
 fi

@@ -16,6 +16,24 @@ PLAN = [
     ("raw_curve_ref",     ["test_id"],                           [("test_id", "test")]),
     ("processed_result",  ["test_id"],                           [("test_id", "test")]),
     ("constitutive_fit",  ["test_id", "model"],                  [("test_id", "test")]),
+    # ── 물성 카탈로그 계보 ────────────────────────────────────────────────────
+    # 이 셋이 PLAN 에 없어서 cae00 물성 카탈로그가 재료 548건인데 물성값·도메인·출처가
+    # 전부 0 이었다(실측). 재료 카드만 가고 그 안의 내용은 안 간 셈이다.
+    #   property_definition — key 가 UNIQUE·NULL 0(161/161) → 깨끗한 자연키.
+    #   source — content_hash·local_path 가 전부 NULL 이라 선언된 UNIQUE 가 무용지물이고,
+    #            doi 는 1401건 NULL, kind+title+year 도 2121/2134 로 유일하지 않다.
+    #            의미컬럼 전체를 대조하면 2134/2134 완전 유일이라 그걸 자연키로 쓴다
+    #            ('내용이 같으면 같은 출처'). 재실행해도 중복 삽입이 없다.
+    #   property_value — 의미컬럼 전체로 21249/21279. 남는 30건은 값·조건·출처가 모두 같은
+    #            진짜 중복 행이라 합쳐도 정보가 사라지지 않는다.
+    #            property_key 는 id 가 아니라 key 를 참조하므로 재매핑이 필요 없고,
+    #            material_id·source_id 만 새 id 로 재매핑한다.
+    ("property_definition", ["key"], []),
+    ("source",              ["kind", "doi", "isbn", "url", "title",
+                             "authors", "year", "publisher", "license"], []),
+    ("property_value",      ["material_id", "property_key", "value_num", "value_text",
+                             "unit", "conditions", "method", "source_id"],
+                            [("material_id", "material"), ("source_id", "source")]),
 ]
 
 def cols_of(cur, t):

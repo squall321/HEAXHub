@@ -1,0 +1,36 @@
+schema_version: 2
+id: paper_ingest
+name: Paper Ingest
+version: 0.1.0
+owner: cae-automation
+status: draft                    # GitHub 푸시(source.url) + submission 후 beta 로 승격(그때 게이트웨이 노출)
+app_type: web_app
+execution_target: linux_runner
+description: |
+  연구 논문/특허를 중앙 코퍼스로 수집하고, 상암 GLM(OpenAI 호환)으로 검증 게이트를 수행하는 서버.
+  - 유입: Drive-relay(rclone) 주채널 + REST 업로드(/api/v1/papers) 보조
+  - 처리: 임베딩 NN 분류 → 증분 색인 → 그라운딩 → GLM 게이트 → 카드 fact_refs 적용
+  - 헬스: /health, MCP: /apps/paper_ingest/mcp (streamable HTTP)
+tags: [ingest, corpus, papers, patents, mcp, cae]
+build:
+  type: python_venv
+  stack: fastapi
+  python_version: "3.12"
+launch:
+  mode: service
+  health_check: { type: http, path: /health }
+  restart_policy: { policy: on_failure, max_attempts: 3 }
+permissions:
+  visibility: team
+resources:
+  cpu: 2
+  memory_gb: 8            # BGE-M3+reranker 색인/그라운딩용(게이트는 원격 GLM)
+  gpu: true               # 로컬 색인/리랭킹에 GPU 사용(게이트 GLM 은 원격 상암)
+source:
+  type: git
+  url: https://github.com/squall321/PaperIngest.git   # TODO: repo 생성·푸시 후 활성
+  ref: main
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http

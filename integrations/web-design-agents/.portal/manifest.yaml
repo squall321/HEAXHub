@@ -3,7 +3,9 @@ id: web_design_agents
 name: "WebDesignAgents — 전문가 심의 발표자료 생성"
 version: 0.1.0
 owner: "squall321"
-status: draft
+status: stable                   # 운영 중(사내 공개). 허브의 '공개 앱' 판정이
+                                 # company + stable 이라, 실제로 쓰고 있는데 draft 로
+                                 # 두면 로그인 없이는 못 연다.
 app_type: web_app
 execution_target: linux_runner
 

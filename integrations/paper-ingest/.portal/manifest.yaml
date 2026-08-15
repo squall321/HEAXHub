@@ -3,7 +3,7 @@ id: paper_ingest
 name: Paper Ingest
 version: 0.1.0
 owner: cae-automation
-status: draft                    # GitHub 푸시(source.url) + submission 후 beta 로 승격(그때 게이트웨이 노출)
+status: beta                     # GitHub 푸시 완료(squall321/PaperIngest, private) — 정식 등록
 app_type: web_app
 execution_target: linux_runner
 description: |
@@ -28,7 +28,7 @@ resources:
   gpu: true               # 로컬 색인/리랭킹에 GPU 사용(게이트 GLM 은 원격 상암)
 source:
   type: git
-  url: https://github.com/squall321/PaperIngest.git   # TODO: repo 생성·푸시 후 활성
+  url: https://github.com/squall321/PaperIngest.git
   ref: main
 mcp:
   expose: true

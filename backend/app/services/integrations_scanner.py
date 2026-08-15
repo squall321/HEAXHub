@@ -156,6 +156,17 @@ def _system_user(db: Session) -> User | None:
     ).scalars().first()
 
 
+def _coerce_app_status(value: str | None, default: AppStatus) -> AppStatus:
+    """매니페스트 ``status:`` → AppStatus. 알 수 없는 값이면 기본값."""
+    if not value:
+        return default
+    try:
+        return AppStatus(str(value).strip().lower())
+    except ValueError:
+        logger.warning("unknown status=%r, using %s", value, default.value)
+        return default
+
+
 def _coerce_app_type(value: str | None, default: AppType) -> AppType:
     if not value:
         return default
@@ -717,6 +728,10 @@ def _process_dir(
     tags = manifest.get("tags") or []
     visibility = _resolve_visibility(manifest)
     app_type = _coerce_app_type(manifest.get("app_type"), AppType(stack.app_type))
+    # 매니페스트의 status 를 실제로 읽는다. 예전엔 무조건 STABLE 로 만들었다 — 그래서
+    # 'status: draft' 로 아직 준비 중이라고 선언한 앱(paper_ingest)이 카탈로그에 정식 앱처럼
+    # 떴고, 눌러도 허브 첫 화면만 나왔다. 선언과 표시가 어긋나면 사용자가 고장으로 읽는다.
+    app_status = _coerce_app_status(manifest.get("status"), AppStatus.STABLE)
     execution_target = _coerce_execution_target(
         manifest.get("execution_target"), ExecutionTarget(stack.execution_target)
     )
@@ -737,7 +752,7 @@ def _process_dir(
             owner_user_id=system_user_id,
             app_type=app_type,
             execution_target=execution_target,
-            status=AppStatus.STABLE,
+            status=app_status,
             visibility=visibility,
             # No real upstream repo for these — they live in-tree. Use the
             # workspace path so source_fetcher / refresh tasks don't crash on
@@ -799,6 +814,16 @@ def _process_dir(
                             app_id, app.app_type.value, app_type.value)
                 app.app_type = app_type
             _ex["manifest_app_type"] = app_type.value
+
+        # status 도 같은 규율로 — draft → beta 승격이 반영되지 않으면 정식 등록이 끝나지 않는다.
+        # 매니페스트가 명시했을 때만 정본으로 본다(생략 시 기본 STABLE 이 채워지므로).
+        if manifest.get("status"):
+            _last_st = _ex.get("manifest_status")
+            if app.status != app_status and (_last_st is None or app.status.value == _last_st):
+                logger.info("integrations scan: %s status '%s' → '%s' (매니페스트 반영)",
+                            app_id, app.status.value, app_status.value)
+                app.status = app_status
+            _ex["manifest_status"] = app_status.value
 
         app.extra = _ex
 

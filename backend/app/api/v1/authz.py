@@ -64,6 +64,16 @@ def _is_public_app(app: App) -> bool:
     )
 
 
+def _needs_portal_identity(app: App) -> bool:
+    """매니페스트 ``launch.portal_auth: true`` 앱인가 (스캐너가 App.extra 에 내려둔다).
+
+    이 앱들은 게이트가 2xx 를 주면 프록시가 ``X-Heax-User-*`` 를 업스트림에 복사하고,
+    업스트림은 그 신원으로 자기 세션을 만든다. 즉 **신원 없이는 동작 자체가 불가능**하다.
+    """
+    extra = app.extra if isinstance(app.extra, dict) else {}
+    return bool(extra.get("portal_auth", False))
+
+
 @router.get("/authz")
 def authz(
     db: DbSession,
@@ -97,7 +107,12 @@ def authz(
         return Response(status_code=status.HTTP_401_UNAUTHORIZED)
 
     if user is None:
-        if _is_public_app(app):
+        # ⚠ portal_auth 앱은 '공개'여도 익명으로 통과시키면 안 된다. 게이트가 2xx 를 주면
+        #   프록시가 X-Heax-User-* 를 복사하는데, 익명이면 그 헤더가 **빈 값**이라 업스트림이
+        #   자기 SSO 에서 401 을 낸다. 사용자에게는 로그인 안내가 아니라 **흰 화면**만 남는다
+        #   (실측: DynaForge — HTML 200, 자산 200, #root 비어 있음, 콘솔에 SSO 401 하나).
+        #   게이트가 통과시켰는데 앱은 못 쓰는 모순이라, 여기서 401 을 줘 로그인으로 보낸다.
+        if _is_public_app(app) and not _needs_portal_identity(app):
             return Response(status_code=status.HTTP_200_OK)
         return Response(status_code=status.HTTP_401_UNAUTHORIZED)
 

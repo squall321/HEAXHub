@@ -85,6 +85,7 @@ def _mk_app(
     *,
     visibility: AppVisibility,
     status_: AppStatus,
+    portal_auth: bool = False,
 ) -> App:
     app_id = f"authz_{uuid.uuid4().hex[:8]}"
     app = App(
@@ -97,6 +98,7 @@ def _mk_app(
         visibility=visibility,
         upstream_repo_url="https://example.com/repo.git",
         workspace_path=f"/tmp/{app_id}",
+        extra={"portal_auth": portal_auth},
     )
     db.add(app)
     db.commit()
@@ -205,5 +207,43 @@ def test_bearer_token_also_accepted(db: Session, client: TestClient) -> None:
         headers["Authorization"] = f"Bearer {token}"
         r = client.get("/api/v1/authz", headers=headers)
         assert r.status_code == 200
+    finally:
+        _cleanup(db, app, owner)
+
+
+def test_portal_auth_app_blocked_without_cookie(db: Session, client: TestClient) -> None:
+    """portal_auth 앱은 '공개'여도 익명 통과 금지.
+
+    통과시키면 프록시가 빈 X-Heax-User-* 를 업스트림에 복사하고, 업스트림 SSO 가 401 을
+    내며 사용자는 로그인 안내 대신 흰 화면을 본다(DynaForge 실사고). 401 을 줘야 포탈이
+    로그인으로 보낸다.
+    """
+    owner = _mk_user(db)
+    app = _mk_app(
+        db, owner,
+        visibility=AppVisibility.COMPANY, status_=AppStatus.STABLE,
+        portal_auth=True,
+    )
+    try:
+        r = client.get("/api/v1/authz", headers=_fwd(app.id))
+        assert r.status_code == 401
+    finally:
+        _cleanup(db, app, owner)
+
+
+def test_portal_auth_app_allows_logged_in_user(db: Session, client: TestClient) -> None:
+    """로그인한 사용자는 통과하고, 업스트림에 전달할 신원 헤더가 실려야 한다."""
+    owner = _mk_user(db)
+    app = _mk_app(
+        db, owner,
+        visibility=AppVisibility.COMPANY, status_=AppStatus.STABLE,
+        portal_auth=True,
+    )
+    try:
+        headers = _fwd(app.id)
+        headers["Authorization"] = f"Bearer {create_access_token(str(owner.id))}"
+        r = client.get("/api/v1/authz", headers=headers)
+        assert r.status_code == 200
+        assert r.headers.get("X-Heax-User-Email") == owner.email
     finally:
         _cleanup(db, app, owner)

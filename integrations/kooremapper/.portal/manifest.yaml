@@ -4,7 +4,12 @@ name: "DynaForge"
 version: "1.8.0"
 owner: "koo.park"
 status: stable
-app_type: external_link
+# app_type 은 카탈로그 분류(타일 라벨·색·필터)이고, 실제 동작은 build.stack 과 launch.mode 가
+# 정한다. external_proxy 스택의 기본 app_type 이 external_link 라 명시하지 않으면 그 값이
+# 상속돼 카탈로그에 '외부 링크'로 뜬다 — 그런데 external_link 는 URL 만 열어주는 것
+# (odb++ hub, Report Archive)이고, 이 앱은 포탈 안에서 SSO 까지 태워 쓰는 서비스형 웹앱이다.
+# MaterialTwin Web 과 같은 급으로 취급해야 하므로 web_app 을 명시한다(프록시 동작은 그대로).
+app_type: web_app
 execution_target: external_url
 description: "DynaForge — LS-DYNA K파일 전처리 자동화 플랫폼. 47개 op(재료DB 치환·메시 변환/재메시·조립/눌림/굽힘 초기응력(squeeze/cclip/prestress/warpage)·해석 세팅·모델 메타/연결도)를 웹 UI/REST API/MCP로 제공."
 build:

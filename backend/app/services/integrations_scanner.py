@@ -721,6 +721,12 @@ def _process_dir(
         manifest.get("execution_target"), ExecutionTarget(stack.execution_target)
     )
 
+    # launch.portal_auth 를 App 행에 내려둔다 — forward_auth(/api/v1/authz)가 익명 허용
+    # 여부를 판정할 때 필요한데, authz 는 HTML 1개당 자산 수십 개까지 매 요청 호출되므로
+    # 그때마다 AppVersion.manifest_snapshot 을 조회할 수는 없다. 스캔 때 한 번 적어 둔다.
+    _launch = manifest.get("launch") or {}
+    portal_auth = bool(_launch.get("portal_auth", False)) if isinstance(_launch, dict) else False
+
     app = db.get(App, app_id)
     created_app = False
     if app is None:
@@ -739,7 +745,7 @@ def _process_dir(
             upstream_repo_url=f"file://{workspace_path}",
             tags=list(tags) if isinstance(tags, list) else [],
             workspace_path=workspace_path,
-            extra={"stack": stack.name, "discovered": True},
+            extra={"stack": stack.name, "discovered": True, "portal_auth": portal_auth},
         )
         db.add(app)
         db.flush()
@@ -763,6 +769,8 @@ def _process_dir(
         # Sampler (C++17)' 같은 멀쩡한 이름을 'heax_demo_cpp' 로 덮어쓴다(실측으로 겪음).
         # 매니페스트에 키가 있을 때만 동기화한다.
         _ex = dict(app.extra or {})
+        # portal_auth 는 관리자가 UI 로 바꾸는 값이 아니라 매니페스트가 정본이다 — 항상 동기화.
+        _ex["portal_auth"] = portal_auth
         _declared = {
             "name": str(manifest["name"]).strip() if manifest.get("name") else None,
             "description": description if manifest.get("description") else None,
@@ -777,6 +785,21 @@ def _process_dir(
                 logger.info("integrations scan: %s %s '%s' → '%s' (매니페스트 반영)",
                             app_id, _field, _cur, _new)
             _ex[f"manifest_{_field}"] = _new
+
+        # app_type 도 같은 규율로 동기화한다. 이게 없으면 **생성 시점에 정해진 분류가 영영
+        # 안 바뀐다** — kooremapper 가 그랬다. external_proxy 스택의 기본 app_type 이
+        # external_link 라 카탈로그에 '외부 링크'로 굳었고, 매니페스트를 web_app 으로 고쳐도
+        # 반영되지 않았다(external_link 는 URL 만 여는 odb++ hub·Report Archive 용이다).
+        # name/description 과 달리 매니페스트가 생략해도 스택 기본값이 채워지므로,
+        # '매니페스트가 명시했을 때만' 정본으로 본다.
+        if manifest.get("app_type"):
+            _last_at = _ex.get("manifest_app_type")
+            if app.app_type != app_type and (_last_at is None or app.app_type.value == _last_at):
+                logger.info("integrations scan: %s app_type '%s' → '%s' (매니페스트 반영)",
+                            app_id, app.app_type.value, app_type.value)
+                app.app_type = app_type
+            _ex["manifest_app_type"] = app_type.value
+
         app.extra = _ex
 
     # Look for an existing version row with the same string version.

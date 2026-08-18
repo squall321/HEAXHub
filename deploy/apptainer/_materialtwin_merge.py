@@ -138,8 +138,25 @@ def main():
                 matched += 1
             else:
                 placeholders = ",".join("?" * len(data_cols))
-                dc.execute(f"INSERT INTO {table} ({','.join(data_cols)}) VALUES ({placeholders})",
-                           [vals[c] for c in data_cols])
+                try:
+                    dc.execute(f"INSERT INTO {table} ({','.join(data_cols)}) VALUES ({placeholders})",
+                               [vals[c] for c in data_cols])
+                except sqlite3.IntegrityError as exc:
+                    # 원문 그대로 두면 "CHECK constraint failed: ck_propval_method" 한 줄에
+                    # traceback 만 나온다 — 어느 표의 어떤 값이 걸렸는지, 왜 걸렸는지가 없다.
+                    # 이 오류의 압도적 다수는 스키마 드리프트다: 운영 앱이 옛 코드라 CHECK 가
+                    # 좁고, dev 데이터에 새 값이 들어 있다(실측 2026-08-18: method='digitized'
+                    # 95행 — 허용값을 넓히는 마이그레이션이 운영 SIF 에 아직 없었다).
+                    bad = {c: vals[c] for c in data_cols
+                           if isinstance(vals[c], (str, int, float)) and c != "id"}
+                    raise SystemExit(
+                        f"[merge 중단] {table} 에 행을 넣다 실패: {exc}\n"
+                        f"  넣으려던 값(요약): "
+                        f"{ {k: v for k, v in list(bad.items())[:8]} }\n"
+                        f"  거의 항상 스키마 드리프트다 — 운영 앱이 옛 코드라 제약이 좁고,\n"
+                        f"  dev 데이터에 새 값이 들어 있다. 그 앱 SIF 를 새 소스로 올려\n"
+                        f"  마이그레이션을 돌린 뒤 이 병합을 다시 하라."
+                    ) from None
                 remap[table][src_id] = dc.lastrowid
                 added += 1
         summary[table] = {"added": added, "matched": matched}

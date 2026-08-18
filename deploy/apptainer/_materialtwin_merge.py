@@ -29,12 +29,44 @@ PLAN = [
     #            property_key 는 id 가 아니라 key 를 참조하므로 재매핑이 필요 없고,
     #            material_id·source_id 만 새 id 로 재매핑한다.
     ("property_definition", ["key"], []),
+    # **`authors`·`year` 를 자연키에서 뺐다**(2026-08-18).
+    #   그 둘은 **나중에 채워지는 보강 필드**다. 실제로 코퍼스 메타에서 397건을 백필했더니
+    #   이미 cae00 으로 간 출처 36건의 자연키가 바뀌어, 병합하면 같은 논문이 새 출처로 또
+    #   들어가고 그 출처를 쓰는 물성값 197행까지 중복될 참이었다.
+    #   실측(8/11 스냅샷 2,134건 대조) — 둘 포함 시 매칭 2,094(유실 40) · **둘 제외 시 2,130(유실 4)**.
+    #   빼도 유일성은 온전하다(2,776/2,776). **가변 보강 필드는 자연키에 넣지 마라.**
     ("source",              ["kind", "doi", "isbn", "url", "title",
-                             "authors", "year", "publisher", "license"], []),
+                             "publisher", "license"], []),
     ("property_value",      ["material_id", "property_key", "value_num", "value_text",
                              "unit", "conditions", "method", "source_id"],
                             [("material_id", "material"), ("source_id", "source")]),
+    # ── 시험장비 카탈로그 ──────────────────────────────────────────────────────
+    # **PLAN 에 없어서 750행이 통째로 안 가고 있었다**(2026-08-18에 넣었다).
+    # 위 주석의 "재료 카드만 가고 내용은 안 갔다" 와 **같은 실패**다 — 표를 새로 만들면
+    # 이 목록에 넣었는지 반드시 확인해라.
+    #   instrument            — 선언된 UNIQUE(vendor, model)가 그대로 자연키다(218/218, NULL 0).
+    #                           source_id 는 출처를 가리키므로 재매핑이 필요하다.
+    #   instrument_capability — 선언된 UNIQUE(instrument_id, property_key, technique)(532/532, NULL 0).
+    #                           property_key 는 id 가 아니라 key 참조라 재매핑이 필요 없다.
+    ("instrument",            ["vendor", "model"],
+                              [("source_id", "source")]),
+    ("instrument_capability", ["instrument_id", "property_key", "technique"],
+                              [("instrument_id", "instrument")]),
 ]
+
+# ── 전역 유일 식별자 우선 매칭 ────────────────────────────────────────────────
+# 자연키(의미컬럼 전체)만 쓰면 **제목이 교정된 출처가 새 행으로 들어가려다 UNIQUE 에 걸려 죽는다.**
+# 실측(2026-08-18 예행) — dev/cae00 이 같은 `src 2279`·같은 URL 인데 제목만 다른 건이 둘 있었고
+# `UNIQUE constraint failed: source.doi` 로 병합이 중단됐다. **수정 전 원본 스크립트도 똑같이 죽는다** —
+# 새로 생긴 문제가 아니라 원래 있던 것이다.
+#
+# DOI·ISBN·content_hash 는 **그 자체가 전역 유일 식별자**다(그게 존재 이유다).
+# 제목·URL·발행처는 나중에 교정되는 표시 정보라 자연키로만 보면 같은 문헌을 놓친다.
+# → 값이 있으면 **이 축으로 먼저** 대응행을 찾고, 없을 때만 자연키로 간다.
+UNIQUE_FIRST = {
+    "source": [["doi"], ["isbn"], ["content_hash"]],
+}
+
 
 def cols_of(cur, t):
     return [r[1] for r in cur.execute(f"PRAGMA table_info('{t}')")]
@@ -76,10 +108,21 @@ def main():
             if skip:
                 continue
 
-            # 자연키로 dst 대응행 탐색
-            where = " AND ".join(f"{k} IS ?" if vals.get(k) is None else f"{k}=?" for k in natkey)
-            wvals = [vals.get(k) for k in natkey]
-            hit = dc.execute(f"SELECT id FROM {table} WHERE {where}", wvals).fetchone()
+            # ① 전역 유일 식별자(DOI 등)가 있으면 그것으로 먼저 찾는다.
+            hit = None
+            for ucols in UNIQUE_FIRST.get(table, []):
+                if not all(c in data_cols and vals.get(c) not in (None, "") for c in ucols):
+                    continue
+                hit = dc.execute(
+                    f"SELECT id FROM {table} WHERE " + " AND ".join(f"{c}=?" for c in ucols),
+                    [vals[c] for c in ucols]).fetchone()
+                if hit:
+                    break
+            # ② 없으면 자연키로 탐색.
+            if not hit:
+                where = " AND ".join(f"{k} IS ?" if vals.get(k) is None else f"{k}=?" for k in natkey)
+                wvals = [vals.get(k) for k in natkey]
+                hit = dc.execute(f"SELECT id FROM {table} WHERE {where}", wvals).fetchone()
             if hit:
                 remap[table][src_id] = hit[0]           # cae00 기존행 유지(덮지 않음)
                 matched += 1

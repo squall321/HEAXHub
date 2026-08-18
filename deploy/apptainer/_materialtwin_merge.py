@@ -2,7 +2,8 @@
 # id 는 정수 autoincrement 라 dev/cae00 에서 같은 id 가 다른 행일 수 있다 → 자연키로 대응행을
 # 찾고, 없으면 새로 INSERT(새 id 부여) + 자식의 FK 를 그 새 id 로 재매핑한다. cae00 기존 행은 유지.
 # 사용: python3 _materialtwin_merge.py <src.db(dev)> <dst.db(cae00 운영)>
-import sqlite3, sys, json
+import sqlite3
+import sys, json
 
 SRC, DST = sys.argv[1], sys.argv[2]
 
@@ -79,10 +80,19 @@ def main():
     summary = {}
 
     for table, natkey, fks in PLAN:
-        # src/dst 에 테이블 없으면 skip
+        # src/dst 에 테이블 없으면 skip.
+        # ⚠ 조용히 넘기면 안 된다. 운영 DB 에 표가 없는 흔한 이유는 '앱이 아직 새 마이그레이션을
+        # 안 돌렸다' 이고, 배포 순서상 merge 가 앱 기동보다 먼저다 — 즉 새 표는 첫 배포에서
+        # 반드시 이 가지로 빠진다. 예전엔 아무 말이 없어서, 데이터를 Drive 에 올리고 PLAN 에
+        # 표를 넣었는데도 "왜 업데이트가 안 되나"로 보였다(시험장비 218행, 2026-08-18).
+        # 몇 행이 안 갔는지와 무엇을 하면 되는지를 말한다.
         if not sc.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
-            continue
+            continue   # 원본에 없음 = 그 앱이 아직 그 기능을 안 쓴다(정상)
         if not dc.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+            n = sc.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            print(f"[skip] {table}: 운영 DB 에 표가 없어 {n}행을 넘겼다 "
+                  f"— 앱을 새 코드로 재배포·기동해 마이그레이션을 돌린 뒤 이 병합을 한 번 더 하라",
+                  file=sys.stderr)
             continue
         scols = cols_of(sc, table); dcols = cols_of(dc, table)
         cols = [c for c in scols if c in dcols]          # 공통 컬럼만(스키마 drift 방어)

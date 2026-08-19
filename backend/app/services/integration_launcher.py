@@ -672,6 +672,11 @@ _PROXY_ENV = (
     "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
     "http_proxy", "https_proxy", "no_proxy", "all_proxy",
 )
+# 외부 검색 정책. 매니페스트(launch.env)가 아니라 여기로 넘기는 이유 —
+# "일반 웹 검색 금지" 같은 것은 앱이 아니라 조직이 정하는 값이고, 매니페스트 값은
+# 리터럴이라 운영자가 바꾸려면 앱을 다시 등록해야 한다. 호스트 env 로 두면 재빌드
+# 없이 켜고 끈다. 값이 없으면 앱 기본값(offline)이 그대로 남는다 — 실수로 열리지 않는다.
+_SEARCH_ENV = ("SEARCH_MODE", "WEB_PROVIDER", "BRAVE_API_KEY", "SEARXNG_URL")
 # 사내 프록시가 TLS 를 중간에서 재서명하면 컨테이너 기본 CA 로는 검증에 실패한다.
 # 인증서 검증을 끄는 것은 답이 아니므로(MITM 무조건 신뢰), 사내 루트 CA 를 넣어 준다.
 # 호스트 HEAX_APP_CA_BUNDLE 에 파일 경로를 두면 컨테이너로 bind 하고 아래 변수들을 채운다.
@@ -682,10 +687,11 @@ _CA_IN_CONTAINER = "/etc/heax-ca-bundle.crt"
 def _inherited_env() -> dict[str, str]:
     """호스트에서 앱 컨테이너로 물려줄 환경변수.
 
-    HEAX_APP_LLM_* 은 앱이 읽는 이름으로 바꿔 넣고, 프록시 설정은 이름 그대로 넘긴다.
+    HEAX_APP_LLM_* 은 앱이 읽는 이름으로 바꿔 넣고, 프록시·검색정책은 이름 그대로 넘긴다.
     """
     out = {dst: os.environ[src] for src, dst in _APP_LLM_ENV.items() if os.environ.get(src)}
     out.update({k: os.environ[k] for k in _PROXY_ENV if os.environ.get(k)})
+    out.update({k: os.environ[k] for k in _SEARCH_ENV if os.environ.get(k)})
     return out
 
 

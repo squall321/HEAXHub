@@ -101,7 +101,7 @@ def refresh(payload: RefreshRequest, db: DbSession, response: Response) -> AuthT
 
 
 @router.post("/logout-session", status_code=status.HTTP_204_NO_CONTENT)
-def logout_session(response: Response) -> None:
+def logout_session(request: Request, response: Response) -> None:
     """세션 쿠키만 즉시 만료시킨다 — 본문도 Bearer 도 요구하지 않는다.
 
     왜 따로 두는가. /logout 은 refresh 토큰 폐기까지 하느라 Authorization 헤더(CurrentUser)와
@@ -114,6 +114,13 @@ def logout_session(response: Response) -> None:
     세션에는 아무 영향이 없다(쿠키는 요청자 브라우저에만 있다). 인가를 걸면 정작 필요한
     상황(쿠키만 있는 브라우저)에서 못 쓰게 된다.
     """
+    # 교차 출처 요청은 막는다. 인가는 필요 없지만(자기 쿠키를 지우는 동작) 남의 페이지가
+    # 임의로 사용자를 로그아웃시키는 것(로그아웃 CSRF)은 막아야 한다. 브라우저가 자동으로
+    # 보내는 Sec-Fetch-Site 를 본다 — 헤더가 없으면(curl·구형) 통과시킨다. 그 경우는
+    # 애초에 브라우저 쿠키가 없어 지울 것도 없다.
+    site = request.headers.get("sec-fetch-site", "")
+    if site and site not in ("same-origin", "same-site", "none"):
+        raise HTTPException(status_code=403, detail="cross-site logout is not allowed")
     _clear_session_cookie(response)
     return None
 

@@ -100,6 +100,24 @@ def refresh(payload: RefreshRequest, db: DbSession, response: Response) -> AuthT
     return tokens
 
 
+@router.post("/logout-session", status_code=status.HTTP_204_NO_CONTENT)
+def logout_session(response: Response) -> None:
+    """세션 쿠키만 즉시 만료시킨다 — 본문도 Bearer 도 요구하지 않는다.
+
+    왜 따로 두는가. /logout 은 refresh 토큰 폐기까지 하느라 Authorization 헤더(CurrentUser)와
+    본문(LogoutRequest)을 요구한다. 그런데 포털에서 로그아웃할 때 브라우저가 가진 것은
+    httpOnly 세션 쿠키뿐이라 그 엔드포인트를 못 쓴다 — 실측으로 401(헤더 없음) / 422(본문
+    없음)였고, 그래서 포털에서 로그아웃해도 /apps/<slug>/ 가 쿠키 수명(기본 1시간) 동안
+    열려 있었다.
+
+    인가를 요구하지 않는 이유. 이 동작은 '내 브라우저가 가진 쿠키를 지운다' 뿐이고, 남의
+    세션에는 아무 영향이 없다(쿠키는 요청자 브라우저에만 있다). 인가를 걸면 정작 필요한
+    상황(쿠키만 있는 브라우저)에서 못 쓰게 된다.
+    """
+    _clear_session_cookie(response)
+    return None
+
+
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
     payload: LogoutRequest | None,

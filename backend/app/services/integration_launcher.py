@@ -326,6 +326,13 @@ def launch(
         str(k): str(v)
         for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
     })
+    # ⚠ 검색 정책만은 매니페스트보다 호스트가 이긴다. 앱 매니페스트가 SEARCH_MODE 를
+    # 리터럴로 박아 두면(web-research-mcp 가 그렇다) 운영자가 호스트 env 로 아무리 바꿔도
+    # 반영되지 않는다. 더 나쁜 조합도 생긴다 — SEARCH_MODE 는 매니페스트에 덮이는데
+    # WEB_PROVIDER 는 매니페스트에 없어 그대로 통과하면, 도구는 등록되는데 호출은 전부
+    # 차단되는 함정 도구가 만들어진다. "일반 웹 금지"는 앱이 아니라 조직이 정하는 값이므로
+    # 여기서 마지막에 덮는다. 호스트에 값이 없으면 아무것도 안 덮으므로 매니페스트가 남는다.
+    env.update({k: os.environ[k] for k in _SEARCH_ENV if os.environ.get(k)})
     env.update({
         "PORT": str(port),
         # 앱은 loopback 에만 바인드 — 포트를 외부에 노출하지 말고 리버스프록시(Caddy)
@@ -518,6 +525,13 @@ def _launch_via_sif(
         str(k): str(v)
         for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
     })
+    # ⚠ 검색 정책만은 매니페스트보다 호스트가 이긴다. 앱 매니페스트가 SEARCH_MODE 를
+    # 리터럴로 박아 두면(web-research-mcp 가 그렇다) 운영자가 호스트 env 로 아무리 바꿔도
+    # 반영되지 않는다. 더 나쁜 조합도 생긴다 — SEARCH_MODE 는 매니페스트에 덮이는데
+    # WEB_PROVIDER 는 매니페스트에 없어 그대로 통과하면, 도구는 등록되는데 호출은 전부
+    # 차단되는 함정 도구가 만들어진다. "일반 웹 금지"는 앱이 아니라 조직이 정하는 값이므로
+    # 여기서 마지막에 덮는다. 호스트에 값이 없으면 아무것도 안 덮으므로 매니페스트가 남는다.
+    env_in_container.update({k: os.environ[k] for k in _SEARCH_ENV if os.environ.get(k)})
     env_in_container.update({
         "PORT": str(port),
         # loopback 전용 바인드 컨벤션 — argv 로 못 바꾸는 스택은 앱이 $HOST 를 읽어야 함.

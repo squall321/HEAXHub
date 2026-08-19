@@ -78,6 +78,8 @@ def main():
     dc = d.cursor(); sc = s.cursor()
     remap = {}   # table -> { src_id -> dst_id }
     summary = {}
+    # 병합이 조용히 버린 소유권 갱신을 모아 마지막에 보고한다(덮어쓰지는 않는다).
+    ownership_diffs: list[dict] = []
 
     for table, natkey, fks in PLAN:
         # src/dst 에 테이블 없으면 skip.
@@ -136,6 +138,22 @@ def main():
             if hit:
                 remap[table][src_id] = hit[0]           # cae00 기존행 유지(덮지 않음)
                 matched += 1
+                # ⚠ instrument 는 이제 쓰기 1회 표가 아니다 — owned·담당자·연락처라는
+                # '사람이 갱신하는 상태' 가 붙었다(803417a). 기존행 유지는 그 갱신을
+                # 조용히 버린다는 뜻이므로, 어느 쪽이 정본인지 자동으로 정하지 않고
+                # 다르다는 사실만 드러낸다. 덮어쓰면 현장에서 등록한 보유가 dev 의
+                # 기본값(False)으로 되돌아갈 수 있어 더 위험하다.
+                if table == "instrument":
+                    for col in ("owned", "owner_name", "owner_contact"):
+                        if col not in data_cols:
+                            continue
+                        cur = dc.execute(f"SELECT {col} FROM {table} WHERE id=?",
+                                         (hit[0],)).fetchone()
+                        if cur is not None and cur[0] != vals.get(col):
+                            ownership_diffs.append(
+                                {"id": hit[0], "field": col,
+                                 "운영": cur[0], "들어온값": vals.get(col),
+                                 "장비": " ".join(str(vals.get(k) or "") for k in natkey)})
             else:
                 placeholders = ",".join("?" * len(data_cols))
                 try:
@@ -166,7 +184,16 @@ def main():
     d.execute("PRAGMA foreign_keys=ON")
     viol = d.execute("PRAGMA foreign_key_check").fetchall()
     s.close(); d.close()
-    print(json.dumps({"summary": summary, "fk_violations": len(viol)}, ensure_ascii=False))
+    out = {"summary": summary, "fk_violations": len(viol)}
+    if ownership_diffs:
+        # 조용히 버리지 않는다 — 현장에서 등록한 보유/담당자가 병합에 묻히면 시험 계획이
+        # 있지도 않은 장비를 전제하거나, 반대로 있는 장비를 없다고 센다.
+        out["ownership_diffs"] = ownership_diffs[:40]
+        out["ownership_diffs_total"] = len(ownership_diffs)
+    print(json.dumps(out, ensure_ascii=False))
+    if ownership_diffs:
+        print(f"⚠ 장비 소유권이 다른 행 {len(ownership_diffs)}건 — 운영 값을 유지했다. "
+              f"어느 쪽이 맞는지 확인하라(set_instrument_ownership 로 정정).", file=sys.stderr)
     if viol:
         print(f"FK VIOLATION: {viol[:5]}", file=sys.stderr)
         sys.exit(1)

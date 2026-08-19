@@ -1,0 +1,22 @@
+schema_version: 2
+id: arp
+name: AI Ready Portal
+version: 1.0.0
+owner: koo.park
+status: stable
+app_type: external_link
+execution_target: external_url
+build:
+  stack: external_link
+launch:
+  mode: url
+  url: http://10.252.38.97:3001/
+  open_in: new_tab
+# ⚠ 사내망 전용 주소다. cae00 에서만 열리고 dev·외부에서는 안 열린다 — 카드가 보이는 것과
+# 열리는 것은 다르므로 설명에 못 박는다. 순수 external_url 앱은 기동 상태가 없어
+# 헬스게이트가 보지 않는다(integration_state 파일이 생기지 않는다) → dev 에 가짜 실패가 안 뜬다.
+description: >-
+  CAE 그룹의 AI Ready Portal — 개발·시뮬레이션 데이터를 AI 가 바로 쓸 수 있는 형태로 모은다.
+  사내망에서만 접속되며, MCP 도구는 게이트웨이에 arp 백엔드로 붙어 있다.
+permissions:
+  visibility: company

@@ -1,0 +1,20 @@
+schema_version: 2
+id: odb_hub
+name: ECAD Automation Hub
+version: 1.0.0
+owner: koo.park
+status: stable
+app_type: external_link
+execution_target: external_url
+build:
+  stack: external_link
+launch:
+  mode: url
+  url: http://10.252.38.121:8000/
+  open_in: new_tab
+# ⚠ 사내망 전용. ARP 와 같은 이유로 external_url 로 둔다(위 주석 참조).
+description: >-
+  ODB++ 기반 PCB 설계 검증·해석 자동화 플랫폼. 설계 체크리스트를 자동 점검하고 시뮬레이션까지
+  이어 준다. 사내망에서만 접속되며, MCP 도구는 게이트웨이에 odb-hub 백엔드로 붙어 있다.
+permissions:
+  visibility: company

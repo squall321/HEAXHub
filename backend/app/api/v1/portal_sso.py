@@ -33,6 +33,7 @@ from app.config import get_settings
 from app.core.security import hash_password
 from app.db.models.user import AuthSource, User, UserRole, UserStatus
 from app.deps import DbSession
+from app.api.v1.auth import _set_session_cookie
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["portal-sso"])
@@ -202,4 +203,11 @@ def portal_callback(db: DbSession, token: str = Form(...)) -> HTMLResponse:
     )
 
     html = _bootstrap_html(json.dumps(payload), settings.portal_sso_landing)
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+    resp = HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+    # ⚠ localStorage 만 채우면 SPA 안의 fetch 는 되지만 **브라우저가 직접 여는 URL** 은 못 뚫는다.
+    # /apps/{slug}/ 는 Caddy forward_auth 가 게이트하고 그 게이트는 쿠키(또는 Authorization)만
+    # 본다 — 주소창 이동에는 JS 가 개입할 수 없어 둘 다 없다. 그래서 포털에서 정상적으로
+    # 들어와도 portal_auth 앱(DynaForge 등)이 401 로 막혔다. 로그인·리프레시는 이미 이 쿠키를
+    # 심고 있었는데 포털 콜백만 빠져 있었다.
+    _set_session_cookie(resp, tokens.access_token)
+    return resp

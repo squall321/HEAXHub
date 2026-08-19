@@ -68,6 +68,14 @@ UNIQUE_FIRST = {
     "source": [["doi"], ["isbn"], ["content_hash"]],
 }
 
+# ── 재료 큐레이션 키 ─────────────────────────────────────────────────────────
+# 이 키들만 **이미 있는 재료에도** 반영한다. 값이 아니라 **판정**이다 —
+# "이게 제품인가 실험실 시편인가"(role)·"어느 계통 부품인가"(subsystem)는
+# 물성처럼 출처에서 나오는 게 아니라 dev 에서 사람이 정한다. 정본이 한쪽뿐이다.
+# 나머지 속성(제조사·규격·조성·측정 메모…)은 건드리지 않는다 — 병합의 비파괴 약속을 지킨다.
+CURATION_KEYS = {"role", "role_reason", "role_basis", "role_confidence",
+                 "subsystem", "subsystem_basis"}
+
 
 def cols_of(cur, t):
     return [r[1] for r in cur.execute(f"PRAGMA table_info('{t}')")]
@@ -80,6 +88,7 @@ def main():
     summary = {}
     # 병합이 조용히 버린 소유권 갱신을 모아 마지막에 보고한다(덮어쓰지는 않는다).
     ownership_diffs: list[dict] = []
+    curation_updates: list[dict] = []
 
     for table, natkey, fks in PLAN:
         # src/dst 에 테이블 없으면 skip.
@@ -143,6 +152,31 @@ def main():
                 # 조용히 버린다는 뜻이므로, 어느 쪽이 정본인지 자동으로 정하지 않고
                 # 다르다는 사실만 드러낸다. 덮어쓰면 현장에서 등록한 보유가 dev 의
                 # 기본값(False)으로 되돌아갈 수 있어 더 위험하다.
+                # ⚠ 재료 큐레이션 메타(role·subsystem)는 **반대 방향**이다.
+                # 병합기는 삽입만 하므로 **이미 있는 재료의 attributes 는 영원히 안 간다** —
+                # 43차 EA 가 계통 태그 346종을 붙였는데 그 재료들은 cae00 에 이미 있어
+                # 한 건도 전파되지 않는다(이 지점을 고치기 전까지 실측 0건).
+                # 장비 소유권과 달리 이 값은 **dev 에서만 판정한다**(현장 입력이 없다).
+                # 그래서 소유권처럼 '다르다고 알리고 유지' 가 아니라 dev 를 정본으로 반영한다.
+                # 다만 **지우지는 않는다** — dev 에 없는 키는 운영 값을 그대로 둔다.
+                if table == "material" and "attributes" in data_cols:
+                    cur = dc.execute("SELECT attributes FROM material WHERE id=?",
+                                     (hit[0],)).fetchone()
+                    try:
+                        old = json.loads(cur[0]) if cur and cur[0] else {}
+                        new = json.loads(vals["attributes"]) if vals.get("attributes") else {}
+                    except (TypeError, ValueError):
+                        old, new = {}, {}
+                    if isinstance(old, dict) and isinstance(new, dict):
+                        chg = {k: v for k, v in new.items()
+                               if k in CURATION_KEYS and old.get(k) != v}
+                        if chg:
+                            merged = dict(old); merged.update(chg)
+                            dc.execute("UPDATE material SET attributes=? WHERE id=?",
+                                       (json.dumps(merged, ensure_ascii=False), hit[0]))
+                            curation_updates.append(
+                                {"id": hit[0], "name": str(vals.get("name"))[:60],
+                                 "변경": {k: [old.get(k), v] for k, v in chg.items()}})
                 if table == "instrument":
                     for col in ("owned", "owner_name", "owner_contact"):
                         if col not in data_cols:
@@ -185,12 +219,20 @@ def main():
     viol = d.execute("PRAGMA foreign_key_check").fetchall()
     s.close(); d.close()
     out = {"summary": summary, "fk_violations": len(viol)}
+    if curation_updates:
+        # 조용히 넘기지 않는다 — 이건 '값' 이 아니라 '판정' 을 덮는 일이라
+        # 무엇이 무엇으로 바뀌었는지가 남아야 되돌릴 수 있다.
+        out["curation_updates"] = curation_updates[:40]
+        out["curation_updates_total"] = len(curation_updates)
     if ownership_diffs:
         # 조용히 버리지 않는다 — 현장에서 등록한 보유/담당자가 병합에 묻히면 시험 계획이
         # 있지도 않은 장비를 전제하거나, 반대로 있는 장비를 없다고 센다.
         out["ownership_diffs"] = ownership_diffs[:40]
         out["ownership_diffs_total"] = len(ownership_diffs)
     print(json.dumps(out, ensure_ascii=False))
+    if curation_updates:
+        print(f"· 재료 큐레이션(role·subsystem)을 갱신한 행 {len(curation_updates)}건 — "
+              f"이 경로가 없으면 이미 있는 재료의 태그는 영원히 전파되지 않는다.", file=sys.stderr)
     if ownership_diffs:
         print(f"⚠ 장비 소유권이 다른 행 {len(ownership_diffs)}건 — 운영 값을 유지했다. "
               f"어느 쪽이 맞는지 확인하라(set_instrument_ownership 로 정정).", file=sys.stderr)

@@ -1,0 +1,39 @@
+schema_version: 2
+id: step_forge            # /apps/step_forge · state · 인스턴스명의 원천
+name: StepForge
+version: 0.1.0
+owner: cae-automation
+status: beta              # draft 는 MCP 레지스트리에서 제외된다
+app_type: web_app
+execution_target: linux_runner
+description: |
+  STEP(CAD) 포지 — 어셈블리 하이라키 인식, 파트 간 관계(tied/닿음/간극/침투) 추출,
+  파트별 솔리드·중립면 메시, LS-DYNA K파일·접촉 YAML 내보내기, 3D 뷰어, 분석·수정 MCP.
+  헬스 /health, MCP /apps/step_forge/mcp.
+tags: [step, cad, mesh, assembly, mcp, cae, lsdyna]
+build:
+  type: python_venv
+  stack: fastapi
+  python_version: "3.12"   # 빌더는 이 값을 읽지 않는다 — SIF 템플릿이 3.12 고정(D-027)
+launch:
+  mode: service
+  health_check: { type: http, path: /health }
+  restart_policy: { policy: on_failure, max_attempts: 3 }
+  env: { STEPFORGE_DATA_DIR: /data }
+permissions:
+  visibility: team
+resources:
+  cpu: 2
+  memory_gb: 16           # 693MB 파싱 피크 RSS 5.13GB 실측 × 여유 — 검출 8워커 상한의 근거
+  gpu: false
+# 소스는 로컬 레포의 git clone 이다 — GitHub push 없이 등록·재빌드한다(깨끗한 clone 이라
+# .venv·var 가 딸려 들어가지 않는다, D-094). 외부 공개가 필요해지면 url 만 GitHub 로 바꾼다.
+source:
+  type: git
+  url: file:///home/koopark/claude/StepForge
+  ref: main
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http
+  description: STEP 어셈블리 점검·관계 검출·메시·K파일 내보내기 도구

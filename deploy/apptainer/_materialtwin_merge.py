@@ -75,6 +75,20 @@ UNIQUE_FIRST = {
 # 나머지 속성(제조사·규격·조성·측정 메모…)은 건드리지 않는다 — 병합의 비파괴 약속을 지킨다.
 CURATION_KEYS = {"role", "role_reason", "role_basis", "role_confidence",
                  "subsystem", "subsystem_basis"}
+# 판정은 role·subsystem 만이 아니다. 45·46차에 배치들이 같은 성격의 키를 더 만들었다 —
+# `core_not_applicable`(그 물성이 이 재료에 의미 없다) · `core_fill_sheet`(무엇을 열어야 하나) ·
+# `same_alloy_as`·`merge_verdict`·`merge_plan`(같은 재료인가). 전부 **dev 에서만 정하고
+# 운영에 입력 경로가 없는 판정**이라 위와 똑같은 이유로 전파해야 하는데 목록에서 빠져 있었다
+# (46차 HC 가 짚었다 — "이번에 남긴 결과는 dev 에만 있다").
+#
+# 파동마다 새 이름이 생기므로 **접두어로 받는다.** 배치가 판정 키를 만들 때는
+# 이 접두어를 쓰라는 뜻이기도 하다. 접두어를 좁게 유지하는 이유는 명세(두께·조성 같은 것)가
+# 섞이면 병합이 값을 덮기 때문이다 — 여기 있는 넷은 전부 '판정' 계열이다.
+CURATION_PREFIXES = ("core_", "merge_", "same_alloy_", "verdict_")
+
+
+def is_curation(k: str) -> bool:
+    return k in CURATION_KEYS or k.startswith(CURATION_PREFIXES)
 
 
 def cols_of(cur, t):
@@ -169,7 +183,7 @@ def main():
                         old, new = {}, {}
                     if isinstance(old, dict) and isinstance(new, dict):
                         chg = {k: v for k, v in new.items()
-                               if k in CURATION_KEYS and old.get(k) != v}
+                               if is_curation(k) and old.get(k) != v}
                         if chg:
                             merged = dict(old); merged.update(chg)
                             dc.execute("UPDATE material SET attributes=? WHERE id=?",
@@ -231,8 +245,9 @@ def main():
         out["ownership_diffs_total"] = len(ownership_diffs)
     print(json.dumps(out, ensure_ascii=False))
     if curation_updates:
-        print(f"· 재료 큐레이션(role·subsystem)을 갱신한 행 {len(curation_updates)}건 — "
-              f"이 경로가 없으면 이미 있는 재료의 태그는 영원히 전파되지 않는다.", file=sys.stderr)
+        print(f"· 재료 큐레이션(role·subsystem·core_*·merge_*)을 갱신한 행 "
+              f"{len(curation_updates)}건 — 이 경로가 없으면 이미 있는 재료의 판정은 "
+              f"영원히 전파되지 않는다.", file=sys.stderr)
     if ownership_diffs:
         print(f"⚠ 장비 소유권이 다른 행 {len(ownership_diffs)}건 — 운영 값을 유지했다. "
               f"어느 쪽이 맞는지 확인하라(set_instrument_ownership 로 정정).", file=sys.stderr)

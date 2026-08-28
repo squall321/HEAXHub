@@ -91,6 +91,72 @@ def is_curation(k: str) -> bool:
     return k in CURATION_KEYS or k.startswith(CURATION_PREFIXES)
 
 
+# ── 물성값 정정의 전파 ────────────────────────────────────────────────────────
+# **464번의 두 번째 얼굴이다.** 재료 attributes 는 고쳤는데 `property_value` 는 그대로였다.
+# 이 표의 자연키는 `value_num`·`conditions`·`method` 를 포함한다 — **정정이 바꾸는 바로 그 칸들**이다.
+# 그래서 dev 에서 값을 고치면 운영에서 대응행을 못 찾고 **새 행으로 들어간다.**
+# 실측(2026-08-28 예행, 48차 JA) — 재료 199 의 두 행을 고치고 병합했더니
+# `property_value added 2` 였고, 운영에는 **틀린 옛 행과 고친 새 행이 나란히** 남았다.
+# 등급만 고친 경우는 반대로 자연키가 그대로라 매칭되고 **정정이 조용히 버려진다**
+# (tier·notes 는 자연키에 없다). 어느 쪽이든 정정은 운영에 못 간다.
+#
+# **적재기가 되돌리기용으로 남기는 표시가 그대로 열쇠다.** 정정된 행은 조건에
+# `<칸>_before_correction` 을 달고 있으므로, 그것으로 **정정 전 값**을 복원해
+# (재료·물성키·출처·옛 값)으로 운영행을 찾는다. 찾으면 그 행을 **갱신**한다.
+#
+# **조건 텍스트로는 대조하지 않는다** — JSON 직렬화가 양쪽에서 글자까지 같으리라 기대할 수 없다.
+# 대신 옛 `value_num`/`value_text`(+ 정정이 실제로 바꾼 경우의 옛 unit·method)로 좁힌다.
+# **유일하지 않으면 갱신하지 않는다** — 어느 행인지 병합기가 고르면 그건 병합기의 판정이 된다.
+# 그때는 값을 버리지 않고 평소대로 삽입하되 `correction_misses` 로 **크게 보고한다.**
+# id 동일성에는 기대지 않는다(운영 id 는 dev 와 다르다 — 이 파일 머리말 그대로다).
+CORRECTION_SUFFIX = "_before_correction"
+
+
+def correction_prior(cond_text):
+    """정정 표시가 있으면 {칸: 정정 전 값} 을, 없으면 None 을 돌려준다."""
+    if not cond_text:
+        return None
+    try:
+        d = json.loads(cond_text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    # **`*_before_correction` 만 보면 안 된다.** 적재기의 중앙값 가드도 같은 이름으로
+    # `method_before_correction` 을 남기는데(브리프 451·455) 그건 정정이 아니라 정상 삽입이다
+    # — 실측 211행이 그렇게 들어 있다. 그 행들까지 이 분기로 끌면 멀쩡한 삽입이 망가진다.
+    # **선언된 정정만 본다** — 정정 경로는 `correction_reason` 을 반드시 남긴다.
+    if not d.get("correction_reason"):
+        return None
+    prior = {k[: -len(CORRECTION_SUFFIX)]: v
+             for k, v in d.items() if k.endswith(CORRECTION_SUFFIX)}
+    return prior or None
+
+
+def find_corrected_row(dc, vals, prior):
+    """정정 전 값으로 운영행을 찾는다. (행 id, 사유) — 유일하지 않으면 (None, 사유).
+
+    `IS ?` 는 SQLite 의 NULL 안전 비교라 value_text·source_id 가 NULL 인 행도 걸린다.
+    """
+    where, args = ["material_id IS ?", "property_key IS ?", "source_id IS ?"], [
+        vals.get("material_id"), vals.get("property_key"), vals.get("source_id")]
+    # 옛 값으로 좁힌다. 정정이 그 칸을 안 건드렸으면 지금 값이 곧 옛 값이다.
+    # unit·method 는 **정정이 실제로 바꾼 경우에만** 건다 — 안 바뀐 칸까지 걸면
+    # 스키마 드리프트(운영이 옛 코드라 method 어휘가 좁은 경우)에 불필요하게 약해진다.
+    for col, pk in (("value_num", "value"), ("value_text", "value_text")):
+        where.append(f"{col} IS ?")
+        args.append(prior.get(pk, vals.get(col)))
+    for col in ("unit", "method"):
+        if col in prior:
+            where.append(f"{col} IS ?")
+            args.append(prior[col])
+    rows = dc.execute(f"SELECT id FROM property_value WHERE {' AND '.join(where)}", args).fetchall()
+    if len(rows) == 1:
+        return rows[0][0], None
+    return None, ("운영에 대응행이 없다" if not rows
+                  else f"운영행 {len(rows)}건에 걸린다(id {[r[0] for r in rows][:6]})")
+
+
 def cols_of(cur, t):
     return [r[1] for r in cur.execute(f"PRAGMA table_info('{t}')")]
 
@@ -103,6 +169,9 @@ def main():
     # 병합이 조용히 버린 소유권 갱신을 모아 마지막에 보고한다(덮어쓰지는 않는다).
     ownership_diffs: list[dict] = []
     curation_updates: list[dict] = []
+    # 물성값 정정의 전파 결과. 조용히 넘기면 안 된다 — 못 간 정정은 운영에 **틀린 값을 남긴다.**
+    value_corrections: list[dict] = []
+    correction_misses: list[dict] = []
 
     for table, natkey, fks in PLAN:
         # src/dst 에 테이블 없으면 skip.
@@ -158,6 +227,31 @@ def main():
                 where = " AND ".join(f"{k} IS ?" if vals.get(k) is None else f"{k}=?" for k in natkey)
                 wvals = [vals.get(k) for k in natkey]
                 hit = dc.execute(f"SELECT id FROM {table} WHERE {where}", wvals).fetchone()
+            # ③ **정정된 물성값은 자연키로 못 찾는다** — 자연키가 값·조건·method 를 포함하는데
+            #    정정이 바로 그 칸들을 바꾸기 때문이다. 그래서 여기서 **정정 전 값**으로 한 번 더 찾는다.
+            #    ②가 먼저 도는 순서라 **재병합에 멱등하다** — 이미 전파된 정정은 ②에서 걸린다.
+            if not hit and table == "property_value":
+                prior = correction_prior(vals.get("conditions"))
+                if prior is not None:
+                    tgt, why = find_corrected_row(dc, vals, prior)
+                    if tgt is not None:
+                        dc.execute("UPDATE property_value SET "
+                                   + ",".join(f"{c}=?" for c in data_cols) + " WHERE id=?",
+                                   [vals[c] for c in data_cols] + [tgt])
+                        remap[table][src_id] = tgt
+                        matched += 1
+                        value_corrections.append(
+                            {"id": tgt, "material_id": vals.get("material_id"),
+                             "key": vals.get("property_key"), "정정전": prior,
+                             "정정후": {c: vals.get(c) for c in
+                                      ("value_num", "method", "quality_tier") if c in data_cols}})
+                        continue
+                    # 옛 행을 못 찾았다. 그래도 **삽입은 한다** — 운영에 아직 없는 값일 수 있고
+                    # (새 재료의 행을 적재 직후에 고친 경우), 값을 버리는 쪽이 더 위험하다.
+                    # 다만 조용히 넘기지 않는다: 옛 행이 있는데 못 찾은 것이면 운영에 **두 행이 생긴다.**
+                    correction_misses.append(
+                        {"material_id": vals.get("material_id"), "key": vals.get("property_key"),
+                         "value": vals.get("value_num"), "사유": why})
             if hit:
                 remap[table][src_id] = hit[0]           # cae00 기존행 유지(덮지 않음)
                 matched += 1
@@ -238,6 +332,12 @@ def main():
         # 무엇이 무엇으로 바뀌었는지가 남아야 되돌릴 수 있다.
         out["curation_updates"] = curation_updates[:40]
         out["curation_updates_total"] = len(curation_updates)
+    if value_corrections:
+        out["value_corrections"] = value_corrections[:40]
+        out["value_corrections_total"] = len(value_corrections)
+    if correction_misses:
+        out["correction_misses"] = correction_misses[:40]
+        out["correction_misses_total"] = len(correction_misses)
     if ownership_diffs:
         # 조용히 버리지 않는다 — 현장에서 등록한 보유/담당자가 병합에 묻히면 시험 계획이
         # 있지도 않은 장비를 전제하거나, 반대로 있는 장비를 없다고 센다.
@@ -248,6 +348,13 @@ def main():
         print(f"· 재료 큐레이션(role·subsystem·core_*·merge_*)을 갱신한 행 "
               f"{len(curation_updates)}건 — 이 경로가 없으면 이미 있는 재료의 판정은 "
               f"영원히 전파되지 않는다.", file=sys.stderr)
+    if value_corrections:
+        print(f"· 물성값 정정을 운영행에 반영한 건수 {len(value_corrections)} — "
+              f"이 경로가 없으면 정정은 새 행으로 들어가 운영에 틀린 옛 행이 남는다.", file=sys.stderr)
+    if correction_misses:
+        print(f"⚠ 정정 {len(correction_misses)}건이 운영에서 옛 행을 못 찾았다 — 값은 넣었지만 "
+              f"운영에 옛 행이 남아 있으면 **같은 측정이 두 행**이 된다. correction_misses 를 확인해라.",
+              file=sys.stderr)
     if ownership_diffs:
         print(f"⚠ 장비 소유권이 다른 행 {len(ownership_diffs)}건 — 운영 값을 유지했다. "
               f"어느 쪽이 맞는지 확인하라(set_instrument_ownership 로 정정).", file=sys.stderr)

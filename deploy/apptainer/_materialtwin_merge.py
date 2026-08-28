@@ -157,6 +157,57 @@ def find_corrected_row(dc, vals, prior):
                   else f"운영행 {len(rows)}건에 걸린다(id {[r[0] for r in rows][:6]})")
 
 
+# ── 값 이동의 전파 ────────────────────────────────────────────────────────────
+# **464·522 의 세 번째 얼굴이다.** 정정은 `value_num`·`conditions`·`method` 를 바꿔 자연키를
+# 깨뜨렸는데, **이동은 `material_id` 를 바꾼다** — 그것도 자연키 안에 있다. 그래서 옮긴 행은
+# 운영에서 대응행을 못 찾고 **새 행으로 들어가고, 운영에는 옛 재료 밑의 옛 행이 그대로 남는다.**
+# 결과는 정정 때와 같다 — 같은 측정이 두 재료에 하나씩, 그리고 옛 재료는 비지 않아 묘비가 거짓이 된다.
+#
+# **마이그레이션이 운영에서도 돌지 않느냐** — 돈다. 하지만 배포 순서상 **병합이 앱 기동보다 먼저다**
+# (위 `[skip]` 분기의 주석과 같은 사실이다). 병합 시점의 운영 DB 는 아직 옛 리비전이라
+# 행이 옛 재료 밑에 있다. 여기서 안 잡으면 그 뒤 마이그레이션이 옛 행을 옮겨 **두 벌이 된다.**
+#
+# 적재기·마이그레이션이 되돌리기용으로 남기는 표시가 그대로 열쇠다 —
+# 옮긴 행의 조건에는 `moved_from_material` 에 **옛 재료의 이름**이 들어 있다.
+# **id 가 아니라 이름인 이유는 이 파일 머리말 그대로다** — id 는 dev/cae00 에서 다른 행이다.
+MOVE_MARKER = "moved_from_material"
+
+
+def move_prior(cond_text):
+    """이동 표시가 있으면 옛 재료 이름을, 없으면 None 을 돌려준다."""
+    if not cond_text:
+        return None
+    try:
+        d = json.loads(cond_text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    v = d.get(MOVE_MARKER)
+    return v if isinstance(v, str) and v else None
+
+
+def find_moved_row(dc, vals, old_name):
+    """옛 재료 밑에서 운영행을 찾는다. (행 id, 사유) — 유일하지 않으면 (None, 사유).
+
+    좁히는 축은 **이동이 바꾸지 않는 것들**이다 — 물성키·출처·값. 조건 텍스트로는 대조하지
+    않는다(정정 전파와 같은 이유 — 직렬화가 양쪽에서 글자까지 같으리라 기대할 수 없다).
+    **유일하지 않으면 옮기지 않고 보고한다** — 어느 행인지 병합기가 고르면 그건 병합기의 판정이다.
+    """
+    m = dc.execute("SELECT id FROM material WHERE name=?", (old_name,)).fetchone()
+    if not m:
+        return None, f"운영에 옛 재료 '{old_name}' 가 없다"
+    rows = dc.execute(
+        "SELECT id FROM property_value WHERE material_id=? AND property_key IS ? "
+        "AND source_id IS ? AND value_num IS ? AND value_text IS ?",
+        (m[0], vals.get("property_key"), vals.get("source_id"),
+         vals.get("value_num"), vals.get("value_text"))).fetchall()
+    if len(rows) == 1:
+        return rows[0][0], None
+    return None, ("옛 재료 밑에 대응행이 없다" if not rows
+                  else f"옛 재료 밑 {len(rows)}행에 걸린다(id {[r[0] for r in rows][:6]})")
+
+
 def cols_of(cur, t):
     return [r[1] for r in cur.execute(f"PRAGMA table_info('{t}')")]
 
@@ -172,6 +223,9 @@ def main():
     # 물성값 정정의 전파 결과. 조용히 넘기면 안 된다 — 못 간 정정은 운영에 **틀린 값을 남긴다.**
     value_corrections: list[dict] = []
     correction_misses: list[dict] = []
+    # 값 이동의 전파 결과. 못 간 이동은 운영에 **같은 측정을 두 재료에 하나씩** 남긴다.
+    value_moves: list[dict] = []
+    move_misses: list[dict] = []
 
     for table, natkey, fks in PLAN:
         # src/dst 에 테이블 없으면 skip.
@@ -251,6 +305,29 @@ def main():
                     # 다만 조용히 넘기지 않는다: 옛 행이 있는데 못 찾은 것이면 운영에 **두 행이 생긴다.**
                     correction_misses.append(
                         {"material_id": vals.get("material_id"), "key": vals.get("property_key"),
+                         "value": vals.get("value_num"), "사유": why})
+            # ④ **이동한 물성값도 자연키로 못 찾는다** — 자연키가 `material_id` 를 포함하는데
+            #    이동이 바꾸는 칸이 바로 그것이다. 옛 재료 이름으로 운영행을 찾아 **재료를 옮긴다.**
+            #    ②가 먼저 도는 순서라 재병합에 멱등하다 — 이미 옮긴 행은 ②에서 걸린다.
+            if not hit and table == "property_value":
+                old_name = move_prior(vals.get("conditions"))
+                if old_name:
+                    tgt, why = find_moved_row(dc, vals, old_name)
+                    if tgt is not None:
+                        dc.execute("UPDATE property_value SET "
+                                   + ",".join(f"{c}=?" for c in data_cols) + " WHERE id=?",
+                                   [vals[c] for c in data_cols] + [tgt])
+                        remap[table][src_id] = tgt
+                        matched += 1
+                        value_moves.append(
+                            {"id": tgt, "옛재료": old_name, "새재료": vals.get("material_id"),
+                             "key": vals.get("property_key"), "value": vals.get("value_num")})
+                        continue
+                    # 옛 행을 못 찾았다. 정정과 같은 판단으로 **삽입은 한다** — 운영에 아직 없는
+                    # 값일 수 있고 값을 버리는 쪽이 더 위험하다. 다만 조용히 넘기지 않는다:
+                    # 옛 행이 남아 있는데 못 찾은 것이면 **운영에 두 벌이 생기고 묘비가 거짓이 된다.**
+                    move_misses.append(
+                        {"옛재료": old_name, "key": vals.get("property_key"),
                          "value": vals.get("value_num"), "사유": why})
             if hit:
                 remap[table][src_id] = hit[0]           # cae00 기존행 유지(덮지 않음)
@@ -338,6 +415,12 @@ def main():
     if correction_misses:
         out["correction_misses"] = correction_misses[:40]
         out["correction_misses_total"] = len(correction_misses)
+    if value_moves:
+        out["value_moves"] = value_moves[:40]
+        out["value_moves_total"] = len(value_moves)
+    if move_misses:
+        out["move_misses"] = move_misses[:40]
+        out["move_misses_total"] = len(move_misses)
     if ownership_diffs:
         # 조용히 버리지 않는다 — 현장에서 등록한 보유/담당자가 병합에 묻히면 시험 계획이
         # 있지도 않은 장비를 전제하거나, 반대로 있는 장비를 없다고 센다.
@@ -354,6 +437,14 @@ def main():
     if correction_misses:
         print(f"⚠ 정정 {len(correction_misses)}건이 운영에서 옛 행을 못 찾았다 — 값은 넣었지만 "
               f"운영에 옛 행이 남아 있으면 **같은 측정이 두 행**이 된다. correction_misses 를 확인해라.",
+              file=sys.stderr)
+    if value_moves:
+        print(f"· 값 이동을 운영행에 반영한 건수 {len(value_moves)} — 이 경로가 없으면 옮긴 값이 "
+              f"새 행으로 들어가고 **옛 재료 밑의 옛 행이 그대로 남아** 묘비가 거짓이 된다.",
+              file=sys.stderr)
+    if move_misses:
+        print(f"⚠ 이동 {len(move_misses)}건이 운영에서 옛 행을 못 찾았다 — 값은 넣었지만 "
+              f"옛 행이 남아 있으면 **같은 측정이 두 재료에 하나씩** 생긴다. move_misses 를 확인해라.",
               file=sys.stderr)
     if ownership_diffs:
         print(f"⚠ 장비 소유권이 다른 행 {len(ownership_diffs)}건 — 운영 값을 유지했다. "

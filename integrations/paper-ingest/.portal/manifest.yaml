@@ -20,6 +20,11 @@ build:
 launch:
   mode: service
   base_path_aware: true          # 브라우저 UI 를 /apps/paper_ingest/ 로 프록시(Caddy) — 앱은 ROOT_PATH 로 대응
+  env:
+    # GLM 게이트는 HEAX 가 주입하는 LLM_*(RA 상속=cae00 상암 GLM)를 config 가 폴백으로 읽는다.
+    # NO_PROXY 는 config 가 base URL 호스트에서 자동 도출한다 — 내부 IP·비밀(GLM_API_KEY)은 여기 두지 않는다.
+    INBOX_DIR: /data/_inbox        # 업로드 스테이징(app_data 바인드, 영속)
+    CORPUS_DIR: /data/corpus       # 로컬 코퍼스 스테이징(cae00 은 색인 안 함 — 색인·그라운딩은 dev)
   health_check: { type: http, path: /health }
   restart_policy: { policy: on_failure, max_attempts: 3 }
 permissions:

@@ -10,14 +10,16 @@ description: |
   연구 논문/특허를 중앙 코퍼스로 수집하고, 상암 GLM(OpenAI 호환)으로 검증 게이트를 수행하는 서버.
   - 유입: Drive-relay(rclone) 주채널 + REST 업로드(/api/v1/papers) 보조
   - 처리: 임베딩 NN 분류 → 증분 색인 → 그라운딩 → GLM 게이트 → 카드 fact_refs 적용
+  - 웹 UI: /apps/paper_ingest/ (PDF 논문 업로드 → 인입 → GLM 게이트 결과·카드 반영 확인)
   - 헬스: /health, MCP: /apps/paper_ingest/mcp (streamable HTTP)
-tags: [ingest, corpus, papers, patents, mcp, cae]
+tags: [ingest, corpus, papers, patents, mcp, cae, web]
 build:
   type: python_venv
   stack: fastapi
   python_version: "3.12"
 launch:
   mode: service
+  base_path_aware: true          # 브라우저 UI 를 /apps/paper_ingest/ 로 프록시(Caddy) — 앱은 ROOT_PATH 로 대응
   health_check: { type: http, path: /health }
   restart_policy: { policy: on_failure, max_attempts: 3 }
 permissions:

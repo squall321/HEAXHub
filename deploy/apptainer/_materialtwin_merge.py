@@ -353,7 +353,15 @@ def main():
             #    ②가 먼저 도는 순서라 재병합에 멱등하다(이미 얹은 행은 ②에서 걸린다).
             if not hit and table == "property_value":
                 base, verdicts = split_verdicts(vals.get("conditions"))
-                if verdicts:
+                # **정정을 선언한 행은 ③ 이 맡는다.** 판정을 §521 의 `corrections` 경로로 넣으면
+                # 그 경로가 `correction_reason`·`corrected_by` 를 반드시 남기는데, 그 두 칸은
+                # 판정 키가 아니라 dev 쪽에만 있다 — 여기서 조건 사전을 대조하면 전건이 안 맞아
+                # **결과는 옳은데(③ 이 다 받아낸다) 경고만 수천 건** 뜬다.
+                # 실측(52차 NC, 판정 3,400행) — 이 가지를 안 막으면 `verdict_misses` 가 그 수만큼 뜬다.
+                # **매번 뜨는 같은 경고는 무시하는 법을 가르친다**(§546). 그래서 아예 안 들어온다.
+                # 살림살이 키를 여기서 같이 벗기는 길도 있지만 그러면 ②-b 가 정정 행을 가로채
+                # `correction_reason` 이 운영에 안 가고 dev/운영이 조용히 어긋난다 — 그쪽이 더 나쁘다.
+                if verdicts and correction_prior(vals.get("conditions")) is None:
                     tgt, dst_cond, why = find_verdict_row(dc, vals, base)
                     if tgt is not None:
                         chg = {k: v for k, v in verdicts.items() if dst_cond.get(k) != v}

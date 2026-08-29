@@ -272,6 +272,95 @@ def find_moved_row(dc, vals, old_name):
                   else f"옛 재료 밑 {len(rows)}행에 걸린다(id {[r[0] for r in rows][:6]})")
 
 
+# ── 출처 병합의 전파 ──────────────────────────────────────────────────────────
+# **464·522·536 의 다섯 번째 얼굴이다.** 536 은 이동이 바꾸는 칸이 `material_id` 라 자연키가
+# 깨진다고 했다. 출처 병합이 바꾸는 칸은 **`source_id`** — 그것도 자연키 안이다.
+# 고치기 전 예행(53차 OA, 옮긴 193행) — 193행이 전부 운영에 **새 행**으로 들어가고
+# 옛 출처 밑의 옛 행이 그대로 남았다. 같은 측정이 **두 출처에 하나씩** 생긴다.
+#
+# **`source_id` 재매핑이 이것을 대신하지 않는다.** 재매핑은 dev 의 출처 id 를 운영 id 로
+# 바꿔 줄 뿐이고, 운영 행은 여전히 **옛 출처**를 가리키고 있다.
+#
+# 열쇠는 마이그레이션이 남긴 `conditions.moved_from_source` 다. 값은 **옛 출처의 자연키
+# 전체**다 — §535 가 재료에서 "id 가 아니라 이름" 을 가르쳤는데 출처에는 이름이 없어서
+# 자연키가 그 자리다(라이브 2,943행에서 2,943/2,943 유일, 실측). 아래 `PLAN` 의
+# `source` 자연키와 **같은 목록이어야 한다** — 한쪽만 바뀌면 이 분기가 조용히 죽는다.
+SOURCE_MOVE_MARKER = "moved_from_source"
+SOURCE_NATURAL_KEY = ("kind", "doi", "isbn", "url", "title", "publisher", "license")
+
+
+def source_prior(cond_text):
+    """출처 병합 표시가 있으면 옛 출처의 자연키 dict 를, 없으면 None 을 돌려준다."""
+    if not cond_text:
+        return None
+    try:
+        d = json.loads(cond_text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    m = d.get(SOURCE_MOVE_MARKER)
+    if not isinstance(m, dict):
+        return None
+    # 자연키 칸이 하나도 없으면 지문이 아니다(표시만 흉내 낸 것).
+    return m if any(c in m for c in SOURCE_NATURAL_KEY) else None
+
+
+def find_prior_source(dc, marker):
+    """옛 출처를 **자연키 전체**로 운영에서 찾는다. (id, 사유).
+
+    표시에 없는 칸은 NULL 로 건다 — "아무 값이나" 로 읽으면 다른 출처를 잡는다.
+    """
+    where = " AND ".join(f"{c} IS ?" for c in SOURCE_NATURAL_KEY)
+    rows = dc.execute(f"SELECT id FROM source WHERE {where}",
+                      [marker.get(c) for c in SOURCE_NATURAL_KEY]).fetchall()
+    if len(rows) == 1:
+        return rows[0][0], None
+    return None, ("운영에 옛 출처가 없다" if not rows
+                  else f"옛 출처가 운영행 {len(rows)}건에 걸린다(id {[r[0] for r in rows][:6]})")
+
+
+def find_source_moved_row(dc, vals, old_sid):
+    """옛 출처 밑에서 운영행을 찾는다. (행 id, 사유) — 유일하지 않으면 (None, 사유).
+
+    좁히는 축은 먼저 **출처 병합이 바꾸지 않는 것들**이다 — 재료·물성키·값.
+    그것으로 안 갈리면 **조건을 사전으로 대조한다**(표시 한 칸만 빼고).
+
+    조건을 쓰는 것이 536 의 "조건 텍스트로 대조하지 마라" 와 어긋나지 않는다 —
+    536 이 금지한 것은 **글자 대조**이고(직렬화가 양쪽에서 같으리라 기대할 수 없다),
+    여기서는 `find_verdict_row` 와 똑같이 **파싱해서 사전으로** 비교한다.
+    필요한 이유는 실측이 냈다 — Uddeholm Dievar 그래프 디지타이즈는 같은 재료·키에
+    **같은 값이 두세 번 인쇄된다**(26.3 J 가 셋, 23.2 J 가 둘, 4.0 J 가 둘).
+    값만으로 좁히면 그 7행이 운영에 새 행으로 들어간다(고치기 전 예행 `added 7`).
+    """
+    rows = dc.execute(
+        "SELECT id, conditions FROM property_value WHERE material_id IS ? AND property_key IS ? "
+        "AND source_id IS ? AND value_num IS ? AND value_text IS ?",
+        (vals.get("material_id"), vals.get("property_key"), old_sid,
+         vals.get("value_num"), vals.get("value_text"))).fetchall()
+    if len(rows) == 1:
+        return rows[0][0], None
+    if not rows:
+        return None, "옛 출처 밑에 대응행이 없다"
+    try:
+        mine = json.loads(vals.get("conditions")) if vals.get("conditions") else {}
+    except (TypeError, ValueError):
+        mine = None
+    if isinstance(mine, dict):
+        base = {k: v for k, v in mine.items() if k != SOURCE_MOVE_MARKER}
+        hits = []
+        for rid, ctext in rows:
+            try:
+                d = json.loads(ctext) if ctext else {}
+            except (TypeError, ValueError):
+                continue
+            if isinstance(d, dict) and d == base:
+                hits.append(rid)
+        if len(hits) == 1:
+            return hits[0], None
+    return None, f"옛 출처 밑 {len(rows)}행에 걸린다(id {[r[0] for r in rows][:6]})"
+
+
 def cols_of(cur, t):
     return [r[1] for r in cur.execute(f"PRAGMA table_info('{t}')")]
 
@@ -293,6 +382,9 @@ def main():
     # 값 이동의 전파 결과. 못 간 이동은 운영에 **같은 측정을 두 재료에 하나씩** 남긴다.
     value_moves: list[dict] = []
     move_misses: list[dict] = []
+    # 출처 병합의 전파 결과. 못 간 병합은 운영에 **같은 측정을 두 출처에 하나씩** 남긴다.
+    source_moves: list[dict] = []
+    source_move_misses: list[dict] = []
 
     for table, natkey, fks in PLAN:
         # src/dst 에 테이블 없으면 skip.
@@ -348,6 +440,19 @@ def main():
                 where = " AND ".join(f"{k} IS ?" if vals.get(k) is None else f"{k}=?" for k in natkey)
                 wvals = [vals.get(k) for k in natkey]
                 hit = dc.execute(f"SELECT id FROM {table} WHERE {where}", wvals).fetchone()
+            # ②-c **출처 병합을 선언한 행은 조회축을 옛 출처로 바꾼다.**
+            #    ③·④·⑤ 는 전부 `source_id` 로 좁히는데, 병합이 바꾼 칸이 바로 그것이다.
+            #    바꾸지 않으면 정정·이동을 선언한 행이 전부 miss 로 뜬다(실측 — 옮긴 193행 중
+            #    **78행이 정정을, 9행이 판정을 함께 달고 있다**). 경고가 매번 뜨면 무시하는 법을
+            #    가르친다(§546). **찾는 데만 쓰고, 쓰는 값은 언제나 `vals`(새 출처)다.**
+            lookup, src_marker, src_old_sid, src_why = vals, None, None, None
+            if table == "property_value":
+                src_marker = source_prior(vals.get("conditions"))
+                if src_marker is not None:
+                    src_old_sid, src_why = find_prior_source(dc, src_marker)
+                    if src_old_sid is not None:
+                        lookup = dict(vals)
+                        lookup["source_id"] = src_old_sid
             # ②-b **판정 키만 더해진 행도 자연키로 못 찾는다** — `conditions` 가 자연키 안이라
             #    `verdict_*` 한 칸이 붙는 순간 깨진다. 그 키를 빼고 다시 찾아 **판정만 얹는다.**
             #    ②가 먼저 도는 순서라 재병합에 멱등하다(이미 얹은 행은 ②에서 걸린다).
@@ -361,7 +466,10 @@ def main():
                 # **매번 뜨는 같은 경고는 무시하는 법을 가르친다**(§546). 그래서 아예 안 들어온다.
                 # 살림살이 키를 여기서 같이 벗기는 길도 있지만 그러면 ②-b 가 정정 행을 가로채
                 # `correction_reason` 이 운영에 안 가고 dev/운영이 조용히 어긋난다 — 그쪽이 더 나쁘다.
-                if verdicts and correction_prior(vals.get("conditions")) is None:
+                # **출처 병합을 선언한 행도 여기 안 들어온다.** 이 분기는 판정 키만 얹고
+                # `source_id` 는 그대로 두는데, 그러면 병합이 운영에 전파되지 않는다. ⑤ 가 맡는다.
+                if verdicts and correction_prior(vals.get("conditions")) is None \
+                        and src_marker is None:
                     tgt, dst_cond, why = find_verdict_row(dc, vals, base)
                     if tgt is not None:
                         chg = {k: v for k, v in verdicts.items() if dst_cond.get(k) != v}
@@ -388,8 +496,8 @@ def main():
             #    ②가 먼저 도는 순서라 **재병합에 멱등하다** — 이미 전파된 정정은 ②에서 걸린다.
             if not hit and table == "property_value":
                 prior = correction_prior(vals.get("conditions"))
-                if prior is not None:
-                    tgt, why = find_corrected_row(dc, vals, prior)
+                if prior is not None and not (src_marker is not None and src_old_sid is None):
+                    tgt, why = find_corrected_row(dc, lookup, prior)
                     if tgt is not None:
                         dc.execute("UPDATE property_value SET "
                                    + ",".join(f"{c}=?" for c in data_cols) + " WHERE id=?",
@@ -413,8 +521,8 @@ def main():
             #    ②가 먼저 도는 순서라 재병합에 멱등하다 — 이미 옮긴 행은 ②에서 걸린다.
             if not hit and table == "property_value":
                 old_name = move_prior(vals.get("conditions"))
-                if old_name:
-                    tgt, why = find_moved_row(dc, vals, old_name)
+                if old_name and not (src_marker is not None and src_old_sid is None):
+                    tgt, why = find_moved_row(dc, lookup, old_name)
                     if tgt is not None:
                         dc.execute("UPDATE property_value SET "
                                    + ",".join(f"{c}=?" for c in data_cols) + " WHERE id=?",
@@ -431,6 +539,34 @@ def main():
                     move_misses.append(
                         {"옛재료": old_name, "key": vals.get("property_key"),
                          "value": vals.get("value_num"), "사유": why})
+            # ⑤ **출처를 합친 물성값도 자연키로 못 찾는다** — 자연키가 `source_id` 를 포함하는데
+            #    병합이 바꾸는 칸이 바로 그것이다. 옛 출처의 **자연키**로 운영 출처를 찾고,
+            #    그 밑에서 (재료·물성키·값)으로 행을 찾아 **행 전체를 갱신**한다(새 출처 + 표시).
+            #    ②가 먼저 도는 순서라 재병합에 멱등하다 — 이미 옮긴 행은 ②에서 걸린다.
+            #    ③·④ 가 먼저 도는 이유는 그쪽이 정정·이동까지 함께 되돌려야 하기 때문이고,
+            #    둘 다 ②-c 가 바꿔 둔 `lookup` 으로 옛 출처를 보므로 여기까지 안 내려온다.
+            if not hit and table == "property_value" and src_marker is not None:
+                if src_old_sid is None:
+                    source_move_misses.append(
+                        {"key": vals.get("property_key"), "value": vals.get("value_num"),
+                         "옛출처": str(src_marker.get("title"))[:70], "사유": src_why})
+                else:
+                    tgt, why = find_source_moved_row(dc, vals, src_old_sid)
+                    if tgt is not None:
+                        dc.execute("UPDATE property_value SET "
+                                   + ",".join(f"{c}=?" for c in data_cols) + " WHERE id=?",
+                                   [vals[c] for c in data_cols] + [tgt])
+                        remap[table][src_id] = tgt
+                        matched += 1
+                        source_moves.append(
+                            {"id": tgt, "옛출처": src_old_sid, "새출처": vals.get("source_id"),
+                             "key": vals.get("property_key"), "value": vals.get("value_num")})
+                        continue
+                    # 옛 행을 못 찾았다. 정정·이동과 같은 판단으로 **삽입은 한다** — 값을
+                    # 버리는 쪽이 더 위험하다. 다만 조용히 넘기지 않는다.
+                    source_move_misses.append(
+                        {"key": vals.get("property_key"), "value": vals.get("value_num"),
+                         "옛출처": str(src_marker.get("title"))[:70], "사유": why})
             if hit:
                 remap[table][src_id] = hit[0]           # cae00 기존행 유지(덮지 않음)
                 matched += 1
@@ -529,6 +665,12 @@ def main():
     if move_misses:
         out["move_misses"] = move_misses[:40]
         out["move_misses_total"] = len(move_misses)
+    if source_moves:
+        out["source_moves"] = source_moves[:40]
+        out["source_moves_total"] = len(source_moves)
+    if source_move_misses:
+        out["source_move_misses"] = source_move_misses[:40]
+        out["source_move_misses_total"] = len(source_move_misses)
     if ownership_diffs:
         # 조용히 버리지 않는다 — 현장에서 등록한 보유/담당자가 병합에 묻히면 시험 계획이
         # 있지도 않은 장비를 전제하거나, 반대로 있는 장비를 없다고 센다.
@@ -561,6 +703,14 @@ def main():
     if move_misses:
         print(f"⚠ 이동 {len(move_misses)}건이 운영에서 옛 행을 못 찾았다 — 값은 넣었지만 "
               f"옛 행이 남아 있으면 **같은 측정이 두 재료에 하나씩** 생긴다. move_misses 를 확인해라.",
+              file=sys.stderr)
+    if source_moves:
+        print(f"· 출처 병합을 운영행에 반영한 건수 {len(source_moves)} — 이 경로가 없으면 합친 값이 "
+              f"새 행으로 들어가고 **옛 출처 밑의 옛 행이 그대로 남아** 같은 측정이 두 벌이 된다.",
+              file=sys.stderr)
+    if source_move_misses:
+        print(f"⚠ 출처 병합 {len(source_move_misses)}건이 운영에서 옛 행을 못 찾았다 — 값은 넣었지만 "
+              f"옛 행이 남아 있으면 **같은 측정이 두 출처에 하나씩** 생긴다. source_move_misses 를 확인해라.",
               file=sys.stderr)
     if ownership_diffs:
         print(f"⚠ 장비 소유권이 다른 행 {len(ownership_diffs)}건 — 운영 값을 유지했다. "

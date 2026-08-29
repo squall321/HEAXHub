@@ -110,6 +110,14 @@ def is_curation(k: str) -> bool:
 # 그때는 값을 버리지 않고 평소대로 삽입하되 `correction_misses` 로 **크게 보고한다.**
 # id 동일성에는 기대지 않는다(운영 id 는 dev 와 다르다 — 이 파일 머리말 그대로다).
 CORRECTION_SUFFIX = "_before_correction"
+# 조건 안에 사는 **살림살이 키** — 정정이 스스로 남기는 것이라 옛 행에는 없다.
+# 조건을 사전으로 대조할 때 양쪽에서 똑같이 벗겨야 한다.
+CORRECTION_HOUSEKEEPING = ("correction_reason", "corrected_by", "correction_evidence")
+# 적재기가 **컬럼의 옛 값**으로 남기는 표시 이름들(`ingest_agent_json.COLUMN_MARKER_NAMES`).
+# 조건 칸 이름이 여기 겹치면 적재기가 `conditions.` 네임스페이스를 붙인다(§558 ③).
+# **두 목록은 적재기와 같아야 한다** — 한쪽만 바뀌면 조건 복원이 조용히 어긋난다.
+COLUMN_MARKER_NAMES = ("value", "value_text", "unit", "method", "tier", "notes")
+CONDITION_MARKER_NS = "conditions."
 
 
 def correction_prior(cond_text):
@@ -133,10 +141,69 @@ def correction_prior(cond_text):
     return prior or None
 
 
+# ── 정정 전 **조건**의 복원 (54차 PA) ─────────────────────────────────────────
+# 위 탐색축 `(재료·물성키·출처·옛 값)` 은 **유일하지 않다** — 라이브 41,383행에서
+# 4,265행 1,832군이 겹친다(§548·564 실측). 그래서 조건 어휘 통일 같은 전수 정정은
+# 691군 5,265행이 통째로 막혀 있었다(52차 NA 가 포기한 수 그대로다).
+#
+# **분기 ⑤ 가 같은 문제를 이미 풀었다**(§579) — 값만으로 안 갈릴 때 **조건을 파싱해
+# 사전으로** 대조한다. 글자 대조가 아니다(직렬화가 양쪽에서 같으리라 기대할 수 없다, §522).
+# 여기서는 한 걸음 더 필요하다 — 정정이 바꾼 칸이 **조건 그 자체**라, 지금 조건을 그대로
+# 대조할 수 없고 **정정 전 조건을 표시로 되돌려** 대조해야 한다.
+#
+# 되돌리는 규칙은 적재기(`plan_correction`)가 남기는 모양의 역이다.
+#   · `<칸>_before_correction` 의 이름이 컬럼 표시 이름이면 **조건 칸이 아니다**(건너뛴다).
+#   · `conditions.<칸>_before_correction` 은 네임스페이스를 벗겨 그 조건 칸으로 읽는다(§558 ③).
+#   · 표시값이 `null` 이면 그 칸은 **정정 전에 없었다** — 지운다.
+#   · 살림살이 키(표시·사유·정정자)는 양쪽에서 벗긴다. 옛 행에는 없는 것들이다.
+#
+# **`null` 칸은 양쪽에서 지운다.** 적재기가 "칸이 없다" 와 "칸이 null 이다" 를 같은 표시로
+# 남기기 때문에(§558 ②) 둘을 가를 수 없다 — 가를 수 없는 것은 **합쳐서 대조**한다.
+# 그래야 틀린 행을 고르는 대신 **여러 건에 걸려 거부**된다. 거부는 안전한 방향이다.
+#
+# **한계 — 두 세대 표시는 복원하지 못한다.** 이미 정정된 행을 또 고치면 앞 세대의 표시가
+# 그대로 남아 있어 한 세대가 아니라 두 세대를 되돌린다. 그 결과는 대응행 **0건**이라
+# `correction_misses` 로 뜬다(틀린 행을 고르지 않는다). 54차 PA 의 표적 4,455행에는
+# 앞 정정이 붙은 행이 0행이라 이 한계가 닿지 않았다.
+def _condition_core(d):
+    """조건 dict → 대조용 사전. 살림살이 키와 `null` 칸을 벗긴다."""
+    if not isinstance(d, dict):
+        return None
+    return {k: v for k, v in d.items()
+            if v is not None and not (k.endswith(CORRECTION_SUFFIX)
+                                      or k in CORRECTION_HOUSEKEEPING)}
+
+
+def prior_conditions(cond_text):
+    """정정 **전** 조건을 표시로 복원한다. 파싱 못 하면 None."""
+    try:
+        d = json.loads(cond_text) if cond_text else {}
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    base = _condition_core(d)
+    for k, v in d.items():
+        if not k.endswith(CORRECTION_SUFFIX):
+            continue
+        nm = k[: -len(CORRECTION_SUFFIX)]
+        if nm in COLUMN_MARKER_NAMES:
+            continue                                  # 컬럼의 옛 값이다 — 조건 칸이 아니다
+        if nm.startswith(CONDITION_MARKER_NS):
+            nm = nm[len(CONDITION_MARKER_NS):]
+        if v is None:
+            base.pop(nm, None)
+        else:
+            base[nm] = v
+    return base
+
+
 def find_corrected_row(dc, vals, prior):
-    """정정 전 값으로 운영행을 찾는다. (행 id, 사유) — 유일하지 않으면 (None, 사유).
+    """정정 전 값으로 운영행을 찾는다. (행 id, 사유, 후보 수) — 유일하지 않으면 (None, 사유, 수).
 
     `IS ?` 는 SQLite 의 NULL 안전 비교라 value_text·source_id 가 NULL 인 행도 걸린다.
+    **후보 수를 같이 돌려주는 이유**는 부르는 쪽이 "축이 틀렸다(0건)" 와 "안 갈린다(2건 이상)" 를
+    갈라야 하기 때문이다 — 앞은 다른 축으로 다시 물어볼 수 있고 뒤는 거부해야 한다.
     """
     where, args = ["material_id IS ?", "property_key IS ?", "source_id IS ?"], [
         vals.get("material_id"), vals.get("property_key"), vals.get("source_id")]
@@ -150,11 +217,28 @@ def find_corrected_row(dc, vals, prior):
         if col in prior:
             where.append(f"{col} IS ?")
             args.append(prior[col])
-    rows = dc.execute(f"SELECT id FROM property_value WHERE {' AND '.join(where)}", args).fetchall()
+    rows = dc.execute(f"SELECT id, conditions FROM property_value "
+                      f"WHERE {' AND '.join(where)}", args).fetchall()
     if len(rows) == 1:
-        return rows[0][0], None
-    return None, ("운영에 대응행이 없다" if not rows
-                  else f"운영행 {len(rows)}건에 걸린다(id {[r[0] for r in rows][:6]})")
+        return rows[0][0], None, 1
+    if not rows:
+        return None, "운영에 대응행이 없다", 0
+    # 값만으로 안 갈렸다 — **조건을 파싱해 사전으로** 대조한다(분기 ⑤ 와 같은 수법, §579).
+    base = prior_conditions(vals.get("conditions"))
+    if base is not None:
+        hits = []
+        for rid, ctext in rows:
+            try:
+                d = json.loads(ctext) if ctext else {}
+            except (TypeError, ValueError):
+                continue
+            if _condition_core(d) == base:
+                hits.append(rid)
+        if len(hits) == 1:
+            return hits[0], None, len(rows)
+        return None, (f"운영행 {len(rows)}건에 걸리고 정정 전 조건으로도 {len(hits)}건이다"
+                      f"(id {[r[0] for r in rows][:6]})"), len(rows)
+    return None, f"운영행 {len(rows)}건에 걸린다(id {[r[0] for r in rows][:6]})", len(rows)
 
 
 # ── 물성값 '판정' 의 전파 — 조건 안에 사는 큐레이션 키 ─────────────────────────
@@ -497,7 +581,16 @@ def main():
             if not hit and table == "property_value":
                 prior = correction_prior(vals.get("conditions"))
                 if prior is not None and not (src_marker is not None and src_old_sid is None):
-                    tgt, why = find_corrected_row(dc, lookup, prior)
+                    tgt, why, ncand = find_corrected_row(dc, lookup, prior)
+                    # **출처 병합이 이미 운영에 전파돼 있으면 옛 출처 밑에는 아무것도 없다**
+                    # (54차 PA 실측 69행 — 53차 OA 의 이동이 먼저 운영까지 간 뒤, 같은 행을
+                    # 다음 파동이 또 고친 경우다). ②-c 가 조회축을 옛 출처로 바꿔 둔 채라
+                    # 0건이 나고, 그대로 두면 값이 운영에 **새 행**으로 들어간다(§522 그 자체).
+                    # 그래서 **0건일 때만** 새 출처로 한 번 더 묻는다 — 2건 이상이면 거부가 맞다.
+                    if tgt is None and ncand == 0 and lookup is not vals:
+                        tgt2, _why2, _n2 = find_corrected_row(dc, vals, prior)
+                        if tgt2 is not None:
+                            tgt, why = tgt2, None
                     if tgt is not None:
                         dc.execute("UPDATE property_value SET "
                                    + ",".join(f"{c}=?" for c in data_cols) + " WHERE id=?",

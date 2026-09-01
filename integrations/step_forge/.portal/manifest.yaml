@@ -20,6 +20,9 @@ launch:
   health_check: { type: http, path: /health }
   restart_policy: { policy: on_failure, max_attempts: 3 }
   env: { STEPFORGE_DATA_DIR: /data }
+  # 포탈 신원(X-Heax-User-*)을 앱으로 넘긴다 — 과제 담당자 자동 기입(D-169).
+  # 헤더가 없으면 앱은 담당자를 비운다(지어내지 않는다).
+  portal_auth: true
 permissions:
   # 2026-09-01 team → company. team 은 '앱 소유자와 organization 이 같은 사용자' 만 통과시키는데
   # (permission_service.can_view_app), 사내 사용자 상당수가 organization 이 비어 있어 StepForge REST

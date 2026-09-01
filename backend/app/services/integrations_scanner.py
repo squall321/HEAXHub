@@ -323,6 +323,24 @@ def _build_and_launch(
             from app.services import integration_fetcher  # noqa: PLC0415
             fr = integration_fetcher.fetch_for_integration(slug, source)
             if fr.action == "failed":
+                # 소스를 못 받아도 프리빌드 SIF 가 있으면 그걸로 띄운다. 폐쇄망 배포서버는
+                # dist-to-drive 가 실어 보낸 SIF 만 갖고 소스 트리가 없는 것이 정상이고,
+                # 예전엔 여기서 FAILED 로 빠져 SIF 를 보내 놔도 앱이 뜨지 않았다.
+                # 조용히 넘어가지는 않는다 — _note_source_unavailable 이 로그·감사·메일·
+                # app.extra 플래그 네 창구로 알린다.
+                fallback = _existing_sif_path(slug)
+                if fallback is not None:
+                    _note_source_unavailable(db, app=app, error=fr.error, sif=fallback)
+                    return _record_build(
+                        db, app=app, version=version, manifest=manifest,
+                        outcome=BuildOutcome(
+                            status=BuildStatus.SUCCESS,
+                            rebuilt=False,
+                            sif_path=str(fallback),
+                            # commit 은 기록하지 않는다 — 이 SIF 가 어느 커밋인지 모르고,
+                            # git_commit_hash 는 '빌드 성공' 의 증거로만 남아야 한다.
+                        ),
+                    )
                 logger.warning("fetch failed for %s: %s", app.id, fr.error)
                 return _record_build(
                     db, app=app, version=version, manifest=manifest,
@@ -331,6 +349,7 @@ def _build_and_launch(
                         error=f"fetch failed: {fr.error}",
                     ),
                 )
+            _clear_source_unavailable(app)
             commit = fr.commit
             if fr.action in {"cloned", "updated"}:
                 logger.info("integration fetched: %s (%s) commit=%s",
@@ -657,6 +676,81 @@ def _audit_launch_failed(db: Session, *, app: App, error: str | None) -> None:
         target_id=str(app.id),
         meta={"app_id": app.id, "error": err},
     )
+
+
+# 소스 부재 폴백 알림 쿨다운(초) — 스캔은 5분마다 도므로 같은 오류를 매번 메일로 보내지 않는다.
+_SOURCE_FALLBACK_SEEN: dict[str, tuple[float, str]] = {}
+
+
+def _note_source_unavailable(db: Session, *, app: App, error: str | None, sif: Path) -> None:
+    """Record that upstream fetch failed but a prebuilt SIF is carrying the app.
+
+    This is a SUCCESS path — the app launches — so it must not go quiet. The
+    deploy server ships SIFs over Drive without the source tree, and that is
+    the intended offline mode; but the same signal on the dev box means a repo
+    moved or broke, and the operator has to see it. So we surface it four ways:
+    a WARNING log, an audit row, an operator mail (cooldown'd), and a flag on
+    ``app.extra`` that the API/UI and ``scripts/diagnose-app.sh`` can read.
+
+    The flag is cleared by :func:`_clear_source_unavailable` on the next
+    successful fetch, so it never lingers as a stale accusation.
+    """
+    import time  # noqa: PLC0415
+
+    err = (error or "")[:1000]
+    logger.warning(
+        "source unavailable for %s — launching prebuilt SIF %s instead: %s",
+        app.id, sif.name, err,
+    )
+
+    _ex = dict(app.extra or {})
+    _ex["source_unavailable"] = {"error": err, "sif": str(sif)}
+    app.extra = _ex
+
+    now = time.monotonic()
+    prev = _SOURCE_FALLBACK_SEEN.get(app.id)
+    if prev and prev[1] == err and (now - prev[0]) < _LAUNCH_FAIL_COOLDOWN_S:
+        return
+    _SOURCE_FALLBACK_SEEN[app.id] = (now, err)
+
+    audit_service.safe_log(
+        db,
+        actor_user_id=None,
+        action="integration.source.unavailable",
+        target_type="app",
+        target_id=str(app.id),
+        meta={"app_id": app.id, "error": err, "sif": str(sif)},
+    )
+    try:
+        from app.config import get_settings  # noqa: PLC0415
+        from app.services import mail_service  # noqa: PLC0415
+
+        to = (get_settings().seed_admin_email or "").strip()
+        if not to:
+            return
+        mail_service.send_mail(
+            to=to,
+            subject=f"[HEAXHub] source unavailable, running prebuilt SIF: {app.id}",
+            body=(
+                f"Upstream fetch failed, so {app.id} was launched from the SIF already\n"
+                f"on disk. The app is UP but its code is whatever that SIF contains —\n"
+                f"a new commit will NOT be picked up until the source is reachable.\n\n"
+                f"sif: {sif}\n\n--- fetch error ---\n{err or '(no detail)'}\n"
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("source-unavailable notification mail failed for %s", app.id)
+
+
+def _clear_source_unavailable(app: App) -> None:
+    """Drop the fallback flag once upstream is reachable again."""
+    _ex = app.extra or {}
+    if "source_unavailable" in _ex:
+        _new = dict(_ex)
+        _new.pop("source_unavailable", None)
+        app.extra = _new
+        _SOURCE_FALLBACK_SEEN.pop(app.id, None)
+        logger.info("source reachable again for %s — fallback flag cleared", app.id)
 
 
 def _notify_build_failed(

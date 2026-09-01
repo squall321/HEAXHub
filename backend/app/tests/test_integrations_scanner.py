@@ -396,3 +396,119 @@ def test_unchanged_commit_gated_skips_rebuild(
 
     again = integrations_scanner.scan_integrations(db, root=tmp_path)
     assert again[0].action == "unchanged"
+
+
+# ─── Prebuilt-SIF fallback when upstream source is unreachable ───────────────
+
+
+def test_fetch_failure_falls_back_to_prebuilt_sif(
+    tmp_path: Path,
+    db: Session,
+    admin_user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fetch fails but a SIF is on disk → app launches from it, loudly flagged.
+
+    This is the offline-server case: dist-to-drive ships SIFs without the
+    source tree, so fetch cannot succeed there. Before this, the scanner
+    returned FAILED and the shipped SIF was dead weight.
+    """
+    _patch_source_pipeline(monkeypatch, fetch_action="failed")
+    monkeypatch.setattr(
+        integrations_scanner, "_existing_sif_path", lambda slug: Path("/tmp/prebuilt.sif")
+    )
+    app_id = _unique_app_id()
+    _write_manifest(
+        tmp_path, slug="demo-offline", app_id=app_id, version="1.0.0",
+        stack="flask",
+        extra={
+            "launch": {"mode": "service", "command": "gunicorn app:app"},
+            "source": {"type": "git", "url": "../NotOnThisBox", "ref": "main"},
+        },
+    )
+
+    integrations_scanner.scan_integrations(db, root=tmp_path)
+
+    app = db.get(App, app_id)
+    version = db.get(AppVersion, app.current_version_id)
+    assert version.build_status == BuildStatus.SUCCESS
+    assert version.sif_path == "/tmp/prebuilt.sif"
+    # 이 SIF 가 어느 커밋인지 모르므로 빌드 성공 이력을 위조하지 않는다.
+    assert not version.git_commit_hash
+
+    # 창구 1 — app.extra 플래그가 남아 API·UI·진단 스크립트가 볼 수 있다.
+    assert (app.extra or {}).get("source_unavailable", {}).get("error") == "boom"
+
+    # 창구 2 — 감사기록.
+    from app.db.models.audit_log import AuditLog
+    rows = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "integration.source.unavailable")
+        .filter(AuditLog.target_id == app_id)
+        .all()
+    )
+    assert rows, "integration.source.unavailable 감사기록이 없다"
+
+
+def test_fetch_failure_without_sif_still_fails(
+    tmp_path: Path,
+    db: Session,
+    admin_user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No SIF to fall back to → FAILED, exactly as before (no masking)."""
+    _patch_source_pipeline(monkeypatch, fetch_action="failed")
+    monkeypatch.setattr(integrations_scanner, "_existing_sif_path", lambda slug: None)
+    app_id = _unique_app_id()
+    _write_manifest(
+        tmp_path, slug="demo-nosif", app_id=app_id, version="1.0.0",
+        stack="flask",
+        extra={
+            "launch": {"mode": "service", "command": "gunicorn app:app"},
+            "source": {"type": "git", "url": "../NotOnThisBox", "ref": "main"},
+        },
+    )
+
+    integrations_scanner.scan_integrations(db, root=tmp_path)
+
+    app = db.get(App, app_id)
+    version = db.get(AppVersion, app.current_version_id)
+    assert version.build_status == BuildStatus.FAILED
+    assert "source_unavailable" not in (app.extra or {})
+    # 폴백이 아니었으므로 소스 부재 감사기록도 남지 않는다.
+    from app.db.models.audit_log import AuditLog
+    assert not (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "integration.source.unavailable")
+        .filter(AuditLog.target_id == app_id)
+        .all()
+    )
+
+
+def test_fallback_flag_clears_when_source_returns(
+    tmp_path: Path,
+    db: Session,
+    admin_user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once upstream is reachable again the flag must not linger."""
+    _patch_source_pipeline(monkeypatch, fetch_action="failed")
+    monkeypatch.setattr(
+        integrations_scanner, "_existing_sif_path", lambda slug: Path("/tmp/prebuilt.sif")
+    )
+    app_id = _unique_app_id()
+    _write_manifest(
+        tmp_path, slug="demo-recover", app_id=app_id, version="1.0.0",
+        stack="flask",
+        extra={
+            "launch": {"mode": "service", "command": "gunicorn app:app"},
+            "source": {"type": "git", "url": "../NotOnThisBox", "ref": "main"},
+        },
+    )
+    integrations_scanner.scan_integrations(db, root=tmp_path)
+    assert "source_unavailable" in (db.get(App, app_id).extra or {})
+
+    _patch_source_pipeline(monkeypatch, fetch_action="updated")
+    integrations_scanner.scan_integrations(db, root=tmp_path)
+
+    assert "source_unavailable" not in (db.get(App, app_id).extra or {})

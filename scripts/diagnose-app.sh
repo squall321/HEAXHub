@@ -40,21 +40,31 @@ else
   echo "  X 라우트가 없다 — reconcile 이 실패했거나 앱이 기동되지 않았다."
 fi
 echo "  익명 GET $CADDY/apps/$SLUG/ -> $(code "$CADDY/apps/$SLUG/")"
-echo "    401=인증 필요(정상) · 403=권한 없음(5번) · 404=라우트 없음 · 502·504=업스트림 부재"
+echo "    401=인증 필요(정상) · 403=권한 없음(6번) · 404=라우트 없음 · 502·504=업스트림 부재"
 
 echo
 echo "===== 4. 로그인 상태 인가 판정 ====="
 if [ -n "$TOKEN" ]; then
   echo "  쿠키로  -> $(code --cookie "heax_access_token=$TOKEN" "$CADDY/apps/$SLUG/")"
   echo "  Bearer  -> $(code -H "Authorization: Bearer $TOKEN" "$CADDY/apps/$SLUG/")"
-  echo "    200 이면 정상. 403 이면 그 사용자에게 이 앱을 볼 권한이 없다 -> 5번."
+  echo "    200 이면 정상. 403 이면 그 사용자에게 이 앱을 볼 권한이 없다 -> 6번."
 else
   echo "  (토큰 미지정 — 브라우저 개발자도구 Application > Cookies 의 heax_access_token 값을"
   echo "   두 번째 인자로 주면 로그인 상태까지 판정한다)"
 fi
 
 echo
-echo "===== 5. DB 공개 범위 vs 매니페스트 ====="
+echo "===== 5. 소스 부재 폴백 여부 ====="
+echo "  fetch 가 실패했는데 프리빌드 SIF 로 떠 있으면 앱은 UP 이지만 코드는 그 SIF 에 굳어 있다"
+echo "  (새 커밋이 반영되지 않는다). 확인:"
+echo "    cd $ROOT/backend && .venv/bin/python -c \"import sys;sys.path.insert(0,'.');\\"
+echo "      from app.db.session import SessionLocal;from app.db.models.app import App;\\"
+echo "      a=SessionLocal().get(App,'$SLUG');\\"
+echo "      print((a.extra or {}).get('source_unavailable') or '폴백 아님(소스 정상)')\""
+echo "  감사기록으로도 남는다: action='integration.source.unavailable'"
+
+echo
+echo "===== 6. DB 공개 범위 vs 매니페스트 ====="
 echo "  두 값이 다르면 등록된 앱의 visibility 가 옛 값에 굳은 것이다(스캐너 동기화 누락, 커밋 0455af8 로 수정)."
 echo "  확인:"
 echo "    cd $ROOT/backend && .venv/bin/python -c \"import sys;sys.path.insert(0,'.');\\"

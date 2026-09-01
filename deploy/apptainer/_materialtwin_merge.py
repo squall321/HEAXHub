@@ -74,7 +74,11 @@ UNIQUE_FIRST = {
 # 물성처럼 출처에서 나오는 게 아니라 dev 에서 사람이 정한다. 정본이 한쪽뿐이다.
 # 나머지 속성(제조사·규격·조성·측정 메모…)은 건드리지 않는다 — 병합의 비파괴 약속을 지킨다.
 CURATION_KEYS = {"role", "role_reason", "role_basis", "role_confidence",
-                 "subsystem", "subsystem_basis"}
+                 "subsystem", "subsystem_basis",
+                 # 57차 SA — 등급 미확정(V4) 판정이 운영까지 가지 않고 있었다.
+                 # V1·V2·V6 은 `core_` 접두어라 전파되는데 V4 를 정하는 이 둘만 밖에 있어,
+                 # 빈칸 갈래 여섯 중 하나만 dev 에 갇히는 어긋남이 났다.
+                 "identification_status", "anonymised_code"}
 # 판정은 role·subsystem 만이 아니다. 45·46차에 배치들이 같은 성격의 키를 더 만들었다 —
 # `core_not_applicable`(그 물성이 이 재료에 의미 없다) · `core_fill_sheet`(무엇을 열어야 하나) ·
 # `same_alloy_as`·`merge_verdict`·`merge_plan`(같은 재료인가). 전부 **dev 에서만 정하고

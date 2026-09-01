@@ -21,7 +21,11 @@ launch:
   restart_policy: { policy: on_failure, max_attempts: 3 }
   env: { STEPFORGE_DATA_DIR: /data }
 permissions:
-  visibility: team
+  # 2026-09-01 team → company. team 은 '앱 소유자와 organization 이 같은 사용자' 만 통과시키는데
+  # (permission_service.can_view_app), 사내 사용자 상당수가 organization 이 비어 있어 StepForge REST
+  # (/apps/step_forge/api/...)가 403 이었다. 리스크 심사 앱이 사용자 자격으로 tree.json 을 읽어야
+  # 단위계·노드 id 를 얻고 게이트 G6 가 풀린다. 읽기 전용 조회 앱이라 사내 공개가 적정하다.
+  visibility: company
 resources:
   cpu: 2
   memory_gb: 16           # 693MB 파싱 피크 RSS 5.13GB 실측 × 여유 — 검출 8워커 상한의 근거

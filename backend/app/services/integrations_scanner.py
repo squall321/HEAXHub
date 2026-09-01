@@ -815,6 +815,21 @@ def _process_dir(
                 app.app_type = app_type
             _ex["manifest_app_type"] = app_type.value
 
+        # visibility 도 같은 규율로 동기화한다. 바로 위 주석이 'workspace_path 와 visibility 를
+        # 디스크와 맞춘다' 고 말하지만 실제로는 workspace_path 만 맞추고 있었다 — 그래서 이미 등록된
+        # 앱은 매니페스트에서 team→company 로 고쳐도 영영 team 에 묶였다(실측: step_forge 를 고치고
+        # 재스캔해도 /apps/step_forge/api 가 계속 403). 매니페스트가 명시했을 때만 정본으로 보고,
+        # 관리자가 UI 로 바꾼 값은 덮지 않는다(마지막 동기화 값과 같을 때만 갱신).
+        _perms = manifest.get("permissions")
+        if isinstance(_perms, dict) and _perms.get("visibility"):
+            _last_vis = _ex.get("manifest_visibility")
+            if app.visibility != visibility and (_last_vis is None or app.visibility.value == _last_vis):
+                logger.info("integrations scan: %s visibility '%s' → '%s' (매니페스트 반영)",
+                            app_id, app.visibility.value, visibility.value)
+                app.visibility = visibility
+            _ex["manifest_visibility"] = visibility.value
+            _ex["manifest_app_type"] = app_type.value
+
         # status 도 같은 규율로 — draft → beta 승격이 반영되지 않으면 정식 등록이 끝나지 않는다.
         # 매니페스트가 명시했을 때만 정본으로 본다(생략 시 기본 STABLE 이 채워지므로).
         if manifest.get("status"):

@@ -44,6 +44,14 @@ PY
 # `Fernet(cred.key).decrypt(portal_pat_enc)` 로 모든 사용자 PAT 원문이 복구된다. secrets.env 도 같은 등급이다.
 find "$SNAP" \( -name 'cred.key' -o -name 'secrets.env' \) -type f -print -delete \
   | sed 's|^|  · 제외 |' || true
+
+# 죽은 DB 백업 사본도 넣지 않는다. 이름이 `.db` 로 끝나지 않아 위 스냅샷 루프도, 복원 측
+# appdata-merge-from-drive.sh 의 .db merge 루프도 이들을 건너뛴다 — 대신 merge 의 '비-DB 시드'
+# 루프로 흘러가 `[ -f "$live" ] && continue` 로 cae00 에 한 번 심기면 영구히 남는다.
+# 실측(2026-09-01): materialtwin_web 의 .pre-w5xxx / .pre-merge 사본 13개 = 967MB 가 tar 를
+# 5배 넘게 부풀리고 있었다. 원본은 건드리지 않는다 — $SNAP 은 사본이다.
+find "$SNAP" \( -name '*.db.pre-*' -o -name '*.db.bak*' \) -type f -delete -print \
+  | sed 's|^|  · 제외(죽은 백업) |' || true
 tar -czf "$STAGE/app-data.tar.gz" -C "$SNAP" .
 SZ="$(du -h "$STAGE/app-data.tar.gz" | cut -f1)"
 echo "→ 업로드 $DEST/app-data-$TS/  (+ latest/)  [$SZ]"

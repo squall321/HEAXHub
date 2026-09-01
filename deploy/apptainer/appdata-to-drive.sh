@@ -40,6 +40,10 @@ for db in glob.glob(os.path.join(src_root, "**", "*.db"), recursive=True):
         print(f"  ⚠ {rel} 스냅샷 실패({e}) — 원본 사본 유지")
 PY
 
+# 시크릿은 tar 에 넣지 않는다 — cred.key(Fernet 대칭키)와 risk_review.db 가 한 tarball 로 나가면
+# `Fernet(cred.key).decrypt(portal_pat_enc)` 로 모든 사용자 PAT 원문이 복구된다. secrets.env 도 같은 등급이다.
+find "$SNAP" \( -name 'cred.key' -o -name 'secrets.env' \) -type f -print -delete \
+  | sed 's|^|  · 제외 |' || true
 tar -czf "$STAGE/app-data.tar.gz" -C "$SNAP" .
 SZ="$(du -h "$STAGE/app-data.tar.gz" | cut -f1)"
 echo "→ 업로드 $DEST/app-data-$TS/  (+ latest/)  [$SZ]"

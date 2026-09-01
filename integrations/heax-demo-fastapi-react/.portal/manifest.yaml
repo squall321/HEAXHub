@@ -17,5 +17,5 @@ permissions:
   visibility: company
 source:
   type: git
-  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-fastapi-react.git
+  url: var/local-demo-repos/heax-demo-fastapi-react.git
   ref: main

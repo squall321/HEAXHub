@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import os
+import re
 
 import yaml
 from sqlalchemy import select
@@ -72,6 +73,34 @@ class ScanResult:
     reason: str | None = None  # populated on "skipped"
 
 
+_URL_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://")
+_SSH_SHORTHAND_RE = re.compile(r"^[^/\s]+@[^/\s]+:")
+
+
+def _resolve_source_url(url: str) -> str:
+    """Expand a repo-relative ``source.url`` into an absolute ``file://`` URL.
+
+    A manifest must not hardcode a box-specific absolute path: the dev box
+    keeps repos under ``~/claude/`` while the deploy server keeps them under
+    ``~/Projects/``. An absolute ``file:///home/koopark/claude/...`` therefore
+    fetch-fails on the server, and because the scanner fetches *before* it
+    considers a prebuilt SIF, the app lands in FAILED and mails the operator
+    on every scan — shipping the SIF cannot rescue it.
+
+    So a url with no scheme is read as a path relative to this repo root and
+    resolved here, the one funnel every ``source:`` block passes through:
+
+        var/local-demo-repos/heax-demo-cli.git  ->  file://<repo>/var/...
+        ../StepForge                            ->  file://<repo parent>/StepForge
+
+    Anything carrying a scheme (``https://``, an already-absolute ``file://``)
+    or SSH shorthand (``git@host:path``) is passed through untouched.
+    """
+    if not url or _URL_SCHEME_RE.match(url) or _SSH_SHORTHAND_RE.match(url):
+        return url
+    return (_REPO_ROOT / url).resolve().as_uri()
+
+
 @dataclass(slots=True)
 class SourceSpec:
     """Parsed ``source:`` block from ``.portal/manifest.yaml``.
@@ -105,7 +134,7 @@ class SourceSpec:
             raise ValueError("manifest.source must be a mapping")
 
         stype = str(block.get("type") or "git").strip() or "git"
-        url = str(block.get("url") or "").strip()
+        url = _resolve_source_url(str(block.get("url") or "").strip())
         ref = str(block.get("ref") or "main").strip() or "main"
         subpath = str(block.get("subpath") or "").strip()
 

@@ -47,5 +47,5 @@ requirements:
   node: '>=18'
 source:
   type: git
-  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-nextjs.git
+  url: var/local-demo-repos/heax-demo-nextjs.git
   ref: main

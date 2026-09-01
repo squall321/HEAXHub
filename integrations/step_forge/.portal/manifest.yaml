@@ -30,11 +30,14 @@ resources:
   cpu: 2
   memory_gb: 16           # 693MB 파싱 피크 RSS 5.13GB 실측 × 여유 — 검출 8워커 상한의 근거
   gpu: false
-# 소스는 로컬 레포의 git clone 이다 — GitHub push 없이 등록·재빌드한다(깨끗한 clone 이라
+# 소스는 형제 레포의 git clone 이다 — GitHub push 없이 등록·재빌드한다(깨끗한 clone 이라
 # .venv·var 가 딸려 들어가지 않는다, D-094). 외부 공개가 필요해지면 url 만 GitHub 로 바꾼다.
+# ⚠ url 에 절대경로를 쓰지 않는다. dev 는 ~/claude, 배포서버는 ~/Projects 라 절대경로는 한쪽에서
+# 반드시 깨진다. 스키마 없는 url 은 HEAXHub 리포 루트 기준 상대경로로 풀린다
+# (integrations_scanner._resolve_source_url).
 source:
   type: git
-  url: file:///home/koopark/claude/StepForge
+  url: ../StepForge
   ref: main
 mcp:
   expose: true

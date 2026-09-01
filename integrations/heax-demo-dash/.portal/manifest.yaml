@@ -33,5 +33,5 @@ requirements:
   os: linux
 source:
   type: git
-  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-dash.git
+  url: var/local-demo-repos/heax-demo-dash.git
   ref: main

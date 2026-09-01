@@ -34,5 +34,5 @@ requirements:
   os: linux
 source:
   type: git
-  url: file:///home/koopark/claude/HEAXHub/var/local-demo-repos/heax-demo-streamlit.git
+  url: var/local-demo-repos/heax-demo-streamlit.git
   ref: main

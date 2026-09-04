@@ -339,6 +339,38 @@ def move_prior(cond_text):
     return v if isinstance(v, str) and v else None
 
 
+def key_move_prior(cond_text):
+    """키 이동 표시가 있으면 옛 물성키를, 없으면 None 을 돌려준다."""
+    if not cond_text:
+        return None
+    try:
+        d = json.loads(cond_text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    v = d.get(KEY_MOVE_MARKER)
+    return v if isinstance(v, str) and v else None
+
+
+def find_key_moved_row(dc, vals, old_key):
+    """옛 물성키로 운영행을 찾는다. (행 id, 사유) — 유일하지 않으면 (None, 사유).
+
+    좁히는 축은 **키 이동이 바꾸지 않는 것들**이다 — 재료·출처·값. `find_moved_row` 와 대칭이고
+    (거기는 재료가 바뀌므로 물성키로 좁힌다) 조건 텍스트로 대조하지 않는 이유도 같다(§536).
+    **유일하지 않으면 옮기지 않고 보고한다** — 어느 행인지 병합기가 고르면 그건 병합기의 판정이다.
+    """
+    rows = dc.execute(
+        "SELECT id FROM property_value WHERE material_id IS ? AND property_key IS ? "
+        "AND source_id IS ? AND value_num IS ? AND value_text IS ?",
+        (vals.get("material_id"), old_key, vals.get("source_id"),
+         vals.get("value_num"), vals.get("value_text"))).fetchall()
+    if len(rows) == 1:
+        return rows[0][0], None
+    return None, ("옛 키 밑에 대응행이 없다" if not rows
+                  else f"옛 키 밑 {len(rows)}행에 걸린다(id {[r[0] for r in rows][:6]})")
+
+
 def find_moved_row(dc, vals, old_name):
     """옛 재료 밑에서 운영행을 찾는다. (행 id, 사유) — 유일하지 않으면 (None, 사유).
 
@@ -374,6 +406,12 @@ def find_moved_row(dc, vals, old_name):
 # 자연키가 그 자리다(라이브 2,943행에서 2,943/2,943 유일, 실측). 아래 `PLAN` 의
 # `source` 자연키와 **같은 목록이어야 한다** — 한쪽만 바뀌면 이 분기가 조용히 죽는다.
 SOURCE_MOVE_MARKER = "moved_from_source"
+# **여섯 번째 얼굴이다.** 464·522·536 이 재료 이동을, 위가 출처 병합을 말한다.
+# 키 이동이 바꾸는 칸은 `property_key` — 그것도 자연키 안이다. 그런데 ③·④·⑤ 세 분기가
+# **전부 `property_key IS ?` 로 좁혀서** 키를 옮긴 행은 어느 분기도 못 받았다.
+# 63차 YC 가 잡았다(RP-1121 전방사율 5행). 세어 보니 `migrated_from` 을 단 행이 456 이고
+# 47차 IA 의 영률 336행이 같은 자리다 — **역대 키 이동 전부가 dev 에 갇혀 있었다.**
+KEY_MOVE_MARKER = "migrated_from"
 SOURCE_NATURAL_KEY = ("kind", "doi", "isbn", "url", "title", "publisher", "license")
 
 
@@ -473,6 +511,9 @@ def main():
     # 출처 병합의 전파 결과. 못 간 병합은 운영에 **같은 측정을 두 출처에 하나씩** 남긴다.
     source_moves: list[dict] = []
     source_move_misses: list[dict] = []
+    # 키 이동의 전파 결과. 못 간 이동은 운영에 **같은 측정을 두 키에 하나씩** 남긴다.
+    key_moves: list[dict] = []
+    key_move_misses: list[dict] = []
 
     for table, natkey, fks in PLAN:
         # src/dst 에 테이블 없으면 skip.
@@ -664,6 +705,34 @@ def main():
                     source_move_misses.append(
                         {"key": vals.get("property_key"), "value": vals.get("value_num"),
                          "옛출처": str(src_marker.get("title"))[:70], "사유": why})
+            # ⑥ **키를 옮긴 물성값도 자연키로 못 찾는다** — 자연키가 `property_key` 를 포함하는데
+            #    이동이 바꾸는 칸이 바로 그것이다. ③·④·⑤ 가 전부 `property_key IS ?` 로 좁히므로
+            #    어느 분기도 이 행을 못 받았다. 옛 키로 운영행을 찾아 **행 전체를 갱신한다.**
+            #    ②가 먼저 도는 순서라 재병합에 멱등하다 — 이미 옮긴 행은 ②에서 걸린다.
+            #    ⑤ 뒤에 두는 이유는 여기서 `source_id` 로 좁히기 때문이다 — 출처 병합까지 걸린
+            #    행은 ⑤가 먼저 처리해 `continue` 하므로 여기까지 안 내려온다.
+            if not hit and table == "property_value":
+                old_key = key_move_prior(vals.get("conditions"))
+                if old_key and old_key != vals.get("property_key"):
+                    tgt, why = find_key_moved_row(dc, lookup, old_key)
+                    if tgt is not None:
+                        dc.execute("UPDATE property_value SET "
+                                   + ",".join(f"{c}=?" for c in data_cols) + " WHERE id=?",
+                                   [vals[c] for c in data_cols] + [tgt])
+                        remap[table][src_id] = tgt
+                        matched += 1
+                        key_moves.append(
+                            {"id": tgt, "옛키": old_key, "새키": vals.get("property_key"),
+                             "material_id": vals.get("material_id"),
+                             "value": vals.get("value_num")})
+                        continue
+                    # 못 찾았다. ③·④·⑤ 와 같은 판단으로 **삽입은 한다** — 운영에 아직 없는 값일
+                    # 수 있고 값을 버리는 쪽이 더 위험하다. 다만 조용히 넘기지 않는다: 옛 키 행이
+                    # 남아 있는데 못 찾은 것이면 **같은 측정이 두 키에 하나씩 생긴다.**
+                    key_move_misses.append(
+                        {"옛키": old_key, "새키": vals.get("property_key"),
+                         "material_id": vals.get("material_id"),
+                         "value": vals.get("value_num"), "사유": why})
             if hit:
                 remap[table][src_id] = hit[0]           # cae00 기존행 유지(덮지 않음)
                 matched += 1
@@ -768,6 +837,12 @@ def main():
     if source_move_misses:
         out["source_move_misses"] = source_move_misses[:40]
         out["source_move_misses_total"] = len(source_move_misses)
+    if key_moves:
+        out["key_moves"] = key_moves[:40]
+        out["key_moves_total"] = len(key_moves)
+    if key_move_misses:
+        out["key_move_misses"] = key_move_misses[:40]
+        out["key_move_misses_total"] = len(key_move_misses)
     if ownership_diffs:
         # 조용히 버리지 않는다 — 현장에서 등록한 보유/담당자가 병합에 묻히면 시험 계획이
         # 있지도 않은 장비를 전제하거나, 반대로 있는 장비를 없다고 센다.

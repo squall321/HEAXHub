@@ -109,3 +109,7 @@ integrations/*/data/
 # 자동 생성. gitignore 라 update-all(git reset --hard)이 못 건드려 운영팀 등록분이 보존된다.
 # (내 관리 앱과 라이프사이클 완전 분리 — 별도 apply 로만 갱신.)
 integrations/ext_*/
+
+# /data 이관 브리지(심링크) 이름 — dir/ 패턴은 심링크를 무시하지 않아 git stash -u 가 치운다(data-migration D0)
+/var
+/job_storage

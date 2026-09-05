@@ -78,7 +78,13 @@ CURATION_KEYS = {"role", "role_reason", "role_basis", "role_confidence",
                  # 57차 SA — 등급 미확정(V4) 판정이 운영까지 가지 않고 있었다.
                  # V1·V2·V6 은 `core_` 접두어라 전파되는데 V4 를 정하는 이 둘만 밖에 있어,
                  # 빈칸 갈래 여섯 중 하나만 dev 에 갇히는 어긋남이 났다.
-                 "identification_status", "anonymised_code"}
+                 "identification_status", "anonymised_code",
+                 # 64차 ZC — 규격 표기와 재료명이 갈려 있어 검색이 두꺼운 레코드를 못 찾았다
+                 # (표기 97개 중 92개가 0건). `aliases` 는 그것을 잡는 큐레이션이고
+                 # `catalog_twin` 은 §623 이 정한 계보 규약인데 **둘 다 목록 밖이었다.**
+                 # 지금까지 안 들킨 이유는 붙인 파동들이 라이브 DB 를 직접 쳤기 때문이다 —
+                 # 규약이 산 게 아니라 경로가 우연히 맞았다.
+                 "aliases", "aliases_sources", "catalog_twin"}
 # 판정은 role·subsystem 만이 아니다. 45·46차에 배치들이 같은 성격의 키를 더 만들었다 —
 # `core_not_applicable`(그 물성이 이 재료에 의미 없다) · `core_fill_sheet`(무엇을 열어야 하나) ·
 # `same_alloy_as`·`merge_verdict`·`merge_plan`(같은 재료인가). 전부 **dev 에서만 정하고

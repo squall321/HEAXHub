@@ -12,13 +12,14 @@ description: |
   설계 IR 스냅샷·diff 위에서 HW/XD 전문가 패널이 리스크·개선·성격을 판정하고 등록부로 누적하는 심사 앱.
   과제의 MCAD(StepForge)·Dyna(DynaForge)·ECAD(ODB 어댑터 계약, 스텁) 소스를 읽기 전용으로 동결해 rr_ir 스냅샷을 만들고,
   상태 평가(rr_state)·3층 diff(rr_diff)를 결론 없이 코드가 정리하며, 좌석 의견을 IR id 에 앵커된 원자로 앱 DB 에 누적한다.
-  - MCP 도구 6종: risk_get_snapshot(P1) · risk_get_diff(P2) · risk_get_registry · risk_claims_for_ref · risk_submit_panel_result(P3) ·
-    risk_get_brief(P5). P0 는 시그니처만 등록돼 있고 본문은 {error:'not_implemented', ready_in} 을 돌려준다.
+  - MCP 도구 7종(전부 실구현): risk_get_snapshot · risk_get_diff · risk_get_registry · risk_claims_for_ref ·
+    risk_submit_panel_result · risk_get_brief(brief_token 필요) · risk_add_finding. 읽기 4종은 호출자 범위 밖이면 not_visible 이다.
   - MCP 엔드포인트: /apps/hwax_risk/mcp (streamable HTTP, exact Route — 리다이렉트 없음) → 게이트웨이 백엔드 heax-hwax_risk 로 자동 흡수.
     에이전트 등록 예) claude mcp add --transport http hwax-risk <포털베이스>/apps/hwax_risk/mcp
-  - REST base: /apps/hwax_risk/api (GET /health · /me · PUT /me/portal-pat · /meta/taxonomy · /meta/adapters · /meta/vocab).
-  - 헬스체크: /api/health → {ok, app_version, schema_version}. 웹 UI 는 / 의 Vite/React SPA(frontend/dist).
-  - 데이터 경로: HWAXRISK_DATA_DIR > HEAX_DATA_DIR > <리포>/data, DB 파일 <data>/risk_review.db(단일 진실 원천, PRAGMA user_version).
+  - REST base: /apps/hwax_risk/api — 64경로(me·meta·projects·sources·snapshots·sameas·diffs·targets·panels·registry·
+    findings·curation·patterns·precedents·vocab·export/import), 전 핸들러가 heax 신원 되묻기를 거친다.
+  - 헬스체크: /api/health → {ok, app_version, schema_version}. 웹 UI 는 / 의 Vite/React SPA(화면 6종 — 홈·과제·스냅샷·비교·타깃·설정).
+  - 데이터 경로: HWAXRISK_DATA_DIR > HEAX_DATA_DIR > <리포>/data, DB 파일 <data>/risk_review.db(단일 진실 원천, PRAGMA user_version, rr_* 41표).
   fastapi_react 스택(backend/ + frontend/) 기본 entrypoint(uvicorn app.main:app --root-path $ROOT_PATH)를 그대로 사용하며,
   SIF 빌드 훅 backend/scripts/heaxhub-build.sh 가 PYTHONNOUSERSITE=1 로 런타임 의존성을 hermetic 하게 재설치한다.
   loopback 바인드 + Caddy 경계 전제로 MCP DNS-rebinding Host 검증은 비활성화되어 있다.

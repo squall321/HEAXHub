@@ -1,0 +1,25 @@
+schema_version: 2
+id: kooremapper_api
+name: "DynaForge API"
+version: "1.8.0"
+owner: "koo.park"
+status: stable
+app_type: external_link
+execution_target: external_url
+description: "DynaForge REST API 엔드포인트 — 리포트 인제스트(대용량 .gz 멀티파트)·조회·분석·토큰 발급을 프로그램적으로 노출. kr_ PAT 또는 JWT(Authorization: Bearer)로 인증한다. 대화형 웹(kooremapper)과 달리 forward_auth SSO 게이트가 없어 자동화/외부 연동(ReportArchive 등)이 베어러 토큰으로 직접 호출할 수 있다."
+build:
+  stack: external_proxy
+launch:
+  mode: proxy
+  upstream: http://127.0.0.1:8700     # 웹앱과 동일한 REST 서버(:8700). SPA·API 모두 여기서 서빙.
+  strip_prefix: true
+  # portal_auth 없음 — MCP 엔트리(kooremapper_mcp)와 같은 이유.
+  # api 자체가 get_current_user 로 JWT/kr_ PAT 를 검증하므로 인증이 강제된다. 여기에
+  # forward_auth 를 걸면 kr_ PAT 가 HEAX 자격증명으로 오인돼 401 로 막혀 자동 업로드가 불가하다.
+  # 공개 경로: /apps/kooremapper_api/api/v1/...  (strip_prefix 로 /api/v1/... 가 :8700 에 전달)
+  #   예) 로그인   POST /apps/kooremapper_api/api/v1/auth/login   {email,password} → JWT
+  #       토큰발급 POST /apps/kooremapper_api/api/v1/me/tokens    (Bearer JWT) → kr_ PAT
+  #       인제스트 POST /apps/kooremapper_api/api/v1/sessions/{id}/reports (Bearer, multipart file=@report.html.gz)
+  #       문서     GET  /apps/kooremapper_api/api/docs · /api/openapi.json
+permissions:
+  visibility: company     # company | department | team | private

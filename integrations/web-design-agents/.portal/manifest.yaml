@@ -1,6 +1,9 @@
 schema_version: 2
 id: web_design_agents
-name: "WebDesignAgents — 전문가 심의 발표자료 생성"
+# ⚠ 이름에 '심의' 를 넣지 마라. 이 라벨은 게이트웨이가 이 앱 16개 도구 설명 앞에 그대로 붙이고
+#   search_tools 도 라벨을 매칭한다 — '심의' 가 들어 있으면 사용자가 공학 심의(deliberate_*)를
+#   찾을 때마다 발표자료 회의체(meeting_*)로 수렴한다(실사고: 시뮬 심의 요청이 슬라이드 제작으로).
+name: "WebDesignAgents — 발표자료·슬라이드 자동 생성"
 version: 0.1.0
 owner: "squall321"
 status: stable                   # 운영 중(사내 공개). 허브의 '공개 앱' 판정이

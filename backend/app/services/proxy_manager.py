@@ -138,7 +138,15 @@ def _build_route(
     match_paths = [path, f"{path}/*"]
 
     # forward_auth 게이트를 reverse_proxy 앞에 둔다 (2xx 통과, 그 외 차단).
-    handle_chain: list[dict[str, Any]] = [_forward_auth_handler()]
+    #
+    # ⚠ copy_identity=True — 내부 앱에도 신원 헤더를 넘긴다. 예전에는 외부 업스트림
+    #   (_build_external_route)에만 붙어 있어서, 허브 안에서 도는 앱은 **누가 부르는지
+    #   영영 알 수 없었다.** 그래서 StepForge 는 과제를 만들어도 담당자 칸이 늘 비었고
+    #   (app/rest.py portal_identity 가 빈 dict 를 받는다), 그 사실이 그쪽 주석에
+    #   "고치려면 허브 쪽" 이라고 적힌 채 남아 있었다(D-213).
+    #   `set` 이라 클라이언트가 위조해 보낸 동명 헤더는 항상 덮인다 — 익명 공개앱은
+    #   authz 가 헤더를 안 실으므로 빈 값으로 덮여 '신원 없음' 이 그대로 전달된다.
+    handle_chain: list[dict[str, Any]] = [_forward_auth_handler(copy_identity=True)]
     if strip_prefix:
         handle_chain.append({"handler": "rewrite", "strip_path_prefix": path})
     handle_chain.append({

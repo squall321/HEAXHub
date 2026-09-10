@@ -68,17 +68,30 @@ def _forward_auth_handler(*, copy_identity: bool = False) -> dict[str, Any]:
     """
     handle_response_routes: list[dict[str, Any]] = []
     if copy_identity:
+        # ① 클라이언트가 보낸 동명 헤더는 **무조건** 지운다. ②가 조건부이므로, 여기서
+        #    지우지 않으면 authz 가 신원을 안 줄 때 위조 값이 그대로 업스트림에 간다.
         handle_response_routes.append({
             "handle": [{
                 "handler": "headers",
-                "request": {
-                    "set": {
-                        h: [f"{{http.reverse_proxy.header.{h}}}"]
-                        for h in _IDENTITY_HEADERS
-                    }
-                },
+                "request": {"delete": list(_IDENTITY_HEADERS)},
             }],
         })
+        # ② authz 가 **실제로 값을 준 경우에만** 싣는다.
+        #
+        # ⚠ 무조건 set 하면 안 된다. 값이 없을 때 빈 문자열로 덮이는데, 그것을
+        #   '신원 없음' 이 아니라 '빈 사용자로 인증됨' 으로 읽는 앱이 있다. 실제로
+        #   무조건 set 으로 깔았다가 kooremapper_mcp 가 401 을 내며 게이트웨이에서
+        #   통째로 떨어졌다(2026-09-10 실사고 — 게이트웨이는 서비스 토큰으로 부르므로
+        #   authz 가 사용자 신원을 싣지 않는다). 헤더별로 따로 건다 — 이름은 없고
+        #   이메일만 있는 경우가 있다.
+        for h in _IDENTITY_HEADERS:
+            handle_response_routes.append({
+                "match": [{"expression": f"{{http.reverse_proxy.header.{h}}} != ''"}],
+                "handle": [{
+                    "handler": "headers",
+                    "request": {"set": {h: [f"{{http.reverse_proxy.header.{h}}}"]}},
+                }],
+            })
     return {
         "handler": "reverse_proxy",
         "rewrite": {"method": "GET", "uri": _AUTHZ_URI},

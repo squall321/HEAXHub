@@ -11,6 +11,21 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # HEAXHub 루트
+
+# ⚠ 자동 경로와 **같은** 호스트 env 를 싣는다.
+# start.sh 는 backend·celery 를 `set -a; source .env` 로 띄우고(start.sh:239·270), 런처는
+# **os.environ 에 있는 `APPTAINERENV_*` 만** 컨테이너로 넘긴다(app/services/apt_runner.py:214·289).
+# 그래서 이 스크립트를 셸에서 바로 부르면 앱은 멀쩡히 뜨지만 **앱 env 가 조용히 빠진다** —
+# 2026-09-19 04:45 실사고: step_forge 가 STEPFORGE_PUBLIC_BASE 없이 떠서 공개 URL 이
+# 자리표시자로 나왔다(앱이 "모른다"고 말해 주지 않으면 못 알아채는 자리였다).
+# 파일은 자동 경로가 읽는 것과 같은 `$ROOT/.env` 를 읽는다 — `_common.sh:load_env` 는
+# deploy/apptainer/.env 를 먼저 보므로 두 경로가 갈릴 수 있어 쓰지 않는다.
+if [[ -f "$ROOT/.env" ]]; then
+  set -a; set +u; . "$ROOT/.env"; set -u; set +a
+  echo "· .env 로딩 — 컨테이너로 넘어갈 APPTAINERENV_* $(env | grep -c '^APPTAINERENV_' || true)개"
+else
+  echo "[WARN] $ROOT/.env 없음 — 앱 env(APPTAINERENV_*)가 컨테이너에 안 들어간다" >&2
+fi
 SLUG="${1:?사용: redeploy-app.sh <slug> [--rebuild]}"
 REBUILD=0
 [[ "${2:-}" == "--rebuild" ]] && REBUILD=1

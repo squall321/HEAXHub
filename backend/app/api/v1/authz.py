@@ -120,10 +120,28 @@ def authz(
         # portal_auth 프록시 앱용 identity 전파 — forward_auth 게이트가 2xx 응답의
         # 이 헤더들을 업스트림 요청으로 복사한다 (proxy_manager._forward_auth_handler).
         ok = Response(status_code=status.HTTP_200_OK)
-        ok.headers["X-Heax-User-Email"] = user.email or ""
-        ok.headers["X-Heax-User-Name"] = user.display_name or ""
+        # ⚠ **HTTP 헤더는 latin-1 만 담는다.** 한글 표시명을 그대로 넣으면 Starlette 가 인코딩에서
+        # `UnicodeEncodeError` 를 내고 이 게이트가 **500** 이 된다. forward_auth 가 500 을 받으면 그
+        # 사용자는 `/apps/*` 를 **하나도** 못 쓴다 — 앱이 멀쩡해도 전부 막힌다(실측 2026-09-18:
+        # dev 사용자 44명 중 6명이 비latin-1 표시명, backend.log 에 `GET /api/v1/authz 500` 셋).
+        # 이름은 **표시용**이라 못 실으면 빼고 보낸다(소비자는 없으면 이름 없이 둔다 — KooRemapper
+        # sso_login 의 JIT 프로비저닝). 퍼센트 인코딩으로 바꾸려면 소비자가 unquote 해야 하므로
+        # 앱들과 합의가 먼저다 — 지금 바꾸면 ASCII 이름의 공백이 %20 으로 보인다.
+        # 이메일도 같은 제약을 받는다. 못 실으면 빈 값이라 앱이 401 로 로그인을 안내한다(500 보다 낫다).
+        ok.headers["X-Heax-User-Email"] = _latin1_or_empty(user.email)
+        ok.headers["X-Heax-User-Name"] = _latin1_or_empty(user.display_name)
         return ok
     return Response(status_code=status.HTTP_403_FORBIDDEN)
+
+
+def _latin1_or_empty(value: str | None) -> str:
+    """헤더에 실을 수 있으면 그대로, 못 실으면 빈 문자열 — 인코딩 오류로 게이트가 500 이 되지 않게."""
+    text = value or ""
+    try:
+        text.encode("latin-1")
+    except UnicodeEncodeError:
+        return ""
+    return text
 
 
 def _extract_cookie_value(cookie_header: str | None, name: str) -> str | None:

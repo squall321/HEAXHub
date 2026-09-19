@@ -247,3 +247,26 @@ def test_portal_auth_app_allows_logged_in_user(db: Session, client: TestClient) 
         assert r.headers.get("X-Heax-User-Email") == owner.email
     finally:
         _cleanup(db, app, owner)
+
+
+def test_non_latin1_display_name_does_not_500_the_gate(db: Session, client: TestClient) -> None:
+    """⚠ 헤더는 latin-1 만 담는다 — 한글 표시명을 그대로 실으면 이 게이트가 **500** 이 되고, 그 사용자는
+    `/apps/*` 를 하나도 못 쓴다(실측 2026-09-18: dev 44명 중 6명, backend.log 에 authz 500 셋).
+    이름은 표시용이라 못 실으면 **빼고** 보낸다 — 이메일(신원)은 그대로 간다."""
+    owner = _mk_user(db)
+    owner.display_name = "김철수"
+    db.commit()
+    app = _mk_app(
+        db, owner,
+        visibility=AppVisibility.COMPANY, status_=AppStatus.STABLE,
+        portal_auth=True,
+    )
+    try:
+        headers = _fwd(app.id)
+        headers["Authorization"] = f"Bearer {create_access_token(str(owner.id))}"
+        r = client.get("/api/v1/authz", headers=headers)
+        assert r.status_code == 200, f"게이트가 {r.status_code} — 이 사용자는 앱을 전부 못 쓴다"
+        assert r.headers.get("X-Heax-User-Email") == owner.email, "신원은 그대로 가야 한다"
+        assert r.headers.get("X-Heax-User-Name") == "", "못 싣는 이름은 빈 값으로 둔다"
+    finally:
+        _cleanup(db, app, owner)

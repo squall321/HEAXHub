@@ -31,7 +31,13 @@ API_PORT="${API_PORT:-4040}"
 MAIL_UI_PORT="${MAIL_UI_PORT:-8126}"   # start.sh:47 과 동일 상수
 
 # ── 헬스 프로브 ───────────────────────────────────────────────────────────────
-record_exists() { apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$1"; }
+record_exists() {   # pipefail + 조기종료는 SIGPIPE(141) 오판을 만든다 — 목록을 먼저 받는다(실측 14.7%).
+  local _il
+  _il="$(apptainer instance list 2>/dev/null)" || return 1
+  case $'\n'"$(printf '%s\n' "$_il" | awk 'NR>1{print $1}')"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;; *) return 1 ;;
+  esac
+}
 pg_ok()    { apptainer exec instance://heax-pg pg_isready -h 127.0.0.1 -p "$PG_PORT" -U heaxhub >/dev/null 2>&1; }
 redis_ok() { [ "$(apptainer exec instance://heax-redis redis-cli -p "$REDIS_PORT" ping 2>/dev/null)" = "PONG" ]; }
 caddy_ok() { curl -sf -m 3 "http://127.0.0.1:${CADDY_ADMIN_PORT}/config/" >/dev/null 2>&1; }

@@ -54,8 +54,19 @@ mkdir -p var/{pg,redis,mailhog,logs,pg_run,caddy}
 # Caddy 가 /pkgs/* 로 서빙할 사내 패키지 미러 루트(dist-from-drive.sh 가 latest/pip/ 를 채움).
 mkdir -p var/pkg-mirror/pip
 
+# 인스턴스가 떠 있나 — **파이프를 쓰지 않는다.** `… | grep -q` 는 pipefail 아래서 조기 종료가
+# apptainer 를 SIGPIPE(141)로 죽여 **떠 있는 것을 "없다"** 로 읽는다(실측: 경합 중 14.7%).
+# 오판하면 이미 도는 인프라를 다시 start 해 "already exists" 로 죽는다.
+_inst_up() {
+  local _il
+  _il="$("$APPTAINER" instance list 2>/dev/null)" || return 1
+  case $'\n'"$(printf '%s\n' "$_il" | awk 'NR>1{print $1}')"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;; *) return 1 ;;
+  esac
+}
+
 # ── 1. Postgres ───────────────────────────────────────────────
-if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-pg; then
+if ! _inst_up heax-pg; then
   echo "→ start heax-pg"
   # (a) preflight: SIF 없으면 조용한 hang 대신 즉시 명확히 실패.
   if [ ! -f "$PG_SIF" ]; then
@@ -124,7 +135,7 @@ else
 fi
 
 # ── 2. Redis ──────────────────────────────────────────────────
-if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-redis; then
+if ! _inst_up heax-redis; then
   echo "→ start heax-redis"
   "$APPTAINER" instance start --writable-tmpfs \
     --bind "$PWD/var/redis:/data" \
@@ -139,7 +150,7 @@ else
 fi
 
 # ── 3. MailHog ────────────────────────────────────────────────
-if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-mailhog; then
+if ! _inst_up heax-mailhog; then
   echo "→ start heax-mailhog"
   "$APPTAINER" instance start --writable-tmpfs "$MAIL_SIF" heax-mailhog
   "$APPTAINER" exec instance://heax-mailhog sh -c \
@@ -169,7 +180,7 @@ if [ ! -f "$FRONTEND_DIST/index.html" ]; then
   echo "  ! frontend/dist/index.html 없음 — pnpm build 먼저 실행해야 :$CADDY_HTTP_PORT 가 UI 를 보냅니다"
 fi
 
-if ! "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx heax-caddy; then
+if ! _inst_up heax-caddy; then
   echo "→ start heax-caddy"
   "$APPTAINER" instance start \
     --bind "$BOOTSTRAP_DST:/etc/caddy/bootstrap.json:ro" \

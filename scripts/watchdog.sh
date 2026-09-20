@@ -83,12 +83,21 @@ fi
 # ── 헬스 프로브 (모두 절대경로 사용) ──────────────────────────────
 instance_running() {
   [ -n "$APPTAINER" ] || return 1
-  "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$1"
+  # pipefail + 조기종료(grep -q)는 SIGPIPE(141) 오판을 만든다 — 목록을 먼저 받는다(실측 14.7%).
+  local _il
+  _il="$("$APPTAINER" instance list 2>/dev/null)" || return 1
+  case $'\n'"$(printf '%s\n' "$_il" | awk 'NR>1{print $1}')"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 port_listening() {
   [ -n "$SS" ] || return 1
-  "$SS" -tln 2>/dev/null | grep -q ":$1 "
+  # pipefail + 조기종료(grep -q)는 SIGPIPE(141) 오판을 만든다 — 목록을 먼저 받는다(실측 14.7%). `ss -tln` 은 필터가 없어 출력이 크다 — 이쪽이 더 위험하다.
+  local _ports
+  _ports="$("$SS" -tln 2>/dev/null)" || return 1
+  [ "${_ports#*:$1 }" != "$_ports" ]
 }
 
 pg_healthy() {

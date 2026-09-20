@@ -52,7 +52,10 @@ step "1/3  stale state 정리"
 # apptainer instance state json (재부팅 후 orphan)
 APPT_STATE="$HOME/.apptainer/instances"
 for inst in heax-pg heax-redis heax-mailhog heax-caddy; do
-  if ! instance_running "$inst" 2>/dev/null; then
+  # ⚠ **확실히 없을 때(1)만** 지운다 — 목록 조회 실패(2)를 "없음" 으로 읽으면 **떠 있는 인스턴스의**
+  # 상태 파일을 지워 그 인스턴스를 관리 불능으로 만든다(_common.sh:instance_running 주석).
+  instance_running "$inst" 2>/dev/null; _ir_rc=$?
+  if [ "$_ir_rc" -eq 1 ]; then
     if [[ -d "$APPT_STATE" ]]; then
       find "$APPT_STATE" -name "${inst}.json" -exec rm -f {} \; 2>/dev/null \
         && note "stale state 제거: ${inst}.json" || true

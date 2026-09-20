@@ -321,7 +321,33 @@ require_port_free() {
 }
 
 # ── 인스턴스 헬퍼 ──────────────────────────────────────────────────────────
+# 인스턴스가 떠 있는가 — **0 있음 · 1 없음 · 2 알 수 없음**(목록 조회 자체가 실패했다).
+#
+# ⚠ 예전 구현은 `apptainer instance list | awk … | grep -qx …` 였다. 이 파일은 `pipefail` 을 켜는데,
+# `grep -q` 는 첫 매칭에서 끝나고 그러면 아직 쓰고 있던 apptainer 가 **SIGPIPE(141)** 로 죽어
+# 파이프라인 전체가 실패한다 → **떠 있는 인스턴스를 "없다"** 로 판정한다.
+# 실측(2026-09-19~20, dev, 같은 꼴의 KooRemapper 감독자에서) — 유휴에서는 400회 중 0회지만,
+# 같은 박스에서 `instance list` 를 6개 동시에 돌리는 동안 **600회 중 88회(14.7%)** 가 rc=141 이었다.
+# 이 박스는 워커가 45초마다 인스턴스를 훑고 배포 스크립트가 수시로 도는, 바로 그 경합 상태다.
+#
+# 왜 "모름"을 따로 내나 — 이 판정으로 **되돌리기 어려운 일**을 한다. `boot.sh` 는 "없다" 면
+# `~/.apptainer/instances/<이름>.json` 을 지우는데, 떠 있는 인스턴스의 상태 파일을 지우면 그 인스턴스는
+# 관리 불능이 된다. `stop.sh` 는 "없다" 면 정지를 건너뛴다(내렸다고 말하고 안 내린다).
+# 그래서 조회가 실패하면 **모른다고 말하고**, 부르는 쪽이 안전한 방향을 고르게 한다.
 instance_running() {
-  local name="$1"
-  apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$name"
+  local name="$1" out rc i
+  rc=1
+  for i in 1 2; do
+    if out="$(apptainer instance list 2>/dev/null)"; then rc=0; else rc=$?; fi
+    [ "$rc" -eq 0 ] && [ -n "$out" ] && break
+    [ "$i" -eq 1 ] && sleep 0.5
+  done
+  if [ "$rc" -ne 0 ] || [ -z "${out:-}" ]; then
+    return 2
+  fi
+  # 첫 칸이 인스턴스 이름이다(헤더 한 줄 건너뛴다) — 파이프 없이 한 번에 읽는다
+  case $'\n'"$(printf '%s\n' "$out" | awk 'NR>1{print $1}')"$'\n' in
+    *$'\n'"$name"$'\n'*) return 0 ;;
+    *) return 1 ;;
+  esac
 }

@@ -62,7 +62,9 @@ APT="$REPO_ROOT/deploy/apptainer/.tools/apptainer-1.3.6/usr/bin/apptainer"
 
 # pg_dump 은 postgres 인스턴스 안에서 실행 (호스트에 미설치일 수 있음).
 # 인스턴스가 host network 라 localhost:port 로 자기 자신에 붙는다.
-if [ -n "$APT" ] && $APT instance list 2>/dev/null | grep -q heax-pg; then
+# pipefail + 조기종료(grep -q)는 SIGPIPE(141) 오판을 만든다 — 목록을 먼저 받는다(실측 14.7%).
+_il="$($APT instance list 2>/dev/null || true)"
+if [ -n "$APT" ] && [ "${_il#*heax-pg}" != "$_il" ]; then
   $APT exec instance://heax-pg pg_dump "$PGURL" --no-owner --format=custom \
     > "$DEST/postgres.dump"
 elif command -v pg_dump >/dev/null 2>&1; then

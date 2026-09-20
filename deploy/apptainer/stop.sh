@@ -31,7 +31,10 @@ for inst in $("$APPTAINER" instance list 2>/dev/null | awk 'NR>1 && $1 ~ /^heax_
 done
 
 for inst in heax-caddy heax-pg heax-redis heax-mailhog; do
-  if "$APPTAINER" instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$inst"; then
+  # ⚠ 모르면(2) **내려 본다** — 없는 것을 stop 하는 건 무해하지만, 떠 있는 것을 건너뛰면
+  # "내렸다" 고 말하고 안 내린 것이 된다(_common.sh:instance_running 주석).
+  instance_running "$inst"; _ir_rc=$?
+  if [ "$_ir_rc" -ne 1 ]; then
     echo "→ stop $inst"
     "$APPTAINER" instance stop "$inst" 2>&1 | tail -1
   fi

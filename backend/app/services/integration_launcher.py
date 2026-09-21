@@ -425,6 +425,29 @@ def launch(
     )
 
 
+def _sif_fail(slug: str, canonical: str, port: int | None, base_path: str,
+              log_file: Path, error: str) -> LaunchResult:
+    """기동 실패를 **앱 로그에도 남기고** 실패 결과를 돌려준다.
+
+    왜 — 기동 전(포트·argv·instance start) 실패는 지금까지 앱 로그 파일을 **아예 만들지 않았다.**
+    운영자는 `var/logs/integration_<앱>.log` 를 보러 가는데 파일이 없거나 옛 내용뿐이라, 앱이 왜
+    안 뜨는지 알 길이 없었다(worker.log 한 줄은 수천 줄 사이에 묻힌다). 2026-09-20 cae00 의
+    `heax_demo_nextjs` 가 그 모양이다 — 라우트가 없어 허브 첫 화면이 200 으로 돌아오는데,
+    **이유를 적어 둔 자리가 없다.**
+
+    상태 파일은 일부러 건드리지 않는다 — `app/api/v1/mcp.py:_ever_launched` 가 상태 파일의 **존재**로
+    "한 번이라도 뜬 앱" 을 판정한다. 실패에 상태를 쓰면 한 번도 못 뜬 앱이 게이트웨이에 등록돼
+    영구 다운 백엔드가 된다(그 주석이 막으려던 바로 그것)."""
+    try:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        with log_file.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] launch failed: {error}\n")
+    except OSError:  # 로그를 못 써도 기동 판정 자체를 막지는 않는다
+        pass
+    logger.warning("%s launch failed: %s", canonical, error)
+    return LaunchResult(slug=slug, action="failed", port=port, base_path=base_path, error=error)
+
+
 def _launch_via_sif(
     *,
     workspace: Path,
@@ -484,10 +507,8 @@ def _launch_via_sif(
     try:
         port = port_allocator.allocate_port(db, app_id=canonical, scope="app")
     except Exception as exc:
-        return LaunchResult(
-            slug=slug, action="failed", port=None, base_path=base_path,
-            error=f"port allocation failed: {exc}",
-        )
+        return _sif_fail(slug, canonical, None, base_path, log_file,
+                         f"port allocation failed: {exc}")
 
     # ── compose container-side argv ───────────────────────────────────
     # 실패 경로에서 포트를 release 하지 않는다(호스트 경로와 동일한 불변식).
@@ -497,10 +518,8 @@ def _launch_via_sif(
     try:
         container_argv = _sif_argv_for(spec, manifest, stack_name, port=port, base_path=base_path)
     except Exception as exc:
-        return LaunchResult(
-            slug=slug, action="failed", port=None, base_path=base_path,
-            error=f"argv build failed: {exc}",
-        )
+        return _sif_fail(slug, canonical, None, base_path, log_file,
+                         f"argv build failed: {exc}")
 
     # ── ensure the instance is running ────────────────────────────────
     # SIF rootfs 는 read-only 라 앱이 여기에 못 쓴다. 영구 쓰기 경로를 /data 로
@@ -562,7 +581,7 @@ def _launch_via_sif(
 
     if instance_name not in running_instances:
         try:
-            apt_runner.instance_start(
+            _cp = apt_runner.instance_start(
                 sif=sif_path,
                 name=instance_name,
                 binds=binds,
@@ -571,17 +590,21 @@ def _launch_via_sif(
                 memory=_memory,
                 cpus=_cpus,
                 nv=_nv,
-            )
-        except subprocess.CalledProcessError as exc:
-            return LaunchResult(
-                slug=slug, action="failed", port=port, base_path=base_path,
-                error=f"apptainer instance start failed: {exc}",
+                capture_output=True,
+                text=True,
             )
         except FileNotFoundError as exc:
-            return LaunchResult(
-                slug=slug, action="failed", port=port, base_path=base_path,
-                error=str(exc),
-            )
+            return _sif_fail(slug, canonical, port, base_path, log_file, str(exc))
+        # ⚠ **실패는 예외가 아니라 종료코드로 온다.** `apt_runner.run` 은 `check=True` 를 쓰지 않으므로
+        # 여기 있던 `except subprocess.CalledProcessError` 는 **한 번도 실행되지 않는 죽은 코드**였다.
+        # 그래서 `instance start` 가 실패해도 그대로 exec 로 내려갔고, 남는 이유는 "process exited
+        # early code=1" 이라는 엉뚱한 문장이었다 — 진짜 원인(포트 충돌·SIF 손상·마운트 실패)은 버려졌다.
+        # "already exists" 는 실패가 아니다 — 목록 조회가 한 박자 늦었을 뿐 인스턴스는 거기 있다.
+        if getattr(_cp, "returncode", 0):
+            _err = ((getattr(_cp, "stderr", "") or getattr(_cp, "stdout", "") or "")).strip()
+            if "already exists" not in _err:
+                return _sif_fail(slug, canonical, port, base_path, log_file,
+                                 f"apptainer instance start rc={_cp.returncode}: {_err[-400:]}")
 
     # ── exec the foreground server inside the instance ───────────────
     try:
@@ -605,21 +628,18 @@ def _launch_via_sif(
         )
     except Exception as exc:
         log_fh.close()
-        return LaunchResult(
-            slug=slug, action="failed", port=port, base_path=base_path,
-            error=f"apptainer exec failed: {exc}",
-        )
+        return _sif_fail(slug, canonical, port, base_path, log_file,
+                         f"apptainer exec failed: {exc}")
 
     # ── wait for health ──────────────────────────────────────────────
     healthy = False
     for _ in range(_HEALTH_WAIT_SECONDS):
         time.sleep(1)
         if proc.poll() is not None:
-            return LaunchResult(
-                slug=slug, action="failed", port=port, base_path=base_path,
-                pid=proc.pid,
-                error=f"process exited early code={proc.returncode}; tail of {log_file}",
-            )
+            res = _sif_fail(slug, canonical, port, base_path, log_file,
+                            f"process exited early code={proc.returncode}; tail of {log_file}")
+            res.pid = proc.pid
+            return res
         if _is_healthy(port, health_path, root=base_path):
             healthy = True
             break

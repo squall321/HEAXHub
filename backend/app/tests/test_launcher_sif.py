@@ -366,8 +366,12 @@ def test_sif_launch_failure_does_not_release_port(
     def fake_instance_list(**_kwargs):
         return []
 
+    # ⚠ 실패를 **실제 모양**으로 흉내 낸다. `apt_runner.run` 은 `check=True` 를 쓰지 않으므로
+    # 진짜 실패는 예외가 아니라 **종료코드**로 온다(2026-09-20). 예전엔 이 스텁이 예외를 던져,
+    # 프로덕션에서 한 번도 실행되지 않는 경로 위에서 불변식을 확인하고 있었다.
     def fake_instance_start(**_kwargs):
-        raise subprocess.CalledProcessError(1, ["instance", "start"])
+        return subprocess.CompletedProcess(args=["instance", "start"], returncode=1,
+                                           stdout="", stderr="FATAL: mount /data failed")
 
     monkeypatch.setattr(integration_launcher.apt_runner, "instance_list", fake_instance_list)
     monkeypatch.setattr(integration_launcher.apt_runner, "instance_start", fake_instance_start)
@@ -432,3 +436,112 @@ def test_app_data_dir_rejects_traversal(
             integration_launcher._app_data_dir(bad)
     # nothing outside the root was created
     assert not (tmp_path / "evil").exists()
+
+
+# ---------------------------------------------------------------------------
+# 5. 기동 실패는 **이유가 남아야** 한다 (2026-09-20 cae00: heax_demo_nextjs)
+# ---------------------------------------------------------------------------
+#
+# 왜 — 라우트가 없으면 허브 Caddy 의 SPA catch-all 이 **200 + 허브 첫 화면**을 돌려준다.
+# 겉으론 정상이라 헬스게이트가 본문으로 잡아내야 겨우 드러나는데, 정작 "왜 안 떴나" 를
+# 적어 둔 자리가 없었다. 기동 전 실패는 앱 로그 파일을 아예 만들지 않았기 때문이다.
+
+
+def _fail_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, start_rc: int,
+              start_err: str = "", exec_exits: bool = False):
+    """SIF 경로를 태우되 instance start 결과를 시험이 정한다."""
+    ws = tmp_path / "demo_sif"
+    ws.mkdir(exist_ok=True)
+    sif = tmp_path / "demo_sif.sif"
+    sif.write_bytes(b"fake-sif")
+    calls: dict[str, int] = {"start": 0, "exec": 0}
+
+    def fake_instance_list(**_kw):
+        return []
+
+    def fake_instance_start(**kw):
+        calls["start"] += 1
+        return subprocess.CompletedProcess(args=["instance", "start"], returncode=start_rc,
+                                           stdout="", stderr=start_err)
+
+    def fake_instance_exec(name, argv, **kw):
+        calls["exec"] += 1
+        return SimpleNamespace(pid=4242, poll=lambda: (1 if exec_exits else None), returncode=1)
+
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_list", fake_instance_list)
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_start", fake_instance_start)
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_exec", fake_instance_exec)
+    return ws, sif, calls
+
+
+def test_a_failed_instance_start_is_reported_with_its_real_reason(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`apt_runner.run` 은 check=True 를 안 쓴다 — 실패가 **예외가 아니라 종료코드**로 온다.
+    그래서 옛 `except CalledProcessError` 는 죽은 코드였고, 실패해도 exec 로 내려가
+    "process exited early" 라는 엉뚱한 이유만 남았다."""
+    ws, sif, calls = _fail_env(tmp_path, monkeypatch, start_rc=255,
+                               start_err="FATAL: could not open image /x.sif")
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "failed"
+    assert "could not open image" in (result.error or ""), result.error
+    assert calls["exec"] == 0, "start 가 실패했는데 exec 로 내려갔다"
+
+
+def test_already_exists_is_not_a_failure(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """목록 조회가 한 박자 늦었을 뿐 인스턴스는 거기 있다 — 이걸 실패로 보면 멀쩡한 앱이 안 뜬다."""
+    ws, sif, calls = _fail_env(tmp_path, monkeypatch, start_rc=255,
+                               start_err="FATAL: instance heax_app_demo_sif already exists")
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "started", result.error
+    assert calls["exec"] == 1
+
+
+def test_the_reason_lands_in_the_app_log_where_people_look(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """운영자는 `var/logs/integration_<앱>.log` 를 본다. 거기가 비어 있으면 이유는 없는 것이다."""
+    ws, sif, _ = _fail_env(tmp_path, monkeypatch, start_rc=1, start_err="mount failed: /data")
+
+    integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                slug="demo_sif", sif_path=sif)
+
+    log = integration_launcher.LOG_DIR / "integration_demo_sif.log"
+    assert log.exists(), "실패 이유를 적을 파일조차 안 만들었다"
+    assert "launch failed" in log.read_text(encoding="utf-8")
+    assert "mount failed" in log.read_text(encoding="utf-8")
+
+
+def test_an_early_exit_also_explains_itself(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws, sif, _ = _fail_env(tmp_path, monkeypatch, start_rc=0, exec_exits=True)
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "failed" and result.pid == 4242
+    log = integration_launcher.LOG_DIR / "integration_demo_sif.log"
+    assert "process exited early" in log.read_text(encoding="utf-8")
+
+
+def test_a_failure_does_not_make_the_app_look_launched(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """⚠ 실패에 상태 파일을 쓰면 안 된다 — `api/v1/mcp.py:_ever_launched` 가 상태 파일의
+    **존재**로 "한 번이라도 뜬 앱" 을 판정한다. 한 번도 못 뜬 앱이 게이트웨이에 등록되면
+    영구 다운 백엔드가 된다(그 주석이 막으려던 바로 그것)."""
+    ws, sif, _ = _fail_env(tmp_path, monkeypatch, start_rc=2, start_err="boom")
+
+    integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                slug="demo_sif", sif_path=sif)
+
+    assert integration_launcher._read_state("demo_sif") is None, "실패인데 기동된 것으로 기록했다"

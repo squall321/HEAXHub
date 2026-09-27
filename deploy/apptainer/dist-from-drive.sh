@@ -35,7 +35,11 @@ if [ "$_have_dist" = "0" ]; then
 fi
 echo "→ source: $SRC"
 
-STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
+# 같은 내용이면 손대지 않는다 — 살아 있는 apptainer 인스턴스 밑의 SIF 를 덮어쓰면 squashfs 가 깨지고, cp 는 mtime 을 리셋해 포털 update-all 의
+# 재기동 판정(지문: 이름·크기·mtime)이 매번 달라진다. 영구 캐시(rclone 이 안 바뀐 파일을 건너뛴다)와 짝이다. HWAXPortal docs/update-all-skip-unchanged.
+_install_if_changed() { if [ -f "$2" ] && cmp -s "$1" "$2"; then echo "  · $(basename "$2") 같음 — 그대로"; return 0; fi; cp -p "$1" "$2"; return 0; }
+# 영구 캐시 — 임시 디렉터리면 rclone 이 비교할 것이 없어 매번 전량 전송이다(앱 SIF 여럿, Drive ~2MB/s). 캐시에 받으면 안 바뀐 파일은 전송 0.
+STAGE="${HEAX_DRIVE_CACHE:-$ROOT_DIR/deploy/apptainer/cache/.drive-dist}"; mkdir -p "$STAGE"
 rclone copy --progress "$SRC/" "$STAGE/"
 [ -f "$STAGE/SHA256SUMS" ] && { ( cd "$STAGE" && sha256sum -c SHA256SUMS ) || { echo "✗ checksum failed"; exit 1; }; echo "  ✓ checksums OK"; }
 
@@ -54,7 +58,7 @@ shopt -s nullglob
 sifs=("$STAGE"/heaxhub_*.sif)
 if [ ${#sifs[@]} -gt 0 ]; then
   mkdir -p "$SIFDIR"
-  for s in "${sifs[@]}"; do cp "$s" "$SIFDIR/"; echo "  ✓ staged $(basename "$s") → $SIFDIR"; done
+  for s in "${sifs[@]}"; do _install_if_changed "$s" "$SIFDIR/$(basename "$s")"; echo "  ✓ staged $(basename "$s") → $SIFDIR"; done
 fi
 shopt -u nullglob
 
@@ -62,11 +66,11 @@ shopt -u nullglob
 mkdir -p "$ROOT_DIR/deploy/apptainer/cache"
 shopt -s nullglob
 for v in "$STAGE"/apptainer_*.deb "$STAGE"/python-*-x86_64-linux.tar.gz; do
-  cp "$v" "$ROOT_DIR/deploy/apptainer/cache/"; echo "  ✓ staged $(basename "$v") → deploy/apptainer/cache/"
+  _install_if_changed "$v" "$ROOT_DIR/deploy/apptainer/cache/$(basename "$v")"; echo "  ✓ staged $(basename "$v") → deploy/apptainer/cache/"
 done
 # base image SIF → SIFDIR (builder 가 localimage 로 사용)
 for b in "$STAGE"/base_*.sif; do
-  mkdir -p "$SIFDIR"; cp "$b" "$SIFDIR/"; echo "  ✓ staged $(basename "$b") → $SIFDIR"
+  mkdir -p "$SIFDIR"; _install_if_changed "$b" "$SIFDIR/$(basename "$b")"; echo "  ✓ staged $(basename "$b") → $SIFDIR"
 done
 shopt -u nullglob
 
@@ -77,8 +81,8 @@ mkdir -p "$ROOT_DIR/var/sifs"
 shopt -s nullglob
 for s in "$STAGE"/*.sif; do
   case "$(basename "$s")" in heaxhub_*|base_*) continue;; esac
-  cp "$s" "$ROOT_DIR/var/sifs/"; echo "  ✓ app SIF $(basename "$s") → var/sifs/"
-  [ -f "$s.hash" ] && cp "$s.hash" "$ROOT_DIR/var/sifs/"
+  _install_if_changed "$s" "$ROOT_DIR/var/sifs/$(basename "$s")"; echo "  ✓ app SIF $(basename "$s") → var/sifs/"
+  [ -f "$s.hash" ] && cp -p "$s.hash" "$ROOT_DIR/var/sifs/"
 done
 shopt -u nullglob
 

@@ -2,6 +2,9 @@
 # Stop HEAXHub local dev stack.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# instance_running 은 _common.sh 에 있다 — 소싱 없이 부르면 rc 127(command not found) 이 '모름(2 아님)' 으로 읽혀 인프라 인스턴스 넷을
+# 무조건 stop 했다(결과는 무해했지만 아래 가드가 죽은 코드였다. 배포 스크립트는 stderr 를 버려 오류가 보이지 않았다 — 2026-09-28 검토).
+source "$ROOT/deploy/apptainer/_common.sh"
 
 # Use the same (extracted, no-D-Bus) apptainer as start.sh — see its header.
 APPTAINER="${HEAX_APPTAINER:-${HEAXHUB_APPT_BIN:-}}"

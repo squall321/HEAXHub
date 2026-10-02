@@ -49,6 +49,12 @@ launch:
     # HWAXRISK_DATA_DIR 은 여기 두지 않는다 — HEAX 런처가 SIF 에 HEAX_DATA_DIR=/data 를 주므로 폴백만으로 충분하고,
     # 호스트 프로세스 실행 시 호스트 /data 오지정을 피한다(plan §8.2.6 P0 확인 항목).
     PYTHONNOUSERSITE: "1"
+    # 앱이 포털을 부르는 주소. 코드 기본값은 dev vite 포트(`127.0.0.1:5283`)라 배포 박스에서는 늘 틀리고,
+    # 틀리면 PAT 등록·폐기 목록 대조·무인 패널이 전부 502 로 죽으면서 **토큰 탓처럼 보인다**(context-notes D36).
+    # HEAXHub `.env` 의 `APPTAINERENV_*` 로도 넣을 수 있지만 그쪽은 런처가 os.environ 에서만 읽어
+    # `.env` 를 소싱하지 않은 재배포에서 조용히 빠진다 — 그래서 매니페스트에 고정한다.
+    # 값은 실제 포털 오리진(nginx)이다. 다른 박스로 옮기면 이 한 줄을 그 박스의 오리진으로 바꾼다.
+    HWAXRISK_PORTAL_BASE: "http://127.0.0.1:8088"
   health_check:
     type: http
     path: /api/health

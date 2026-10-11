@@ -12,15 +12,15 @@ description: |
   설계 IR 스냅샷·diff 위에서 HW/XD 전문가 패널이 리스크·개선·성격을 판정하고 등록부로 누적하는 심사 앱.
   과제의 MCAD(StepForge)·Dyna(DynaForge)·ECAD(ODB 어댑터 계약, 스텁) 소스를 읽기 전용으로 동결해 rr_ir 스냅샷을 만들고,
   상태 평가(rr_state)·3층 diff(rr_diff)를 결론 없이 코드가 정리하며, 좌석 의견을 IR id 에 앵커된 원자로 앱 DB 에 누적한다.
-  - MCP 도구 25종(전부 실구현). 발견 7종 — risk_list_projects(여기서 시작) · risk_get_coverage · risk_list_panels ·
+  - MCP 도구 26종(전부 실구현). 발견 7종 — risk_list_projects(여기서 시작) · risk_get_coverage · risk_list_panels ·
     risk_get_panel_transcript · risk_taxonomy · risk_get_precedents · risk_similar_projects.
     원장 7종 — risk_get_snapshot · risk_get_diff · risk_get_registry · risk_claims_for_ref ·
     risk_submit_panel_result · risk_get_brief(brief_token 과 위임 신원 필요) · risk_add_finding. 범위 밖 id 는 not_visible 이다.
-    Claude 입구 11종 — risk_next_step(어디까지·막힘·다음 도구) · risk_create_project · risk_add_source ·
+    Claude 입구 12종 — risk_next_step(어디까지·막힘·다음 도구) · risk_create_project · risk_add_source ·
     risk_capture_snapshot · risk_ack_gate · risk_get_sameas · risk_decide_sameas · risk_create_diff · risk_open_target ·
-    risk_start_job · risk_job_action. 웹과 같은 라우트를 호출자 신원으로 부르므로 Claude 로 올린 과제·심사가 웹에 그대로 보인다.
+    risk_start_job · risk_job_action · risk_repersist_panel(저장 실패한 패널 다시 저장). 웹과 같은 라우트를 호출자 신원으로 부르므로 Claude 로 올린 과제·심사가 웹에 그대로 보인다.
   - 게이트웨이 사용자 위임: POST /api/auth/sso 가 공유 시크릿(secrets.env 의 HWAXRISK_HEAX_GATEWAY_SECRET)을 받아
-    단기 HMAC 신원 단언을 내주므로, MCP 호출이 서비스 계정이 아니라 호출자 본인 시야로 돈다. 쓰기 도구(입구 9종·결과 제출·
+    단기 HMAC 신원 단언을 내주므로, MCP 호출이 서비스 계정이 아니라 호출자 본인 시야로 돈다. 쓰기 도구(입구 10종·결과 제출·
     사람 finding)와 브리프 수신은 게이트웨이가 위임 헤더(X-Hwax-Delegate-Email)를 실어 받은 단언으로만 받고, 아니면
     delegation_required 로 까닭과 원인별 고칠 곳을 말한다(접힌 계정·서비스 계정으로 대신 쓰지 않는다).
   - MCP 엔드포인트: /apps/hwax_risk/mcp (streamable HTTP, exact Route — 리다이렉트 없음) → 게이트웨이 백엔드 heax-hwax_risk 로 자동 흡수.

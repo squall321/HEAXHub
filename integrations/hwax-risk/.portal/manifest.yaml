@@ -12,13 +12,17 @@ description: |
   설계 IR 스냅샷·diff 위에서 HW/XD 전문가 패널이 리스크·개선·성격을 판정하고 등록부로 누적하는 심사 앱.
   과제의 MCAD(StepForge)·Dyna(DynaForge)·ECAD(ODB 어댑터 계약, 스텁) 소스를 읽기 전용으로 동결해 rr_ir 스냅샷을 만들고,
   상태 평가(rr_state)·3층 diff(rr_diff)를 결론 없이 코드가 정리하며, 좌석 의견을 IR id 에 앵커된 원자로 앱 DB 에 누적한다.
-  - MCP 도구 26종(전부 실구현). 발견 7종 — risk_list_projects(여기서 시작) · risk_get_coverage · risk_list_panels ·
+  - MCP 도구 29종(전부 실구현). 발견 7종 — risk_list_projects(여기서 시작) · risk_get_coverage · risk_list_panels ·
     risk_get_panel_transcript · risk_taxonomy · risk_get_precedents · risk_similar_projects.
     원장 7종 — risk_get_snapshot · risk_get_diff · risk_get_registry · risk_claims_for_ref ·
     risk_submit_panel_result · risk_get_brief(brief_token 과 위임 신원 필요) · risk_add_finding. 범위 밖 id 는 not_visible 이다.
     Claude 입구 12종 — risk_next_step(어디까지·막힘·다음 도구) · risk_create_project · risk_add_source ·
     risk_capture_snapshot · risk_ack_gate · risk_get_sameas · risk_decide_sameas · risk_create_diff · risk_open_target ·
-    risk_start_job · risk_job_action · risk_repersist_panel(저장 실패한 패널 다시 저장). 웹과 같은 라우트를 호출자 신원으로 부르므로 Claude 로 올린 과제·심사가 웹에 그대로 보인다.
+    risk_start_job(mode=panels 는 Tier 패널 잡 · mode=reviews 는 카드 대조 검토 잡 — scope 로 전문가를 고른다) · risk_job_action ·
+    risk_repersist_panel(저장 실패한 패널 다시 저장). 웹과 같은 라우트를 호출자 신원으로 부르므로 Claude 로 올린 과제·심사가 웹에 그대로 보인다.
+    검토 단위 1종 — risk_get_units(카드 대조가 전문가마다 도는 단위의 목록·요약·줄·동결 근거, 크면 next_offset 으로 나눠 준다).
+    카드 대조 검토 2종 — risk_get_cells(전문가 × 단위 셀 격자의 상태·판정 수, next_offset) · risk_get_expert_report(전문가 보고서의
+    마크다운 쪽 — part=summary|units|cards|full, next_page 로 이어 받고 자르지 않는다). 진행은 risk_get_coverage 의 review 칸이다.
   - 게이트웨이 사용자 위임: POST /api/auth/sso 가 공유 시크릿(secrets.env 의 HWAXRISK_HEAX_GATEWAY_SECRET)을 받아
     단기 HMAC 신원 단언을 내주므로, MCP 호출이 서비스 계정이 아니라 호출자 본인 시야로 돈다. 쓰기 도구(입구 10종·결과 제출·
     사람 finding)와 브리프 수신은 게이트웨이가 위임 헤더(X-Hwax-Delegate-Email)를 실어 받은 단언으로만 받고, 아니면
@@ -30,6 +34,8 @@ description: |
     findings·curation·patterns·precedents·vocab·export/import), 전 핸들러가 heax 신원 되묻기를 거친다.
   - 헬스체크: /api/health → {ok, app_version, schema_version}. 웹 UI 는 / 의 Vite/React SPA(화면 6종 — 홈·과제·스냅샷·비교·타깃·설정).
   - 데이터 경로: HWAXRISK_DATA_DIR > HEAX_DATA_DIR > <리포>/data, DB 파일 <data>/risk_review.db(단일 진실 원천, PRAGMA user_version, rr_* 41표).
+  - 카드 대조 검토(심사 대상의 flow=cells, 재설계 M2)는 박스마다 켠다 — <data>/knobs.env 에 HWAXRISK_REVIEW_ENABLED=1 한 줄.
+    검토 손잡이는 환경변수 > knobs.env > 코드 기본값 순이고 값과 출처는 GET /api/meta/runtime(관리자)이 보인다. launch.env 에는 적지 않는다.
   fastapi_react 스택(backend/ + frontend/) 기본 entrypoint(uvicorn app.main:app --root-path $ROOT_PATH)를 그대로 사용하며,
   SIF 빌드 훅 backend/scripts/heaxhub-build.sh 가 PYTHONNOUSERSITE=1 로 런타임 의존성을 hermetic 하게 재설치한다.
   loopback 바인드 + Caddy 경계 전제로 MCP DNS-rebinding Host 검증은 비활성화되어 있다.

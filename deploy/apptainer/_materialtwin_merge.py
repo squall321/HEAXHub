@@ -36,8 +36,9 @@ PLAN = [
     #   들어가고 그 출처를 쓰는 물성값 197행까지 중복될 참이었다.
     #   실측(8/11 스냅샷 2,134건 대조) — 둘 포함 시 매칭 2,094(유실 40) · **둘 제외 시 2,130(유실 4)**.
     #   빼도 유일성은 온전하다(2,776/2,776). **가변 보강 필드는 자연키에 넣지 마라.**
-    ("source",              ["kind", "doi", "isbn", "url", "title",
-                             "publisher", "license"], []),
+    # **`publisher` 도 뺐다**(2026-10-17, cae00 리뷰 X3) — 같은 까닭이다. 나중에 채워진 발행처 때문에 같은 출처가 새 행이 되어
+    #   정정 4건이 중복으로 들어갔다(재료 254). 빼도 유일하다(dev 3,165/3,165 — 발행처가 채워진 행 1,327).
+    ("source",              ["kind", "doi", "isbn", "url", "title", "license"], []),
     ("property_value",      ["material_id", "property_key", "value_num", "value_text",
                              "unit", "conditions", "method", "source_id"],
                             [("material_id", "material"), ("source_id", "source")]),
@@ -418,7 +419,7 @@ SOURCE_MOVE_MARKER = "moved_from_source"
 # 63차 YC 가 잡았다(RP-1121 전방사율 5행). 세어 보니 `migrated_from` 을 단 행이 456 이고
 # 47차 IA 의 영률 336행이 같은 자리다 — **역대 키 이동 전부가 dev 에 갇혀 있었다.**
 KEY_MOVE_MARKER = "migrated_from"
-SOURCE_NATURAL_KEY = ("kind", "doi", "isbn", "url", "title", "publisher", "license")
+SOURCE_NATURAL_KEY = ("kind", "doi", "isbn", "url", "title", "license")
 
 
 def source_prior(cond_text):

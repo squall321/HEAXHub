@@ -1,11 +1,14 @@
-# appdata-merge-from-drive.sh — SQLite 부속 파일을 운영에 심지 않고, 안전백업은 WAL 까지 담는지(10-17 cae00 리뷰 X1 · X2)
+# appdata-merge-from-drive.sh — SQLite 부속 파일을 운영에 심지 않고, 안전백업은 WAL 까지 담는지 · 출처 자연키에 발행처가 없는지(10-17 cae00 리뷰 X1 · X2 · X3)
 #
 # 스크립트 원문을 가짜 루트에 복사해 돌린다. Drive 는 가짜 rclone(PATH 맨 앞), 병합기는 대역이다 — 대역은 예전 병합기처럼
 # staging 사본 옆에 -wal · -shm 을 만든다(mode=ro 로 WAL 모드 DB 를 열면 생기던 것).
+import importlib.util
 import io
+import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -109,6 +112,22 @@ def test_안전백업은_앱이_쓰는_중인_DB_의_WAL_까지_담는다(box):
         assert n == 11, f"안전백업이 WAL 의 10행을 빠뜨렸다({n}행)"
     finally:
         app.close()
+
+
+def _merger_module(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["_materialtwin_merge.py", "src.db", "dst.db"])
+    spec = importlib.util.spec_from_file_location("mt_merge_under_test", APPT / "_materialtwin_merge.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_출처_자연키는_두_목록이_같고_나중에_채워지는_발행처가_없다(monkeypatch):
+    """발행처가 나중에 채워지자 같은 출처가 새 행이 되어 정정 4건이 중복으로 들어갔다(재료 254). 두 목록이 어긋나면 출처 병합 분기가 조용히 죽는다."""
+    m = _merger_module(monkeypatch)
+    plan_key = next(k for t, k, _ in m.PLAN if t == "source")
+    assert plan_key == list(m.SOURCE_NATURAL_KEY)
+    assert "publisher" not in plan_key and "authors" not in plan_key and "year" not in plan_key
 
 
 def test_병합기는_staging_사본을_immutable_로_연다():

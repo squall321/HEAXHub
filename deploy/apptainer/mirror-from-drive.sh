@@ -80,7 +80,16 @@ else
   echo "! Drive 에 npm 미러 없음 — 생략"
 fi
 
-[ "$GOT" = 1 ] || { echo "✗ Drive 에 pip·npm 미러가 하나도 없음. 온라인에서: ./deploy/apptainer/mirror-to-drive.sh"; exit 1; }
+if [ "$GOT" != 1 ]; then
+  # 미리 받은 SIF 로 도는 박스(포털 deploy-all)는 미러가 없어도 된다 — 거기서 부를 때(HEAX_MIRROR_OPTIONAL=1)는 ○ 와 3(건너뜀,
+  # 포털 skip-ledger 규약)으로 말한다. 매 업데이트에 빨간 ✗ 가 찍혀 진짜 실패와 섞였다(10-17 cae00 리뷰 P9). 단독 실행(소스로 SIF 를
+  # 빌드하려는 박스)은 그대로 ✗ 와 1 이다 — 거기서는 미러가 빌드의 전제다.
+  if [ "${HEAX_MIRROR_OPTIONAL:-0}" = 1 ]; then
+    echo "○ Drive 에 pip·npm 미러가 없다 — 미리 받은 SIF 로 도는 앱에는 필요 없다(소스 빌드가 필요하면 온라인에서: ./deploy/apptainer/mirror-to-drive.sh)"
+    exit 3
+  fi
+  echo "✗ Drive 에 pip·npm 미러가 하나도 없음. 온라인에서: ./deploy/apptainer/mirror-to-drive.sh"; exit 1
+fi
 
 echo
 echo "✓ 미러 수령 완료"

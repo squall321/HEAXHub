@@ -190,9 +190,11 @@ if ! _inst_up heax-caddy; then
     "$CADDY_SIF" heax-caddy >> var/logs/caddy-start.log 2>&1
   # Caddy in the instance: run with our bootstrap config, fully detached.
   # Caddy 2.x defaults to JSON for *.json — don't pass --adapter json (invalid).
+  # 로그는 Caddy 가 직접 /data/caddy.log 에 쓰고 64MB 마다 돌린다(bootstrap 의 logging.writer — 예전엔 이 셸이 > 로 받아 회전이
+  # 없었다: cae00 557MB, 10-17 결정 16). 여기 남는 것은 설정을 읽기 전의 기동 줄 · 패닉뿐이다.
   "$APPTAINER" exec instance://heax-caddy sh -c "
     setsid nohup caddy run --config /etc/caddy/bootstrap.json \
-      > /data/caddy.log 2>&1 < /dev/null &
+      >> /data/caddy-stdio.log 2>&1 < /dev/null &
   " > /dev/null 2>&1
   # wait for admin API readiness — 30s total (60 × 0.5s)
   for i in $(seq 1 60); do
@@ -241,7 +243,16 @@ if curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
   fi
 fi
 
+# 백엔드 · 워커 · beat 로그는 덧붙여 쓴다 — 예전엔 기동마다 > 로 열어 앞 기록과, 바로 앞에서 backend.log 에 덧붙인 alembic 출력까지
+# 지웠다(10-17 결정 16). 기동 때 64MB 를 넘었으면 한 벌(.1)만 넘긴다. O_APPEND 라 포털 logrotate(copytruncate)도 안전하다.
+_keep_log() {
+  local f="$1"
+  [ -f "$f" ] && [ "$(stat -c %s "$f" 2>/dev/null || echo 0)" -gt 67108864 ] && mv -f "$f" "$f.1"
+  return 0
+}
+
 if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
+  _keep_log var/logs/backend.log
   # 배포 마이그레이션 — 과거엔 alembic 이 install_all.sh(최초설치)에만 있어, 이미 떠 있던
   # cae00 DB 엔 신규 마이그레이션이 영영 반영 안 됐다(스키마 드리프트). 백엔드 기동 직전 멱등
   # upgrade 로 항상 최신화. 백엔드가 이미 떠 있으면(워치독) 이 블록 자체가 skip 돼 부담 없음.
@@ -250,7 +261,7 @@ if ! curl -sf "http://localhost:$API_PORT/health" >/dev/null 2>&1; then
     >> var/logs/backend.log 2>&1 || echo "  ⚠ alembic upgrade 실패 — var/logs/backend.log 확인"
   echo "→ start backend (uvicorn :$API_PORT)"
   nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port '"$API_PORT" \
-    > var/logs/backend.log 2>&1 &
+    >> var/logs/backend.log 2>&1 &
   disown
   # rev 는 '띄운 즉시' 기록한다. 준비완료 뒤에 기록하면, 기동 시 reconcile 이 오래 걸려
   # readiness 를 못 채운 경우 rev 가 안 남고 → 매분 도는 워치독이 start.sh 를 부를 때마다
@@ -278,15 +289,17 @@ fi
 
 if ! pgrep -f "celery -A app.workers.celery_app worker" >/dev/null; then
   echo "→ start celery worker"
+  _keep_log var/logs/worker.log
   nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/celery -A app.workers.celery_app worker --loglevel=info --concurrency=2' \
-    > var/logs/worker.log 2>&1 &
+    >> var/logs/worker.log 2>&1 &
   disown
 fi
 
 if ! pgrep -f "celery -A app.workers.celery_app beat" >/dev/null; then
   echo "→ start celery beat"
+  _keep_log var/logs/beat.log
   nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/celery -A app.workers.celery_app beat --loglevel=info --schedule=../var/celerybeat-schedule' \
-    > var/logs/beat.log 2>&1 &
+    >> var/logs/beat.log 2>&1 &
   disown
 fi
 

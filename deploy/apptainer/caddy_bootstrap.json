@@ -5,7 +5,15 @@
   "logging": {
     "logs": {
       "default": {
-        "level": "INFO"
+        "level": "INFO",
+        "writer": {
+          "output": "file",
+          "filename": "/data/caddy.log",
+          "roll_size_mb": 64,
+          "roll_keep": 5,
+          "roll_keep_days": 30,
+          "roll_gzip": true
+        }
       }
     }
   },

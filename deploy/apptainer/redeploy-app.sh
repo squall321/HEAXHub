@@ -106,15 +106,20 @@ if [[ -n "$INFO" ]]; then
   # base 없이 → 3개 실패, base 붙여서 → 10개 실패).
   # `|| echo 000` 은 쓰지 않는다 — curl 은 실패에도 -w 로 이미 000 을 찍어 '000000' 이 된다.
   BARE="${BASE%/}"
-  code=000; hit=""
+  # 판정(500 미만 하나면 산다)은 런처와 같고, 보이는 것은 2xx · 3xx 를 먼저 고른다 — 예전엔 처음 500 미만에서 멈춰, 헬스가 /api/health
+  # 인 앱(리스크 앱)도 첫 후보 /apps/<앱>/api/health 의 404 로 'health=404' 를 찍었다(앱은 정상 — 10-17 보고).
+  code=000; hit=""; ok_code=""; ok_hit=""
   for u in "$BASE$HP" "$HP" "$BASE" "$BARE"; do
     c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://127.0.0.1:$PORT$u" 2>/dev/null)"
     c="${c:-000}"
-    if [ "$c" != "000" ] && [ "$c" -lt 500 ]; then code="$c"; hit="$u"; break; fi
+    if [ "$c" != "000" ] && [ "$c" -lt 400 ]; then ok_code="$c"; ok_hit="$u"; break; fi
+    if [ "$c" != "000" ] && [ "$c" -lt 500 ] && [ -z "$hit" ]; then code="$c"; hit="$u"; fi
     [ "$code" = "000" ] && code="$c"
   done
-  if [ -n "$hit" ]; then
-    echo "✓ 재기동 완료 — port=$PORT health($hit)=$code"
+  if [ -n "$ok_hit" ]; then
+    echo "✓ 재기동 완료 — port=$PORT health($ok_hit)=$ok_code"
+  elif [ -n "$hit" ]; then
+    echo "✓ 재기동 완료 — port=$PORT 앱은 응답한다(health($hit)=$code — 2xx 를 내는 헬스 경로는 못 찾았다)"
   else
     echo "✗ 재기동 실패 — port=$PORT, 후보 경로 4개 모두 실패(마지막 코드 $code)" >&2
     echo "   시도: $BASE$HP | $HP | $BASE | $BARE" >&2

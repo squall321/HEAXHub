@@ -497,7 +497,9 @@ def cols_of(cur, t):
     return [r[1] for r in cur.execute(f"PRAGMA table_info('{t}')")]
 
 def main():
-    s = sqlite3.connect(f"file:{SRC}?mode=ro", uri=True); s.row_factory = sqlite3.Row
+    # immutable — staging 사본은 아무도 쓰지 않는다. mode=ro 만이면 WAL 모드 DB 를 열며 staging 에 -wal · -shm 을 만들고, 그것이
+    # 비-DB 시드로 운영 DB 옆에 심겼다(10-17 cae00 리뷰 X1). 스냅샷은 백업 API 로 만들어 -wal 이 없다(appdata-to-drive.sh).
+    s = sqlite3.connect(f"file:{SRC}?mode=ro&immutable=1", uri=True); s.row_factory = sqlite3.Row
     d = sqlite3.connect(DST); d.execute("PRAGMA foreign_keys=OFF")  # 재매핑 중 임시 OFF, 끝나고 검증
     dc = d.cursor(); sc = s.cursor()
     remap = {}   # table -> { src_id -> dst_id }

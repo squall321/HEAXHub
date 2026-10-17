@@ -31,8 +31,13 @@ while IFS= read -r sdb; do
     mkdir -p "$(dirname "$live")"; cp "$sdb" "$live"
     echo "  · $rel: 라이브 없음 → 시드 복사(첫 배포)"; continue
   fi
-  # 운영 직전 안전백업(롤백용, 로컬)
-  cp "$live" "$live.pre-merge-$(date -u +%Y%m%d-%H%M%SZ)" 2>/dev/null || true
+  # 운영 직전 안전백업(롤백용, 로컬) — cp 가 아니라 SQLite 백업 API 다. 앱이 쓰는 중이면 최근 쓰기가 -wal 에만 있어 cp 사본은 그것을
+  # 빠뜨린다(10-17 cae00 리뷰 X2 — 리스크 DB 사본이 스키마 2 · 자격 0행이었다, 실제는 3 · 1행).
+  python3 - "$live" "$live.pre-merge-$(date -u +%Y%m%d-%H%M%SZ)" <<'PY' || echo "    ⚠ $rel: 안전백업 실패 — 롤백 사본 없이 merge 한다"
+import sqlite3, sys
+s = sqlite3.connect(sys.argv[1]); d = sqlite3.connect(sys.argv[2])
+s.backup(d); d.close(); s.close()
+PY
   echo "  → merge: $rel"
   if out="$(python3 "$MERGER" "$sdb" "$live" 2>&1)"; then
     echo "    ✓ $out"
@@ -51,7 +56,10 @@ while IFS= read -r sf; do
   [ -f "$live" ] && continue   # 기존 파일 보존(merge 대상 아님)
   mkdir -p "$(dirname "$live")"
   if cp "$sf" "$live" 2>/dev/null; then echo "  · seed(non-db): $rel"; fi
-done < <(find "$STAGE/src" -type f ! -name "*.db" 2>/dev/null)
+# SQLite 부속 파일(-wal · -shm · -journal) · 잠금 · 안전백업은 심지 않는다 — 운영 DB 옆에 남의 -wal 이 놓이면 SQLite 는 그것이 이 DB 의
+# 것인지 가리지 못하고 다음 열 때 되살린다(10-17 cae00 리뷰 X1 — 그때는 병합기가 staging 에서 만든 빈 파일이라 무해했다).
+done < <(find "$STAGE/src" -type f ! -name "*.db" ! -name "*-wal" ! -name "*-shm" ! -name "*-journal" \
+           ! -name "*.lock" ! -name "*.pre-merge-*" 2>/dev/null)
 
 [ "$rc" = 0 ] && echo "✓ app-data merge 완료 — dev 신규 반영 + cae00 데이터 보존" \
              || echo "⚠ 일부 merge 실패 — 위 로그 확인(운영 DB 는 안전백업으로 롤백 가능)"

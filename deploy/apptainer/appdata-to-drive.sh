@@ -11,7 +11,14 @@ env_get() { [ -f .env ] && sed -n "s/^$1=//p" .env | tail -1 | sed 's/^["'"'"']/
 REMOTE="${HEAX_DRIVE_REMOTE:-$(env_get HEAX_DRIVE_REMOTE)}"
 [ -n "$REMOTE" ] || { echo "✗ HEAX_DRIVE_REMOTE 미설정 (.env, 예: HeaxDrive:HEAXHub/dist)"; exit 1; }
 REMOTE="${REMOTE%/}"; REMOTE="${REMOTE%/dist}"          # dist 형제로 app-data/ 사용
-DEST="$REMOTE/app-data"
+# 칸(HEAX_APPDATA_CHANNEL)과 앱(HEAX_APPDATA_ONLY) — 리스크 앱의 매일 암호 백업처럼 한 앱만 박스별 칸에 올릴 때(HWAXRisk
+# backend/scripts/backup-to-drive.sh, 10-17 결정 2). 기본 칸 app-data 는 dev 가 올리고 cae00 이 병합해 받는 공유 칸이다 — 다른 박스가
+# 거기 올리면 그 흐름을 뒤섞는다.
+CHANNEL="${HEAX_APPDATA_CHANNEL:-app-data}"
+ONLY="${HEAX_APPDATA_ONLY:-}"
+_bad_rel() { case "$1" in ''|/*|..|../*|*/..|*/../*) return 0 ;; *) return 1 ;; esac; }
+_bad_rel "$CHANNEL" && { echo "✗ HEAX_APPDATA_CHANNEL 이 이상하다: $CHANNEL"; exit 1; }
+DEST="$REMOTE/$CHANNEL"
 RETAIN="${HEAX_DRIVE_RETAIN:-$(env_get HEAX_DRIVE_RETAIN)}"; RETAIN="${RETAIN:-5}"
 RCLONE="$(command -v rclone || true)"
 [ -n "$RCLONE" ] || { echo "✗ rclone 미설치"; exit 1; }
@@ -22,14 +29,22 @@ APPDATA="$ROOT_DIR/var/app_data"
 TS="$(date -u +%Y%m%d-%H%M%SZ)"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 SNAP="$STAGE/app_data"; mkdir -p "$SNAP"
-cp -a "$APPDATA/." "$SNAP/"
+if [ -z "$ONLY" ]; then
+  cp -a "$APPDATA/." "$SNAP/"
+else
+  for a in $ONLY; do
+    _bad_rel "$a" && { echo "✗ HEAX_APPDATA_ONLY 의 앱 이름이 이상하다: $a"; exit 1; }
+    [ -d "$APPDATA/$a" ] || { echo "✗ var/app_data/$a 가 없다"; exit 1; }
+    mkdir -p "$SNAP/$(dirname "$a")"; cp -a "$APPDATA/$a" "$SNAP/$a"
+  done
+fi
 
 # SQLite DB 는 WAL 사본 대신 .backup 원자적 스냅샷으로 교체(쓰기 중에도 일관)
 python3 - "$APPDATA" "$SNAP" <<'PY'
 import sys, os, glob, sqlite3
 src_root, snap_root = sys.argv[1], sys.argv[2]
-for db in glob.glob(os.path.join(src_root, "**", "*.db"), recursive=True):
-    rel = os.path.relpath(db, src_root); dst = os.path.join(snap_root, rel)
+for dst in glob.glob(os.path.join(snap_root, "**", "*.db"), recursive=True):   # 사본에 든 것만(HEAX_APPDATA_ONLY 이면 그 앱만)
+    rel = os.path.relpath(dst, snap_root); db = os.path.join(src_root, rel)
     for ext in ("-wal", "-shm"):                 # WAL/SHM 사본은 스냅샷에 불필요
         if os.path.exists(dst + ext): os.remove(dst + ext)
     try:
@@ -52,6 +67,23 @@ find "$SNAP" \( -name 'cred.key' -o -name 'secrets.env' \) -type f -print -delet
 # 5배 넘게 부풀리고 있었다. 원본은 건드리지 않는다 — $SNAP 은 사본이다.
 find "$SNAP" \( -name '*.db.pre-*' -o -name '*.db.bak*' \) -type f -delete -print \
   | sed 's|^|  · 제외(죽은 백업) |' || true
+
+# 빼 달라고 한 경로(HEAX_BACKUP_EXCLUDE — var/app_data 기준, 공백으로 가름)와, 암호 사본(*.age)이 곁에 있는 평문은 싣지 않는다 — 누가
+# 부르든(포털 build-all 도 이 스크립트를 부른다) 평문이 나가지 않게. 예전엔 이 변수를 읽지 않아 리스크 DB 평문이 암호 사본과 함께
+# 올라갔다(10-17 결정 2). `<x>.age` 의 평문은 `<x>`(파일 — -wal · -shm · -journal 도) 또는 `<x>` 가 `.tar` 로 끝나면 그 이름의 폴더다.
+_drop() {  # $1=SNAP 안 경로 · $2=까닭
+  [ -e "$1" ] || return 0
+  rm -rf -- "$1" "$1-wal" "$1-shm" "$1-journal"; echo "  · 제외($2) ${1#"$SNAP/"}"
+}
+for rel in ${HEAX_BACKUP_EXCLUDE:-}; do
+  _bad_rel "$rel" && { echo "✗ HEAX_BACKUP_EXCLUDE 의 경로가 이상하다: $rel"; exit 1; }
+  _drop "$SNAP/$rel" 요청
+done
+while IFS= read -r enc; do
+  plain="${enc%.age}"
+  _drop "$plain" "암호 사본이 있다"
+  [ "${plain%.tar}" != "$plain" ] && [ -d "${plain%.tar}" ] && _drop "${plain%.tar}" "암호 사본이 있다"
+done < <(find "$SNAP" -name '*.age' -type f 2>/dev/null)
 tar -czf "$STAGE/app-data.tar.gz" -C "$SNAP" .
 SZ="$(du -h "$STAGE/app-data.tar.gz" | cut -f1)"
 echo "→ 업로드 $DEST/app-data-$TS/  (+ latest/)  [$SZ]"

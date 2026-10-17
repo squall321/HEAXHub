@@ -27,6 +27,7 @@ State file robustness
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -118,14 +119,110 @@ _PREFIX_AWARE_STACKS = frozenset({
 @dataclass(slots=True)
 class LaunchResult:
     slug: str
-    action: str  # "skipped" | "started" | "already_running" | "failed"
+    action: str  # "skipped" | "started" | "already_running" | "failed" | "backoff"(앞선 실패로 다음 시도를 늦추는 중)
     port: int | None
     base_path: str | None
     pid: int | None = None
     error: str | None = None
 
 
+# ── 되풀이 기동 실패 억제(10-17 cae00 리뷰 X4) ─────────────────────────────────────
+# reconcile(45초) · scan(5분)은 서비스 앱마다 launch() 를 다시 부른다. 늘 실패하는 앱(cae00 heax_demo_nextjs — corepack 이
+# 사내 인증서로 pnpm 을 못 받는다)은 그때마다 새로 띄워져 앱 출력과 'launch failed' 를 로그에 쌓았다(09-22~ 48,600여 회 · 392MB).
+# 실패하면 다음 시도를 60초부터 두 배씩 늦춘다(상한 1시간). 매니페스트 · SIF 가 바뀌거나, 성공하거나, 운영자가 stop() 하면
+# (redeploy-app.sh) 지운다. 기록은 상태 파일(<앱>.json — '한 번이라도 뜬 앱' 판정, mcp._ever_launched)과 다른 이름이다.
+_BACKOFF_BASE_S = 60
+_BACKOFF_MAX_S = 3600
+
+
+def _backoff_path(canonical: str) -> Path:
+    return STATE_DIR / f"{canonical}.launch-backoff"
+
+
+def _launch_fingerprint(manifest: dict[str, Any], sif_path: Path | None) -> str:
+    """무엇이 바뀌면 곧바로 다시 시도하나 — 매니페스트 내용과 SIF(크기 · 시각)."""
+    h = hashlib.sha256(json.dumps(manifest, sort_keys=True, default=str).encode("utf-8"))
+    if sif_path is not None:
+        try:
+            st = sif_path.stat()
+            h.update(f"{st.st_size}:{st.st_mtime_ns}".encode())
+        except OSError:
+            h.update(b"no-sif")
+    return h.hexdigest()[:16]
+
+
+def _read_backoff(canonical: str) -> dict | None:
+    try:
+        d = json.loads(_backoff_path(canonical).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) else None
+
+
+def _note_launch_failure(canonical: str, fp: str, error: str | None) -> tuple[int, int]:
+    """실패를 세고 다음 시도까지의 초를 정한다. → (몇 번째 실패, 기다릴 초)."""
+    prev = _read_backoff(canonical)
+    n = int(prev.get("failures", 0)) + 1 if prev and prev.get("fp") == fp else 1
+    wait = min(_BACKOFF_BASE_S * 2 ** (n - 1), _BACKOFF_MAX_S)
+    try:
+        _backoff_path(canonical).write_text(json.dumps({
+            "fp": fp, "failures": n, "next_at": time.time() + wait, "error": (error or "")[:500],
+        }), encoding="utf-8")
+    except OSError:  # 기록을 못 해도 기동 판정은 그대로 — 다음 호출이 다시 시도할 뿐이다
+        pass
+    try:
+        with (LOG_DIR / f"integration_{canonical}.log").open("a", encoding="utf-8") as fh:
+            fh.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 기동 실패 {n}번째 — 다음 시도 {wait}초 뒤(매니페스트 · SIF 가 바뀌면 "
+                     f"곧바로). 지금 다시 하려면 redeploy-app.sh 또는 {_backoff_path(canonical)} 를 지운다\n")
+    except OSError:
+        pass
+    return n, wait
+
+
+def _clear_backoff(canonical: str) -> None:
+    try:
+        _backoff_path(canonical).unlink()
+    except OSError:
+        pass
+
+
 def launch(
+    workspace: Path,
+    *,
+    manifest: dict[str, Any],
+    db,
+    slug: str | None = None,
+    source: dict[str, Any] | None = None,
+    sif_path: Path | None = None,
+) -> LaunchResult:
+    """Ensure a healthy service is running for this integration — 서비스 앱의 되풀이 실패는 늦춰서 다시 한다(위 X4).
+
+    나머지는 :func:`_launch_once` 그대로다. 앞선 실패로 기다리는 중이면 띄우지 않고 ``action="backoff"`` 를 돌려준다 — 단, 상태 파일의
+    프로세스가 살아 있으면 막지 않는다(살아 있는지 · 건강한지는 아래가 판정한다).
+    """
+    if (manifest.get("launch") or {}).get("mode") != "service":
+        return _launch_once(workspace, manifest=manifest, db=db, slug=slug, source=source, sif_path=sif_path)
+    name = slug or workspace.name
+    canonical = manifest.get("id") or name.replace("-", "_")
+    fp = _launch_fingerprint(manifest, sif_path)
+    rec = _read_backoff(canonical)
+    if rec and rec.get("fp") == fp:
+        wait = float(rec.get("next_at", 0)) - time.time()
+        state = _read_state(canonical)
+        if wait > 0 and not (state and _is_alive(state.get("pid"))):
+            return LaunchResult(
+                slug=name, action="backoff", port=None, base_path=f"/apps/{canonical}",
+                error=f"기동 실패 {rec.get('failures')}번 — 다음 시도 {int(wait)}초 뒤(마지막 오류: {rec.get('error')})",
+            )
+    lr = _launch_once(workspace, manifest=manifest, db=db, slug=slug, source=source, sif_path=sif_path)
+    if lr.action == "failed":
+        _note_launch_failure(canonical, fp, lr.error)
+    elif lr.action in ("started", "already_running"):
+        _clear_backoff(canonical)
+    return lr
+
+
+def _launch_once(
     workspace: Path,
     *,
     manifest: dict[str, Any],
@@ -358,7 +455,7 @@ def launch(
     # truncate each other and we tolerate non-UTF-8 binary output from the
     # child (rare but happens with some launchers).
     try:
-        log_fh = log_file.open("ab")
+        log_fh = _open_app_log(log_file)
     except OSError as exc:
         return LaunchResult(
             slug=slug, action="failed", port=None, base_path=base_path,
@@ -423,6 +520,20 @@ def launch(
     return LaunchResult(
         slug=slug, action="started", port=port, base_path=base_path, pid=proc.pid,
     )
+
+
+_APP_LOG_ROTATE_BYTES = 64 * 1024 * 1024
+
+
+def _open_app_log(log_file: Path):
+    """앱 로그를 덧붙여 연다 — 새로 띄울 때만 불린다. 이보다 크면 한 벌(.1)만 넘기고 새로 연다(10-17 cae00 리뷰 X4 — 통합 로그
+    392MB). 넘기기에 실패해도 기동은 막지 않는다."""
+    try:
+        if log_file.stat().st_size > _APP_LOG_ROTATE_BYTES:
+            os.replace(log_file, log_file.with_name(log_file.name + ".1"))
+    except OSError:
+        pass
+    return log_file.open("ab")
 
 
 def _sif_fail(slug: str, canonical: str, port: int | None, base_path: str,
@@ -608,7 +719,7 @@ def _launch_via_sif(
 
     # ── exec the foreground server inside the instance ───────────────
     try:
-        log_fh = log_file.open("ab")
+        log_fh = _open_app_log(log_file)
     except OSError as exc:
         return LaunchResult(
             slug=slug, action="failed", port=port, base_path=base_path,
@@ -952,6 +1063,8 @@ def stop(canonical: str, *, db) -> bool:
     host-side ``apptainer exec`` pid (it will exit on its own when the
     instance goes away).
     """
+    # 운영자가 손으로 내렸다 올리면(redeploy-app.sh — stop() 을 부르는 유일한 곳) 곧바로 다시 한다(위 X4).
+    _clear_backoff(canonical)
     state = _read_state(canonical)
     killed = False
     instance_name = state.get("instance_name") if state else None

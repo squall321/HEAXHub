@@ -533,18 +533,22 @@ def _maybe_launch(
             # 다만 이 경로는 45초(reconcile)·5분(scan) 주기로 돌므로 매번 남기면 audit 이
             # 폭주한다 — 같은 앱·같은 오류는 _LAUNCH_FAIL_COOLDOWN_S 동안 한 번만 남긴다.
             _audit_launch_failed(db, app=app, error=lr.error)
+        elif lr.action == "backoff":
+            # 앞선 실패로 다음 시도를 늦추는 중(launcher X4) — 그 실패는 이미 audit 에 있다. 요약에는 실패로 센다(아래 반환) —
+            # 'unchanged' 로 보이면 죽어 있는 앱이 다시 조용해진다.
+            logger.debug("integration %s: %s", app.id, lr.error)
         elif lr.action == "started":
             logger.info("integration started: %s pid=%s port=%s",
                         app.id, lr.pid, lr.port)
         else:
             logger.debug("integration %s: %s", app.id, lr.action)
-        if lr.action != "failed":
+        if lr.action not in ("failed", "backoff"):
             # 카탈로그 버전 라벨 대조 — 실패해도 스캔은 계속(부가 진단이지 게이트가 아니다).
             try:
                 _check_version_drift(db, app=app, manifest=manifest, lr=lr)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("version drift check skipped for %s: %r", app.id, exc)
-        return getattr(lr, "action", None)
+        return "failed" if lr.action == "backoff" else getattr(lr, "action", None)
     except Exception as exc:  # noqa: BLE001
         logger.exception("launcher crashed for %s: %s", app.id, exc)
         return "failed"   # 런처가 예외로 죽은 것도 기동 실패다 — 요약에 드러나야 한다

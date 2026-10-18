@@ -69,6 +69,10 @@ STATE_DIR="$ROOT/var/watchdog_state"
 RETRIES=3            # "죽었다" 재검증 횟수
 RETRY_SLEEP=2        # 재검증 간 sleep(초)
 BACKOFF_BASE=60      # 백오프 기준(초): 연속 복구 1회=60s, 2회=120s, 3회=240s ... 상한 1h
+# 막 띄운 백엔드는 기동 reconcile(앱 헬스 · 라우트 재등록) 동안 /health 가 안 뜬다 — 앱 22개에 1분이 넘는다. 그 사이에 죽었다고 보고
+# 다시 띄우면 기동 중인 백엔드를 죽이고 두 번 띄운다(2026-10-18 dev 실측 — start.sh 가 띄운 백엔드를 다음 분의 이 감시가 죽였다).
+# var/run/backend.rev 는 start.sh 가 띄운 즉시 쓰고(이 감시도 다시 띄우면 시각을 새로 찍는다), 그 뒤 이 초 동안은 백엔드를 건드리지 않는다.
+STARTUP_GRACE="${HEAX_WATCHDOG_STARTUP_GRACE:-300}"
 
 log() { echo "[$TS] $*"; }
 
@@ -340,13 +344,19 @@ fi
 # ── 3. Backend / Worker / Beat ────────────────────────────────────
 # Backend
 if confirm_down http_ok "http://localhost:$API_PORT/health"; then
-  if backoff_gate "backend"; then
+  _launched=0
+  [ -f var/run/backend.rev ] && _launched="$(stat -c %Y var/run/backend.rev 2>/dev/null || echo 0)"
+  _age=$(( $(date +%s) - _launched ))
+  if [ "$_age" -lt "$STARTUP_GRACE" ]; then
+    log "  backend: health 실패지만 ${_age}초 전에 띄웠다 — 기동 중일 수 있어 ${STARTUP_GRACE}초까지 기다린다"
+  elif backoff_gate "backend"; then
     log "WARN: backend health failed (confirmed) — restarting uvicorn"
     pkill -f "uvicorn app.main:app.*--port $API_PORT" 2>/dev/null || true
     sleep 1
     nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port '"$API_PORT" \
-      > var/logs/backend.log 2>&1 &
+      >> var/logs/backend.log 2>&1 &
     disown
+    [ -f var/run/backend.rev ] && touch var/run/backend.rev   # 띄운 시각 — 다음 분의 이 감시가 기동 중인 것을 죽이지 않게(내용은 그대로)
     backoff_mark "backend"
     sleep 3
     if http_ok "http://localhost:$API_PORT/health"; then
@@ -364,7 +374,7 @@ if confirm_down sh -c 'pgrep -f "celery -A app.workers.celery_app worker" >/dev/
   if backoff_gate "worker"; then
     log "WARN: celery worker missing (confirmed) — restarting"
     nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/celery -A app.workers.celery_app worker --loglevel=info --concurrency=2' \
-      > var/logs/worker.log 2>&1 &
+      >> var/logs/worker.log 2>&1 &
     disown
     backoff_mark "worker"
     sleep 2
@@ -383,7 +393,7 @@ if confirm_down sh -c 'pgrep -f "celery -A app.workers.celery_app beat" >/dev/nu
   if backoff_gate "beat"; then
     log "WARN: celery beat missing (confirmed) — restarting"
     nohup bash -c 'set -a; source .env; set +a; cd backend && .venv/bin/celery -A app.workers.celery_app beat --loglevel=info' \
-      > var/logs/beat.log 2>&1 &
+      >> var/logs/beat.log 2>&1 &
     disown
     backoff_mark "beat"
     sleep 2

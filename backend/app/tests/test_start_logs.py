@@ -42,3 +42,52 @@ def test_Caddy_는_로그를_스스로_돌린다():
     assert "> /data/caddy.log" not in START and ">> /data/caddy-stdio.log" in START, \
         "셸이 같은 파일을 > 로 쥐면 Caddy 의 회전과 엇갈려 앞을 덮는다"
     assert os.path.basename(w["filename"]) != "caddy-stdio.log"
+
+
+WATCHDOG = (ROOT / "scripts/watchdog.sh").read_text(encoding="utf-8")
+
+
+def test_감시도_로그를_덧붙여_쓴다():
+    """결정 16 은 start.sh 만 고쳤다 — 매분 도는 감시가 백엔드를 다시 띄울 때 `>` 로 열어, 기동 중에 죽은 앞 프로세스의 기록을 지웠다(10-18 dev)."""
+    for name in ("backend", "worker", "beat"):
+        assert not re.search(rf"[^>]> var/logs/{name}\.log", WATCHDOG), f"감시가 {name}.log 를 아직 > 로 연다"
+        assert f">> var/logs/{name}.log 2>&1 &" in WATCHDOG
+
+
+def _backend_block() -> str:
+    i = WATCHDOG.index("# Backend\nif confirm_down")
+    return WATCHDOG[i:WATCHDOG.index("# Celery worker", i)]
+
+
+def test_감시는_막_띄운_백엔드를_기동_중에_죽이지_않는다(tmp_path):
+    """start.sh 가 띄운 백엔드는 기동 reconcile 동안 /health 가 1분 넘게 안 뜬다 — 다음 분의 감시가 그것을 죽이고 두 번 띄웠다(10-18 dev 실측).
+    backend.rev(띄운 즉시 쓰는 기록)의 시각부터 STARTUP_GRACE 초 동안은 건드리지 않는다. pkill · nohup 은 셸 함수로 막아 진짜를 부르지 않는다."""
+    (tmp_path / "var/run").mkdir(parents=True)
+    rev = tmp_path / "var/run/backend.rev"
+    stubs = ("confirm_down() { return 0; }\nhttp_ok() { return 1; }\nlog() { echo \"LOG $*\"; }\n"
+             "backoff_gate() { echo GATE; return 1; }\nhealthy_reset() { echo HEALTHY; }\n"
+             "pkill() { echo PKILL; }\nnohup() { echo NOHUP; }\nrecovered=()\nAPI_PORT=4040\nSTARTUP_GRACE=300\n")
+
+    def run(age: int | None) -> str:
+        if age is None:
+            rev.unlink(missing_ok=True)
+        else:
+            rev.write_text("abc")
+            t = __import__("time").time() - age
+            os.utime(rev, (t, t))
+        r = subprocess.run(["bash", "-c", "set -uo pipefail\n" + stubs + _backend_block()], cwd=tmp_path,
+                           capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+        assert "PKILL" not in r.stdout and "NOHUP" not in r.stdout, "시험은 다시 띄우는 갈래에 들어가지 않는다(backoff_gate 가 막는다)"
+        return r.stdout
+
+    assert "기다린다" in run(10) and "GATE" not in run(10), "막 띄운 백엔드 — 건드리지 않는다"
+    assert "GATE" in run(301) and "기다린다" not in run(301), "기동 여유가 지나면 종전대로 복구를 따진다"
+    assert "GATE" in run(None), "backend.rev 가 없으면(start.sh 를 거치지 않은 박스) 종전대로"
+
+
+def test_감시가_다시_띄우면_띄운_시각을_새로_찍는다():
+    blk = _backend_block()
+    i = blk.index(">> var/logs/backend.log")
+    assert "touch var/run/backend.rev" in blk[i:blk.index('backoff_mark "backend"', i)], \
+        "감시 자신이 띄운 백엔드도 다음 분의 감시가 기동 중에 죽이지 않게"

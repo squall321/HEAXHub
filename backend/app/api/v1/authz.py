@@ -1,4 +1,4 @@
-# Caddy/Traefik forward_auth 용 인가 판정 엔드포인트 (쿠키 JWT → App visibility 검사).
+# Caddy/Traefik forward_auth 용 인가 판정 엔드포인트 (쿠키 JWT · 허브 PAT · 포털 PAT → App visibility 검사).
 """Forward-auth endpoint for reverse-proxy ``forward_auth`` / ``auth_request``.
 
 프록시가 ``/apps/{slug}/`` 요청을 가로채 이 엔드포인트로 서브리퀘스트를 보낸다.
@@ -10,7 +10,15 @@ import re
 from typing import Annotated
 
 from fastapi import APIRouter, Header, Response, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 
+from app.api.v1.portal_sso import (
+    PortalPatRejected,
+    is_portal_pat,
+    portal_pat_read_only,
+    verify_portal_pat,
+)
 from app.core.errors import UnauthorizedError
 from app.core.security import decode_token, is_pat_token
 from app.db.models.app import App, AppStatus, AppVisibility
@@ -38,22 +46,38 @@ def _user_from_request(
     db,
     cookie_token: str | None,
     authorization: str | None,
-) -> User | None:
-    """쿠키 우선, 없으면 Authorization 헤더로 사용자 해석. 토큰 없으면 None."""
+) -> tuple[User | None, dict | None]:
+    """쿠키 우선, 없으면 Authorization 헤더로 사용자 해석. 토큰 없으면 (None, None).
+
+    둘째 값은 포털 PAT 으로 들어왔을 때의 클레임(읽기 전용 판정용), 아니면 None."""
     token = cookie_token
     if not token and authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
     if not token:
-        return None
+        return None, None
     # 헤드리스 클라이언트(MCP·CI)의 PAT — 세션 JWT와 동일 권한으로 해석 (검증 실패 → 401).
     if is_pat_token(token):
-        return pat_service.resolve_user(db, token)
+        return pat_service.resolve_user(db, token), None
+    # 포털 PAT(RS256) — 토큰 하나로 하위 전부(HWAXPortal docs/followups-1017 결정 7). 사람은 이메일로 허브 사용자에
+    # 잇고 권한은 허브 것(can_view_app)만 본다. 허브 계정을 여기서 새로 만들지 않는다 — 포털 타일로 한 번 들어와야 생긴다.
+    if is_portal_pat(token):
+        claims = verify_portal_pat(token)
+        email = str(claims.get("email") or "").strip().lower()
+        user = db.execute(
+            select(User).where(func.lower(User.email) == email)
+        ).scalar_one_or_none() if email else None
+        if user is None:
+            raise PortalPatRejected(
+                403, "허브 계정이 없다 — 포털에서 HEAX Hub 타일을 한 번 눌러 허브에 로그인한 뒤 다시 시도한다")
+        if user.status == UserStatus.DISABLED:
+            raise UnauthorizedError("User not found or disabled")
+        return user, claims
     # 검증 실패(만료·위변조)는 미인증으로 취급해 401 로 흐르게 한다.
     payload = decode_token(token, expected_type="access")
     user = db.get(User, payload["sub"])
     if user is None or user.status == UserStatus.DISABLED:
         raise UnauthorizedError("User not found or disabled")
-    return user
+    return user, None
 
 
 def _is_public_app(app: App) -> bool:
@@ -79,6 +103,7 @@ def authz(
     db: DbSession,
     response: Response,
     x_forwarded_uri: Annotated[str | None, Header()] = None,
+    x_forwarded_method: Annotated[str | None, Header()] = None,
     cookie_token: Annotated[str | None, Header(alias="cookie")] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Response:
@@ -87,6 +112,8 @@ def authz(
     - 토큰이 없고 앱이 공개(COMPANY+STABLE)면 200.
     - 토큰이 없고 비공개면 401.
     - 토큰이 유효하고 ``can_view_app`` 통과면 200, 아니면 403.
+    - 포털 PAT 의 거절은 까닭을 본문(JSON ``detail``)에 싣는다 — 프록시가 그대로 돌려준다.
+      읽기 전용 포털 PAT 은 원 요청(``X-Forwarded-Method``)이 GET · HEAD 일 때만 통과한다.
     """
     slug = _slug_from_uri(x_forwarded_uri)
     if slug is None:
@@ -102,9 +129,11 @@ def authz(
     token = _extract_cookie_value(cookie_token, _SESSION_COOKIE_NAME)
 
     try:
-        user = _user_from_request(db, token, authorization)
+        user, portal_claims = _user_from_request(db, token, authorization)
     except UnauthorizedError:
         return Response(status_code=status.HTTP_401_UNAUTHORIZED)
+    except PortalPatRejected as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
     if user is None:
         # ⚠ portal_auth 앱은 '공개'여도 익명으로 통과시키면 안 된다. 게이트가 2xx 를 주면
@@ -117,6 +146,12 @@ def authz(
         return Response(status_code=status.HTTP_401_UNAUTHORIZED)
 
     if permission_service.can_view_app(db, app, user):
+        if (portal_claims is not None and portal_pat_read_only(portal_claims)
+                and (x_forwarded_method or "").upper() not in ("GET", "HEAD")):
+            return JSONResponse(
+                {"detail": "읽기 전용 포털 토큰 — GET · HEAD 만 연다"},
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
         # portal_auth 프록시 앱용 identity 전파 — forward_auth 게이트가 2xx 응답의
         # 이 헤더들을 업스트림 요청으로 복사한다 (proxy_manager._forward_auth_handler).
         ok = Response(status_code=status.HTTP_200_OK)

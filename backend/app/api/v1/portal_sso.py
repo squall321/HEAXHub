@@ -18,6 +18,7 @@ email/password login, PATs, and launcher tokens keep working untouched.
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import time
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ from app.api.v1.auth import _set_session_cookie
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["portal-sso"])
+logger = logging.getLogger(__name__)
 
 
 # Tiny in-process JWKS cache + replay guard (single-process uvicorn). For multi-replica, back these
@@ -122,6 +124,108 @@ def _verify_portal_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Launch token already used")
     _seen_jti[jti] = float(claims["exp"])
     return claims
+
+
+# ---- 포털 PAT(scope=api) — /apps/* 관문(authz)이 받는다 ------------------------------------
+# HWAXPortal docs/followups-1017 결정 7(10-18) — 사람별 권한은 허브 권한(can_view_app)만 본다.
+# 포털 PAT 은 무기한까지 나가서 폐기(jti)가 유일한 통제다 — 폐기 목록을 한 번도 못 읽었으면 받지 않는다.
+_REVOKED_PATH = "/auth/pat/revoked.json"
+_REVOKED_TTL = 60     # 포털이 Cache-Control max-age=60 으로 낸다(게이트웨이도 60초)
+_REVOKED_RETRY = 10   # 못 읽으면 직전 목록으로 버티고 10초 뒤 다시 — 앱 자산 요청마다 포털을 기다리지 않게
+_revoked_cache: dict[str, Any] = {"jtis": None, "next": 0.0}
+
+
+class PortalPatRejected(Exception):
+    """포털 PAT 거절 — 관문이 이 상태와 까닭을 그대로 돌려준다(401 하나로 뭉개면 까닭이 안 보인다)."""
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
+def _revoked_url() -> str:
+    """폐기 목록은 JWKS 와 같은 포털 앱에 있다 — `<포털>/.well-known/jwks.json` → `<포털>/auth/pat/revoked.json`."""
+    jwks = get_settings().portal_jwks_url
+    if "/.well-known/" not in jwks:
+        return ""
+    return jwks.rsplit("/.well-known/", 1)[0] + _REVOKED_PATH
+
+
+def _revoked_jtis() -> set[str] | None:
+    """폐기된 jti 집합. 한 번도 못 읽었으면 None(받지 않는다)."""
+    now = time.time()
+    if now < _revoked_cache["next"]:
+        return _revoked_cache["jtis"]
+    url = _revoked_url()
+    try:
+        if not url:
+            raise ValueError("PORTAL_JWKS_URL 이 '…/.well-known/…' 꼴이 아니라 폐기 목록 주소를 못 짓는다")
+        with httpx.Client(timeout=3) as client:
+            r = client.get(url)
+            r.raise_for_status()
+            body = r.json()
+        # ⚠ 'revoked' 칸이 없는 응답을 빈 목록으로 받으면 폐기된 토큰이 통과한다(게이트웨이 rest_proxy 와 같은 판정).
+        if not isinstance(body, dict) or not isinstance(body.get("revoked"), list):
+            raise ValueError("폐기 목록 형식이 {'revoked': [jti…]} 가 아니다")
+        _revoked_cache["jtis"] = {str(j) for j in body["revoked"]}
+        _revoked_cache["next"] = now + _REVOKED_TTL
+    except Exception as exc:  # noqa: BLE001 — 값은 남기지 않는다
+        held = _revoked_cache["jtis"]
+        logger.warning("포털 PAT 폐기 목록 갱신 실패(%s) — %s", type(exc).__name__,
+                       f"직전 목록({len(held)}건) 유지" if held is not None else "포털 PAT 을 받지 않는다")
+        _revoked_cache["next"] = now + _REVOKED_RETRY
+    return _revoked_cache["jtis"]
+
+
+def is_portal_pat(token: str) -> bool:
+    """포털이 서명한 토큰(RS256)인가 — 허브 자기 JWT 는 HS256 이라 alg 로 가른다. 포털 SSO 가 꺼져 있으면 늘 아니다."""
+    if not get_settings().portal_jwks_url:
+        return False
+    try:
+        return jwt.get_unverified_header(token).get("alg") == "RS256"
+    except Exception:  # noqa: BLE001 — JWT 가 아니면 다른 길이 판정한다
+        return False
+
+
+def verify_portal_pat(token: str) -> dict[str, Any]:
+    """포털 PAT → 클레임(RS256 · 포털 JWKS · aud heax-hub · scope api · 폐기 목록). 거절은 PortalPatRejected."""
+    settings = get_settings()
+    try:
+        key = _select_key(jwt.get_unverified_header(token).get("kid"))
+    except HTTPException as e:
+        raise PortalPatRejected(401, "포털 공개키(JWKS)에 이 토큰의 kid 가 없다") from e
+    except Exception as e:  # noqa: BLE001 — 포털이 안 닿는다
+        raise PortalPatRejected(503, "포털 공개키(JWKS)를 못 읽었다 — 잠시 뒤 다시") from e
+    try:
+        # ⚠ python-jose 는 PyJWT 식 `"require": [...]` 를 말없이 버린다 — 칸마다 `require_*` 로 준다(없으면 jti 없는 토큰이 500).
+        claims = jwt.decode(
+            token, key, algorithms=["RS256"], audience=settings.portal_audience,
+            options={"require_exp": True, "require_aud": True, "require_sub": True, "require_jti": True,
+                     "leeway": 30},
+        )
+    except Exception as e:  # noqa: BLE001
+        raise PortalPatRejected(
+            401, f"포털 토큰이 거절됐다(서명 · 만료 · 청중 {settings.portal_audience})") from e
+    if claims.get("scope") != "api":
+        raise PortalPatRejected(401, "포털 PAT(scope=api)이 아니다")
+    revoked = _revoked_jtis()
+    if revoked is None:
+        raise PortalPatRejected(503, "포털 폐기 목록을 못 읽어 포털 토큰을 받지 않는다 — 잠시 뒤 다시")
+    if claims["jti"] in revoked:
+        raise PortalPatRejected(401, "폐기된 포털 토큰이다")
+    return claims
+
+
+def portal_pat_read_only(claims: dict[str, Any]) -> bool:
+    """scopes 에 read 가 있고 write 가 없을 때만 — 게이트웨이 rest_proxy.is_read_only 와 같은 판정.
+
+    칸이 없는 옛 PAT 은 포털 기본(read · write)이라 아니다. 챗 · 절차 PAT 의 `["chat"]` 도 아니다."""
+    raw = claims.get("scopes")
+    if not isinstance(raw, list):
+        return False
+    s = {str(x).strip().lower() for x in raw}
+    return "read" in s and "write" not in s
 
 
 def _link_or_create_user(db: DbSession, claims: dict[str, Any]) -> User:

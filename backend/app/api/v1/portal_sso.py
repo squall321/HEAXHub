@@ -107,7 +107,11 @@ def _verify_portal_token(token: str) -> dict[str, Any]:
             # leeway goes in options — python-jose's decode() has NO leeway kwarg (it would
             # TypeError). Tolerates minor portal/HEAX clock skew on split-host deploys; jose
             # validates nbf/iat by default and the portal sets nbf=iat=now.
-            options={"require": ["exp", "aud", "sub", "jti"], "leeway": 30},
+            # ⚠ python-jose silently ignores a PyJWT-style "require": [...] list — each claim needs
+            # its own require_* flag. With the list form a token without aud skipped the audience
+            # check and one without jti/exp 500'd on the replay guard below instead of a 401.
+            options={"require_exp": True, "require_aud": True, "require_sub": True,
+                     "require_jti": True, "leeway": 30},
         )
     except HTTPException:
         raise

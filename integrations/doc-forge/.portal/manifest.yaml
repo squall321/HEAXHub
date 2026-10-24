@@ -2,7 +2,7 @@
 schema_version: 2
 id: doc_forge
 name: DocForge
-version: 0.1.0
+version: 0.2.0
 owner: cae-automation
 status: draft                    # draft 는 게이트웨이에 안 실린다 — M1(포털 연결)에서 beta 로 올린다(beta · stable 만 노출)
 app_type: web_app

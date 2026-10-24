@@ -30,6 +30,7 @@ structured result it can persist or surface in the operator UI.
 """
 from __future__ import annotations
 
+import fcntl
 import functools
 import hashlib
 import json
@@ -37,6 +38,8 @@ import os
 import re
 import shlex
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -176,6 +179,8 @@ class SifBuildResult:
                        hash sentinel matches (cache hit).
       - ``"failed"``   apptainer build returned non-zero / template missing
                        placeholders / OS error.
+      - ``"busy"``     같은 슬러그를 다른 프로세스가 이미 빌드 중 — 아무것도 하지 않았다.
+                       호출자는 이 커밋을 '빌드됨'으로 기록하면 안 된다.
 
     ``sif`` is the absolute path to the SIF when relevant (``built`` or
     cache-hit ``skipped``); ``None`` otherwise. ``hash`` is the cache key
@@ -205,8 +210,60 @@ def build_sif(
     manifest: dict[str, Any],
     fetch_result: dict[str, Any],
 ) -> SifBuildResult:
-    """Build (or cache-hit) the SIF for one integration. Never raises."""
+    """Build (or cache-hit) the SIF for one integration. Never raises.
+
+    같은 슬러그를 동시에 두 번 빌드하지 않는다 — 이미 누가 빌드 중이면 ``action="busy"``.
+    스캐너는 5분마다 돌고 워커는 여럿이라, 25분짜리 빌드 도중 다음 스캔이 아직 성공 기록이 없는
+    같은 커밋을 다시 빌드했다(2026-10-24 voice-recorder: 'SIF built' 가 몇 초 간격으로 두 번씩).
+    두 빌드는 같은 임시 경로(``<slug>.sif.building``)를 써서 서로의 결과를 지울 수 있다.
+    """
     SIF_DIR.mkdir(parents=True, exist_ok=True)
+    with _slug_lock(slug) as acquired:
+        if not acquired:
+            return SifBuildResult(
+                action="busy",
+                sif=None,
+                hash=None,
+                error=None,
+                commit=_commit_identity(fetch_result),
+            )
+        return _build_sif_locked(slug, manifest, fetch_result)
+
+
+@contextmanager
+def _slug_lock(slug: str) -> Iterator[bool]:
+    """슬러그별 빌드 잠금(flock, 비차단). 잡으면 True, 다른 프로세스가 쥐고 있으면 False.
+
+    flock 은 쥔 프로세스가 죽으면 저절로 풀려 중단된 빌드가 다음 스캔을 영구히 막지 않는다.
+    잠금 파일을 못 열면(권한 등) 잠금 없이 진행한다 — build_sif 는 예외를 던지지 않는다.
+    """
+    try:
+        fh = (SIF_DIR / f"{slug}.sif.lock").open("a")
+    except OSError as exc:
+        logger.warning("sif_builder: lock unavailable slug=%s (%s) — building without lock", slug, exc)
+        yield True
+        return
+    try:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            logger.info("sif_builder: build already running slug=%s — busy", slug)
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    finally:
+        fh.close()
+
+
+def _build_sif_locked(
+    slug: str,
+    manifest: dict[str, Any],
+    fetch_result: dict[str, Any],
+) -> SifBuildResult:
+    """build_sif 본체 — _slug_lock 을 쥔 상태에서만 부른다."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     stack = _stack_name(manifest)

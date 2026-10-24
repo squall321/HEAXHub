@@ -174,6 +174,54 @@ def test_calls_apt_runner_with_correct_args(
     assert captured["kwargs"].get("stderr") == subprocess.STDOUT
 
 
+def test_busy_when_another_build_holds_the_slug_lock(
+    isolated_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """다른 프로세스(워커)가 같은 슬러그를 빌드 중이면 apptainer 를 부르지 않고 'busy'."""
+    import fcntl
+
+    def fail_if_called(*args, **kwargs):  # pragma: no cover - assertion only
+        raise AssertionError("apt_runner.run_build must not run while another build holds the lock")
+
+    monkeypatch.setattr(sif_builder.apt_runner, "run_build", fail_if_called)
+
+    # 다른 워커의 빌드를 흉내 낸다 — 같은 잠금 파일을 별도 열기로 쥔다(flock 은 열기 단위라 충돌한다)
+    with (sif_builder.SIF_DIR / "demo-fa.sif.lock").open("a") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = sif_builder.build_sif(
+            slug="demo-fa",
+            manifest=_manifest(stack="fastapi", entrypoint="uvicorn app:app"),
+            fetch_result=_fetch_result(commit="abc123"),
+        )
+
+    assert result.action == "busy"
+    assert result.sif is None
+    assert result.commit == "abc123"
+    assert not (sif_builder.SIF_DIR / "demo-fa.sif").exists()
+
+
+def test_slug_lock_is_released_after_build(
+    isolated_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """빌드가 끝나면 잠금이 풀려 다음 빌드(다른 워커)가 잡을 수 있다."""
+    import fcntl
+
+    def fake_run_build(*, sif_out, def_in, fakeroot, force, **kwargs):
+        Path(sif_out).write_bytes(b"fake")
+        return subprocess.CompletedProcess(args=["build"], returncode=0)
+
+    monkeypatch.setattr(sif_builder.apt_runner, "run_build", fake_run_build)
+    result = sif_builder.build_sif(
+        slug="demo-fa",
+        manifest=_manifest(stack="fastapi", entrypoint="uvicorn app:app"),
+        fetch_result=_fetch_result(commit="abc123"),
+    )
+    assert result.action == "built"
+
+    with (sif_builder.SIF_DIR / "demo-fa.sif.lock").open("a") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)  # 막히면 BlockingIOError 로 실패한다
+
+
 def test_failure_returns_log_tail(
     isolated_dirs: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -61,6 +61,11 @@ with SessionLocal() as db:
         print("[build] SIF 리빌드 …")
         sr = integration_sif_builder.build_sif(slug, manifest, fr)
         print(f"  build: status={getattr(sr, 'status', sr)} sif={getattr(sr, 'sif_path', None)}")
+        if getattr(sr, "action", None) == "busy":
+            # 스캐너가 같은 앱을 빌드하는 중이다. 여기서 재기동하면 옛 SIF 로 '전환'돼 새 커밋이 들어간 줄 착각한다.
+            print("  ✗ 다른 빌드(스캐너)가 이 앱을 빌드하는 중 — 끝난 뒤 --rebuild 없이 다시 실행해 전환하라",
+                  file=sys.stderr)
+            sys.exit(3)
 
     print(f"[stop] {canonical}: {L.stop(canonical, db=db)}")
     lr = L.launch(child, manifest=manifest, db=db, slug=slug, source=src,

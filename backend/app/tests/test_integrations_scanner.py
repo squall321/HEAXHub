@@ -342,6 +342,37 @@ def test_build_failure_records_failed_and_audits(
     assert audit.meta and audit.meta.get("app_id") == app_id
 
 
+def test_busy_build_skips_scan_without_recording_commit(
+    tmp_path: Path,
+    db: Session,
+    admin_user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """다른 워커가 빌드 중(busy)이면 이번 스캔은 커밋을 '빌드됨'으로 남기지 않고, 기동도 하지 않는다."""
+    from app.services import integration_launcher
+
+    _patch_source_pipeline(monkeypatch, fetch_action="updated", sif_action="busy")
+    launched: list = []
+    monkeypatch.setattr(integration_launcher, "launch", lambda *a, **k: launched.append(a))
+    app_id = _unique_app_id()
+    _write_manifest(
+        tmp_path, slug="demo-busy", app_id=app_id, version="1.0.0",
+        stack="flask",
+        extra={
+            "launch": {"mode": "service", "command": "gunicorn app:app"},
+            "source": {"type": "git", "url": "file:///tmp/repo.git", "ref": "main"},
+        },
+    )
+
+    integrations_scanner.scan_integrations(db, root=tmp_path)
+
+    app = db.get(App, app_id)
+    version = db.get(AppVersion, app.current_version_id)
+    assert version.build_status == BuildStatus.BUILDING
+    assert version.git_commit_hash is None
+    assert launched == []
+
+
 def test_unchanged_commit_gated_skips_rebuild(
     tmp_path: Path,
     db: Session,

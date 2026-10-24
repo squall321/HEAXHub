@@ -408,6 +408,15 @@ def _build_and_launch(
         try:
             from app.services import integration_sif_builder  # noqa: PLC0415
             sr = integration_sif_builder.build_sif(slug, manifest, fr)
+            if sr.action == "busy":
+                # 다른 워커가 이 앱의 SIF 를 빌드하는 중 — 이번 스캔은 손대지 않는다. 커밋을 여기서
+                # 기록하면 빌드 없이 '빌드됨' 이력이 생기고(고착 가드 무력화), 기동도 그 빌드가 끝난 뒤
+                # 그 스캔이 맡는다. 상태는 위에서 찍은 BUILDING 그대로 둔다.
+                logger.info("SIF build already in progress for %s — skipping this scan", app.id)
+                return _record_build(
+                    db, app=app, version=version, manifest=manifest,
+                    outcome=BuildOutcome(status=BuildStatus.BUILDING),
+                )
             commit = sr.commit or commit
             if sr.log_path is not None:
                 build_log_path = str(sr.log_path)

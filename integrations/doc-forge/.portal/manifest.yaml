@@ -1,0 +1,47 @@
+# DocForge HEAX Hub 매니페스트 — 등록본은 HEAXHub 리포의 integrations/doc-forge/.portal/manifest.yaml(스캐너는 그 사본만 읽는다 · docs/DEPLOY.md)
+schema_version: 2
+id: doc_forge
+name: DocForge
+version: 0.1.0
+owner: cae-automation
+status: draft                    # draft 는 게이트웨이에 안 실린다 — M1(포털 연결)에서 beta 로 올린다(beta · stable 만 노출)
+app_type: web_app
+execution_target: linux_runner
+description: |
+  PPT · Excel · Word(· PDF)를 Report Archive(RA)의 JSON(+리소스) 패키지로 바꾸는 변환기.
+  - 해부: Docling + 형식별 보강(python-pptx · python-docx · openpyxl) → 중간 표현(IR, docforge-ir/1)
+  - 읽기: 그림 · 그림으로 박힌 차트 · 그림 속 글을 VLM(stcx Qwen)이 판독 — '모델 판독' 으로 표시
+  - 짜기: IR → RA 위젯 · 12칸 격자(정해진 일은 코드, 애매한 판단만 LLM — Pydantic 계약)
+  - 잇기: 사내 온톨로지(StandardPlatform 과제 · 모델 · 부서, RA 엔티티) 후보와 근거
+  - RA 에 넣지 않는다 — 패키지를 포털이 사용자 명의로 넣는다(HWAXPortal docs/doc-to-ra)
+  - 헬스 /health · MCP /apps/doc_forge/mcp(streamable HTTP) · REST /apps/doc_forge/api/v1
+tags: [document, convert, report-archive, docling, vlm, ontology, mcp]
+build:
+  type: python_venv
+  stack: fastapi                  # 없으면 스캐너가 앱을 건너뛴다
+  # extras: [parse, llm]          # pip install -e .[parse,llm] — 무거운 것은 scripts/heaxhub-build.sh 가 따로 깐다(M0 도구 후보 전부)
+launch:
+  mode: service
+  # $HOST · $PORT · $ROOT_PATH 는 허브가 바꿔 넣는다. 기본 진입점(app.main:app)과 모듈 이름이 달라 적는다.
+  command: uvicorn docforge.main:app --host $HOST --port $PORT --root-path $ROOT_PATH
+  env:
+    DOCFORGE_DATA_DIR: /data       # SIF 의 rootfs 는 읽기 전용 — 상태는 전부 /data(= HEAXHub/var/app_data/doc_forge)
+    HF_HOME: /data/models          # Docling 모델 무게는 SIF 에 굽지 않는다(voice-recorder 선례) — models-from-drive 로 받는다
+    HF_HUB_OFFLINE: "1"            # cae00 은 Hugging Face 에 못 닿는다고 본다 — 받아 둔 무게만 쓴다
+    DOCFORGE_MAX_JOBS: "1"
+  health_check: { type: http, path: /health }      # ⚠ launch 아래여야 한다(최상위면 무시) — 20회 × 1초 안에 답해야 뜬다
+  restart_policy: { policy: on_failure, max_attempts: 3 }
+permissions:
+  visibility: team
+resources:
+  cpu: 4
+  memory_gb: 16                  # Docling 레이아웃 · 표 모델 + LibreOffice — M0 실측으로 고친다
+  gpu: false                     # cae00 GPU 는 모른다 — CPU 로 돈다(M0 에서 정한다)
+source:
+  type: git
+  url: https://github.com/squall321/DocForge.git
+  ref: release                   # ⚠ 개발은 main, 배치는 release — dev 가 SIF 를 지어 Drive 에 올린 커밋만 release 로 옮긴다(docs/DEPLOY.md §3)
+mcp:
+  expose: true
+  path: /mcp
+  transport: streamable_http

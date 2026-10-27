@@ -382,7 +382,8 @@ def _launch_once(
     # ── existing process probe ────────────────────────────────────────
     state = _read_state(canonical)
     if state and _is_alive(state.get("pid")) and _is_healthy(
-        state.get("port"), health_path, root=base_path
+        state.get("port"), health_path, root=base_path,
+        prefix_aware=stack_name in _PREFIX_AWARE_STACKS,
     ):
         strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
         # Re-register on every confirmed-alive probe if state says we missed
@@ -525,7 +526,8 @@ def _launch_once(
                 pid=proc.pid,
                 error=f"process exited early code={proc.returncode}; tail of {log_file}",
             )
-        if _is_healthy(port, health_path, root=base_path):
+        if _is_healthy(port, health_path, root=base_path,
+                      prefix_aware=stack_name in _PREFIX_AWARE_STACKS):
             healthy = True
             break
 
@@ -642,7 +644,8 @@ def _launch_via_sif(
         and state.get("instance_name") == instance_name
         and instance_name in running_instances
         and _is_alive(state.get("pid"))
-        and _is_healthy(state.get("port"), health_path, root=base_path)
+        and _is_healthy(state.get("port"), health_path, root=base_path,
+                       prefix_aware=stack_name in _PREFIX_AWARE_STACKS)
     ):
         strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
         needs_caddy = not bool(state.get("caddy_registered"))
@@ -801,7 +804,8 @@ def _launch_via_sif(
                             instance_name=instance_name)
             res.pid = proc.pid
             return res
-        if _is_healthy(port, health_path, root=base_path):
+        if _is_healthy(port, health_path, root=base_path,
+                      prefix_aware=stack_name in _PREFIX_AWARE_STACKS):
             healthy = True
             break
     if not healthy:
@@ -1524,14 +1528,23 @@ def _pid_matches_argv(pid: int, expected_argv: list[str]) -> bool:
     return True
 
 
-def _is_healthy(port: int | None, health_path: str, *, root: str) -> bool:
+def _is_healthy(port: int | None, health_path: str, *, root: str, prefix_aware: bool = False) -> bool:
     """Probe several candidate URLs; anything < 500 (including 3xx redirects
-    Next.js issues for trailing-slash normalization) counts as healthy."""
+    Next.js issues for trailing-slash normalization) counts as healthy.
+
+    ``prefix_aware`` 는 이 앱의 스택이 서브패스를 스스로 처리하는지(``_PREFIX_AWARE_STACKS``,
+    Next.js·Streamlit·Dash 등) 를 알려준다. 그 앱들만 ``root+health_path`` 가 맞는 URL이고,
+    그 외(대부분) 앱은 Caddy 가 프리픽스를 벗겨 전달하므로 그 URL은 **구조적으로 항상 404**다
+    (upstream 을 직접 부르면 200). 그걸 먼저 시도하면 헬스체크마다(45초 reconcile·5분 scan)
+    보장된 404 가 로그에 쌓인다(HH-07) — 판정(아래 어느 URL이든 <500 이면 healthy)은 그대로
+    두고, 순서만 그 앱 종류에 맞는 URL을 앞에 둔다."""
     if not port:
         return False
-    urls = [
-        f"http://127.0.0.1:{port}{root}{health_path}",
-        f"http://127.0.0.1:{port}{health_path}",
+    prefixed = f"http://127.0.0.1:{port}{root}{health_path}"
+    bare = f"http://127.0.0.1:{port}{health_path}"
+    urls = (
+        [prefixed, bare] if prefix_aware else [bare, prefixed]
+    ) + [
         f"http://127.0.0.1:{port}{root}",  # plain root (Next.js redirect)
         f"http://127.0.0.1:{port}{root.rstrip('/')}",  # bare slug, no trailing slash
     ]

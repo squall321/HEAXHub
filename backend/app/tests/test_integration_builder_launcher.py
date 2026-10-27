@@ -170,7 +170,7 @@ def test_launcher_already_running_reuses_state(
 
     monkeypatch.setattr(integration_launcher, "_is_alive", lambda pid: True)
     monkeypatch.setattr(integration_launcher, "_is_healthy",
-                        lambda port, p, *, root: True)
+                        lambda port, p, *, root, prefix_aware=False: True)
 
     register_calls = []
     class _Stub:

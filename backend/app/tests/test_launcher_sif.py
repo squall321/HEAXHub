@@ -77,7 +77,7 @@ def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     # Always healthy + 0 sleep to keep tests fast.
     monkeypatch.setattr(integration_launcher, "_is_healthy",
-                        lambda port, p, *, root: True)
+                        lambda port, p, *, root, prefix_aware=False: True)
     monkeypatch.setattr(integration_launcher, "_is_alive", lambda pid: True)
     monkeypatch.setattr(integration_launcher.time, "sleep", lambda *_a, **_k: None)
     return tmp_path

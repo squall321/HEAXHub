@@ -11,7 +11,7 @@
       flock 패턴 재사용. **다른 항목(HH-06)이 이 위에 쌓이므로 먼저.**
 - [x] HH-06 — SIF 기동 실패 시(`_sif_fail` 경로 + 헬스 영구실패 경로) `apt_runner.instance_stop()`
       호출 — 인스턴스 셸 잔존 제거.
-- [ ] HH-07 — `_is_healthy` 프로브 순서를 prefix-aware 여부에 따라 조정 — 구조적으로 보장된 404
+- [x] HH-07 — `_is_healthy` 프로브 순서를 prefix-aware 여부에 따라 조정 — 구조적으로 보장된 404
       시도를 없앤다(판정은 기존과 동일, 로그만 줄어듦).
 - [ ] HH-02 — `dist-from-drive.sh:40` `_install_if_changed` 를 `cp -p` 제자리 덮어쓰기 →
       temp 파일 + `mv -f` 로 교체(HWAXPortal `hwax_install_if_changed` 패턴).

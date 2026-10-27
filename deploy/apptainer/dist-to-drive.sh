@@ -110,10 +110,28 @@ if [ "${HEAX_DRIVE_WITH_APP_SIFS:-1}" = "1" ]; then
 fi
 
 ( cd "$STAGE" && sha256sum ./* > SHA256SUMS )
+# HH-04: latest/ 를 덮기 **전에** 기존 SHA256SUMS 를 떠 둔다 — 아래 copy 가 latest/SHA256SUMS
+# 를 이번 푸시분만으로 덮으므로, 떠 두지 않으면 과거분 체크섬이 사라진 뒤 그걸 "기존" 으로
+# 오인해 병합하는 꼴이 된다(copy 뒤에 떠서 실측 중 재현 — 의미 없는 병합이 됨).
+_OLD_SUMS="$(rclone cat "$REMOTE/latest/SHA256SUMS" 2>/dev/null || true)"
 echo "→ uploading to $REMOTE/dist-$TS/ (+ latest/)"
 rclone copy --progress "$STAGE/" "$REMOTE/dist-$TS/"
 # latest/ 는 sync(미러·삭제) 대신 copy(누적) — 부분 푸시가 기존 아티팩트를 지우지 않게.
 rclone copy --progress "$STAGE/" "$REMOTE/latest/"
+# ⚠ 위 copy 가 latest/SHA256SUMS 를 이번 푸시분만으로 덮었다 — latest/ 는 누적인데 체크섬
+# 목록은 안 그래서, 부분 푸시(예: 앱 SIF 하나만) 때 과거분 체크섬이 사라지고 받는 쪽은 그
+# 파일들을 대조 없이 설치했다(cae00 운영 수정요청 2026-10-27 HH-04). 위에서 떠 둔 기존
+# latest/SHA256SUMS 로 이번에 올린 파일의 줄만 갈아 끼우고 나머지는 보존해 다시 올린다.
+# dist-$TS/ 의 스냅샷은 그 디렉터리의 실제 내용(이번 푸시분)만 기록해야 맞으므로 위에서
+# 그대로 두고, 여기서는 latest/ 만 건드린다.
+if [ -n "$_OLD_SUMS" ]; then
+  { printf '%s\n' "$_OLD_SUMS"; cat "$STAGE/SHA256SUMS"; } \
+    | awk '{ key=$0; sub(/^[0-9a-fA-F]+[ *]+/, "", key); sums[key]=$0 }
+           END { for (k in sums) print sums[k] }' \
+    | sort -k2 \
+    | rclone rcat "$REMOTE/latest/SHA256SUMS"
+  echo "  ✓ latest/SHA256SUMS 병합(기존 + 이번 푸시분, 줄 꼴 통일)"
+fi
 
 if [ "$RETAIN" -gt 0 ]; then
   echo "→ retention: keep last $RETAIN set(s)"

@@ -15,7 +15,7 @@
       시도를 없앤다(판정은 기존과 동일, 로그만 줄어듦).
 - [x] HH-02 — `dist-from-drive.sh:40` `_install_if_changed` 를 `cp -p` 제자리 덮어쓰기 →
       temp 파일 + `mv -f` 로 교체(HWAXPortal `hwax_install_if_changed` 패턴).
-- [ ] HH-04 — `dist-to-drive.sh` `SHA256SUMS` 를 부분배포 시 통째로 덮지 않고, 기존
+- [x] HH-04 — `dist-to-drive.sh` `SHA256SUMS` 를 부분배포 시 통째로 덮지 않고, 기존
       `latest/SHA256SUMS` 와 병합(이번 배포분만 갱신, 나머지 줄 보존).
 - [ ] HH-05 — `appdata-to-drive.sh` 제외목록에 `knobs.env` 추가 + `appdata-merge-from-drive.sh`
       시드 단계에서 `knobs.env` 제외.

@@ -545,3 +545,86 @@ def test_a_failure_does_not_make_the_app_look_launched(
                                 slug="demo_sif", sif_path=sif)
 
     assert integration_launcher._read_state("demo_sif") is None, "실패인데 기동된 것으로 기록했다"
+
+
+# ---------------------------------------------------------------------------
+# 7. HH-06 (cae00 운영 수정요청 2026-10-27) — 실패 뒤 인스턴스 셸이 남으면 안 된다
+# ---------------------------------------------------------------------------
+#
+# 왜 — instance start 가 성공한 *뒤* 실패하면(exec 예외 · 프로세스 조기종료) apptainer
+# 인스턴스는 떠 있는데 그 안에 앱 프로세스가 없다. 지금까지 `_sif_fail` 은 로그만 쓰고
+# 그 인스턴스를 멈추지 않아 "앱 없는 인스턴스 셸"이 계속 쌓였다.
+
+
+def test_early_exit_stops_the_orphaned_instance(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """exec 는 성공했지만 프로세스가 바로 죽은 경우 — instance start 는 이미 성공했으므로
+    남은 인스턴스를 멈춰야 한다."""
+    ws, sif, _ = _fail_env(tmp_path, monkeypatch, start_rc=0, exec_exits=True)
+    stopped: list[str] = []
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_stop",
+                        lambda name, **kw: stopped.append(name))
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "failed"
+    assert stopped == [integration_launcher._instance_name_for("demo_sif")]
+
+
+def test_exec_exception_stops_the_orphaned_instance(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """instance_exec 가 예외를 던지는 경우(아예 exec 가 안 됨)도 instance start 는
+    이미 성공했으므로 남은 인스턴스를 멈춰야 한다."""
+    ws = tmp_path / "demo_sif"
+    ws.mkdir()
+    sif = tmp_path / "demo_sif.sif"
+    sif.write_bytes(b"fake-sif")
+    stopped: list[str] = []
+
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_list", lambda **_kw: [])
+    monkeypatch.setattr(
+        integration_launcher.apt_runner, "instance_start",
+        lambda **_kw: subprocess.CompletedProcess(args=["instance", "start"], returncode=0,
+                                                   stdout="", stderr=""),
+    )
+
+    def fake_instance_exec(*_a, **_kw):
+        raise RuntimeError("exec() failed: Permission denied")
+
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_exec", fake_instance_exec)
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_stop",
+                        lambda name, **kw: stopped.append(name))
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "failed"
+    assert stopped == [integration_launcher._instance_name_for("demo_sif")]
+
+
+def test_pre_instance_failure_does_not_call_instance_stop(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """instance start 전의 실패(포트 할당)는 멈출 인스턴스가 없다 — instance_stop 을
+    부르면 안 된다(불필요한 apptainer 호출)."""
+    ws = tmp_path / "demo_sif"
+    ws.mkdir()
+    sif = tmp_path / "demo_sif.sif"
+    sif.write_bytes(b"fake-sif")
+    stopped: list[str] = []
+
+    def fail_allocate(db, *, app_id, scope):
+        raise RuntimeError("port pool exhausted")
+
+    monkeypatch.setattr(integration_launcher.port_allocator, "allocate_port", fail_allocate)
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_stop",
+                        lambda name, **kw: stopped.append(name))
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "failed"
+    assert stopped == []

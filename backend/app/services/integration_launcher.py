@@ -574,7 +574,7 @@ def _open_app_log(log_file: Path):
 
 
 def _sif_fail(slug: str, canonical: str, port: int | None, base_path: str,
-              log_file: Path, error: str) -> LaunchResult:
+              log_file: Path, error: str, *, instance_name: str | None = None) -> LaunchResult:
     """기동 실패를 **앱 로그에도 남기고** 실패 결과를 돌려준다.
 
     왜 — 기동 전(포트·argv·instance start) 실패는 지금까지 앱 로그 파일을 **아예 만들지 않았다.**
@@ -585,13 +585,24 @@ def _sif_fail(slug: str, canonical: str, port: int | None, base_path: str,
 
     상태 파일은 일부러 건드리지 않는다 — `app/api/v1/mcp.py:_ever_launched` 가 상태 파일의 **존재**로
     "한 번이라도 뜬 앱" 을 판정한다. 실패에 상태를 쓰면 한 번도 못 뜬 앱이 게이트웨이에 등록돼
-    영구 다운 백엔드가 된다(그 주석이 막으려던 바로 그것)."""
+    영구 다운 백엔드가 된다(그 주석이 막으려던 바로 그것).
+
+    ``instance_name`` 이 주어지면(= instance start 가 이미 성공한 뒤의 실패) 그 인스턴스를 멈춘다
+    (HH-06) — 안 그러면 exec 실패·프로세스 조기종료 뒤 **앱 없는 인스턴스 셸**이 떠 있는 채로
+    남는다. instance start 전의 실패(포트 할당 · argv 구성)는 instance_name 을 안 넘겨 아무것도
+    멈추지 않는다(멈출 인스턴스가 없다). 존재하지 않는 인스턴스를 멈추는 호출은 안전한 no-op."""
     try:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         with log_file.open("a", encoding="utf-8") as fh:
             fh.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] launch failed: {error}\n")
     except OSError:  # 로그를 못 써도 기동 판정 자체를 막지는 않는다
         pass
+    if instance_name:
+        try:
+            apt_runner.instance_stop(instance_name, check=False)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("apptainer instance stop failed for %s (%s): %s",
+                           canonical, instance_name, exc)
     logger.warning("%s launch failed: %s", canonical, error)
     return LaunchResult(slug=slug, action="failed", port=port, base_path=base_path, error=error)
 
@@ -752,7 +763,8 @@ def _launch_via_sif(
             _err = ((getattr(_cp, "stderr", "") or getattr(_cp, "stdout", "") or "")).strip()
             if "already exists" not in _err:
                 return _sif_fail(slug, canonical, port, base_path, log_file,
-                                 f"apptainer instance start rc={_cp.returncode}: {_err[-400:]}")
+                                 f"apptainer instance start rc={_cp.returncode}: {_err[-400:]}",
+                                 instance_name=instance_name)
 
     # ── exec the foreground server inside the instance ───────────────
     try:
@@ -777,7 +789,7 @@ def _launch_via_sif(
     except Exception as exc:
         log_fh.close()
         return _sif_fail(slug, canonical, port, base_path, log_file,
-                         f"apptainer exec failed: {exc}")
+                         f"apptainer exec failed: {exc}", instance_name=instance_name)
 
     # ── wait for health ──────────────────────────────────────────────
     healthy = False
@@ -785,7 +797,8 @@ def _launch_via_sif(
         time.sleep(1)
         if proc.poll() is not None:
             res = _sif_fail(slug, canonical, port, base_path, log_file,
-                            f"process exited early code={proc.returncode}; tail of {log_file}")
+                            f"process exited early code={proc.returncode}; tail of {log_file}",
+                            instance_name=instance_name)
             res.pid = proc.pid
             return res
         if _is_healthy(port, health_path, root=base_path):

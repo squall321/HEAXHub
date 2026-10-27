@@ -9,7 +9,7 @@
 
 - [x] HH-12 — `launch()` 앱별 잠금(reconcile 45초 · scan 5분 겹침 방지). 628400d 의 SIF 빌드
       flock 패턴 재사용. **다른 항목(HH-06)이 이 위에 쌓이므로 먼저.**
-- [ ] HH-06 — SIF 기동 실패 시(`_sif_fail` 경로 + 헬스 영구실패 경로) `apt_runner.instance_stop()`
+- [x] HH-06 — SIF 기동 실패 시(`_sif_fail` 경로 + 헬스 영구실패 경로) `apt_runner.instance_stop()`
       호출 — 인스턴스 셸 잔존 제거.
 - [ ] HH-07 — `_is_healthy` 프로브 순서를 prefix-aware 여부에 따라 조정 — 구조적으로 보장된 404
       시도를 없앤다(판정은 기존과 동일, 로그만 줄어듦).

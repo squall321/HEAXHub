@@ -57,7 +57,10 @@ PY
 
 # 시크릿은 tar 에 넣지 않는다 — cred.key(Fernet 대칭키)와 risk_review.db 가 한 tarball 로 나가면
 # `Fernet(cred.key).decrypt(portal_pat_enc)` 로 모든 사용자 PAT 원문이 복구된다. secrets.env 도 같은 등급이다.
-find "$SNAP" \( -name 'cred.key' -o -name 'secrets.env' \) -type f -print -delete \
+# knobs.env 는 비밀은 아니지만 박스마다 다르게 정하는 설정(예: HWAXRISK_REVIEW_ENABLED)이라
+# 올라가면 다른 운영 박스가 받아 심을 수 있다 — 리스크 앱 검토 스위치 값이 틀리면 앱이 기동하지
+# 않는다(cae00 운영 수정요청 2026-10-27 HH-05).
+find "$SNAP" \( -name 'cred.key' -o -name 'secrets.env' -o -name 'knobs.env' \) -type f -print -delete \
   | sed 's|^|  · 제외 |' || true
 
 # 죽은 DB 백업 사본도 넣지 않는다. 이름이 `.db` 로 끝나지 않아 위 스냅샷 루프도, 복원 측

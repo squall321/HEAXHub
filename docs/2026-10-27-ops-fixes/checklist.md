@@ -17,7 +17,7 @@
       temp 파일 + `mv -f` 로 교체(HWAXPortal `hwax_install_if_changed` 패턴).
 - [x] HH-04 — `dist-to-drive.sh` `SHA256SUMS` 를 부분배포 시 통째로 덮지 않고, 기존
       `latest/SHA256SUMS` 와 병합(이번 배포분만 갱신, 나머지 줄 보존).
-- [ ] HH-05 — `appdata-to-drive.sh` 제외목록에 `knobs.env` 추가 + `appdata-merge-from-drive.sh`
+- [x] HH-05 — `appdata-to-drive.sh` 제외목록에 `knobs.env` 추가 + `appdata-merge-from-drive.sh`
       시드 단계에서 `knobs.env` 제외.
 - [ ] HH-08 — `_notify_build_failed` 에 쿨다운 추가(기존 `_LAUNCH_FAIL_COOLDOWN_S` 패턴 재사용·공유).
 - [ ] HH-09 — 형제 앱 주소를 `HEAX_APP_URL_<SLUG>` 로 각 앱의 `env_in_container` 에 주입.

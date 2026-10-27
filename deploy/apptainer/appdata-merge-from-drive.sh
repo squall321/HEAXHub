@@ -58,8 +58,10 @@ while IFS= read -r sf; do
   if cp "$sf" "$live" 2>/dev/null; then echo "  · seed(non-db): $rel"; fi
 # SQLite 부속 파일(-wal · -shm · -journal) · 잠금 · 안전백업은 심지 않는다 — 운영 DB 옆에 남의 -wal 이 놓이면 SQLite 는 그것이 이 DB 의
 # 것인지 가리지 못하고 다음 열 때 되살린다(10-17 cae00 리뷰 X1 — 그때는 병합기가 staging 에서 만든 빈 파일이라 무해했다).
+# knobs.env 도 심지 않는다 — 올리는 쪽(appdata-to-drive.sh)이 빼는 게 1차 방어지만, 과거에
+# 이미 올라간 사본이 있을 수 있으니 받는 쪽도 막는다(cae00 운영 수정요청 2026-10-27 HH-05).
 done < <(find "$STAGE/src" -type f ! -name "*.db" ! -name "*-wal" ! -name "*-shm" ! -name "*-journal" \
-           ! -name "*.lock" ! -name "*.pre-merge-*" 2>/dev/null)
+           ! -name "*.lock" ! -name "*.pre-merge-*" ! -name "knobs.env" 2>/dev/null)
 
 [ "$rc" = 0 ] && echo "✓ app-data merge 완료 — dev 신규 반영 + cae00 데이터 보존" \
              || echo "⚠ 일부 merge 실패 — 위 로그 확인(운영 DB 는 안전백업으로 롤백 가능)"

@@ -27,6 +27,7 @@ State file robustness
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -34,6 +35,8 @@ import shutil
 import signal
 import subprocess
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -119,7 +122,7 @@ _PREFIX_AWARE_STACKS = frozenset({
 @dataclass(slots=True)
 class LaunchResult:
     slug: str
-    action: str  # "skipped" | "started" | "already_running" | "failed" | "backoff"(앞선 실패로 다음 시도를 늦추는 중)
+    action: str  # "skipped" | "started" | "already_running" | "failed" | "backoff"(앞선 실패로 다음 시도를 늦추는 중) | "busy"(다른 워커가 기동 중)
     port: int | None
     base_path: str | None
     pid: int | None = None
@@ -214,12 +217,46 @@ def launch(
                 slug=name, action="backoff", port=None, base_path=f"/apps/{canonical}",
                 error=f"기동 실패 {rec.get('failures')}번 — 다음 시도 {int(wait)}초 뒤(마지막 오류: {rec.get('error')})",
             )
-    lr = _launch_once(workspace, manifest=manifest, db=db, slug=slug, source=source, sif_path=sif_path)
+    with _slug_launch_lock(canonical) as acquired:
+        if not acquired:
+            return LaunchResult(
+                slug=name, action="busy", port=None, base_path=f"/apps/{canonical}",
+                error="다른 워커가 이미 이 앱을 기동 중",
+            )
+        lr = _launch_once(workspace, manifest=manifest, db=db, slug=slug, source=source, sif_path=sif_path)
     if lr.action == "failed":
         _note_launch_failure(canonical, fp, lr.error)
     elif lr.action in ("started", "already_running"):
         _clear_backoff(canonical)
     return lr
+
+
+@contextmanager
+def _slug_launch_lock(canonical: str) -> Iterator[bool]:
+    """앱별 기동 잠금(flock, 비차단) — reconcile(45초)·scan(5분) 이 같은 앱을 동시에 기동하는
+    경로를 막는다(HH-12). 628400d 가 SIF 빌드에 쓴 것과 같은 패턴. 잡으면 True, 다른 프로세스가
+    쥐고 있으면 False. 쥔 프로세스가 죽으면 flock 이 저절로 풀려 고착되지 않는다.
+    """
+    lock_path = STATE_DIR / f"{canonical}.launch.lock"
+    try:
+        fh = lock_path.open("a")
+    except OSError as exc:
+        logger.warning("launch: lock unavailable for %s (%s) — launching without lock", canonical, exc)
+        yield True
+        return
+    try:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            logger.info("launch: already in progress for %s — busy", canonical)
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    finally:
+        fh.close()
 
 
 def _launch_once(

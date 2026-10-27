@@ -53,4 +53,25 @@
   방어. 이미 Drive 에 올라간 `knobs.env` 가 있을 가능성은 문서가 "지금은 없다"고 확인해 줘서
   과거분 정리는 범위에서 뺐다.
 
-## 구현 중 메모 (진행하며 추가)
+## 구현 중 메모
+
+- **HH-04 자체검증에서 실제 버그 하나 잡음**: 첫 구현은 `latest/SHA256SUMS` 를 `rclone copy`
+  로 덮은 **뒤에** `rclone cat` 으로 "기존" 값을 읽고 있었다 — 이미 덮인 뒤라 과거분이 전혀
+  안 보존되는, 고치려던 버그를 그대로 재현하는 코드였다. 로컬 디렉터리를 가짜 rclone
+  remote 로 써서 전체배포→부분배포 시나리오를 실측하다가 발견 — `_OLD_SUMS` 를 뜨는 시점을
+  `rclone copy "$REMOTE/latest/"` **앞**으로 옮겨 수정. (CLAUDE.md #10 "읽어라, 추측 마라"
+  가 실제로 잡아준 사례.)
+- **레이트리밋(launcher-agents/enroll) 실패는 환경적, 내 변경과 무관 확정**: `test_launcher_
+  reports.py`/`test_launcher_agents.py` 가 배치 실행에서 종종 실패해 처음엔 "60초 지나면
+  풀리는 일시적 창" 으로 추정했으나, 시간이 지나도 계속 실패해 `app/core/rate_limit.py` 를
+  직접 열어 확인함 — **Redis 기반** IP 당 고정윈도우 카운터(10회/60초)였다. 이 세션에서
+  pytest 를 수십 번 돌리며 같은 IP 버킷을 계속 소진시킨 것 — HH 항목들과 무관. 더 쫓지 않음
+  (범위 밖, 사용자 요청에 없음).
+
+## 완료 — 2026-10-27
+
+8항목(HH-02, HH-04~HH-09, HH-12) 전부 구현·실측·커밋 완료. 커밋: 1dab32a(HH-12) ·
+da9dc3d(HH-06) · b756d44(HH-07) · e46b8aa(HH-02) · 9ce7ee7(HH-04) · d33457f(HH-05) ·
+e032f20(HH-08) · fed086f(HH-09). 전체 백엔드 스위트 401 passed(남은 실패 13개는 전부
+사전 확인된 환경적 원인 — launcher-agents enroll 레이트리밋 Redis 버킷 소진·.NET 인자순서
+사전존재 실패·updater_feed sqlalchemy 환경문제, 이 작업 범위 밖).

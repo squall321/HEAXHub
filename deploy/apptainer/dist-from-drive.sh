@@ -35,9 +35,29 @@ if [ "$_have_dist" = "0" ]; then
 fi
 echo "→ source: $SRC"
 
-# 같은 내용이면 손대지 않는다 — 살아 있는 apptainer 인스턴스 밑의 SIF 를 덮어쓰면 squashfs 가 깨지고, cp 는 mtime 을 리셋해 포털 update-all 의
-# 재기동 판정(지문: 이름·크기·mtime)이 매번 달라진다. 영구 캐시(rclone 이 안 바뀐 파일을 건너뛴다)와 짝이다. HWAXPortal docs/update-all-skip-unchanged.
-_install_if_changed() { if [ -f "$2" ] && cmp -s "$1" "$2"; then echo "  · $(basename "$2") 같음 — 그대로"; return 0; fi; cp -p "$1" "$2" || { echo "  ✗ $(basename "$2") 설치 실패 — $2 에 쓸 수 없다(권한·소유자·디스크). 옛 파일이 그대로다" >&2; return 2; }; }
+# 같은 내용이면 손대지 않는다 — 살아 있는 apptainer 인스턴스 밑의 SIF 를 덮어쓰면 squashfs 가 깨지고, cp 는 mtime 을 보존해(-p) 포털 update-all 의
+# 재기동 판정(지문: 이름·크기·mtime)이 안 바뀐 파일에서는 매번 달라지지 않는다. 영구 캐시(rclone 이 안 바뀐 파일을 건너뛴다)와 짝이다. HWAXPortal docs/update-all-skip-unchanged.
+#
+# 설치는 원자적이다 — 대상 옆 임시 파일에 cp -p 로 받고 mv 로 이름을 바꾼다. 제자리 덮어쓰기(옛 cp -p 가 대상을 열어 그 위에 덮는 것)는 그 SIF 로
+# 도는 apptainer 인스턴스 밑에서 squashfs 를 바꿔 EIO/Bus error 를 낸다 — mv 로 이름을 바꾸면 도는 프로세스는 옛 inode 를 쥔 채 그대로 돌고, 다음
+# 기동이 새 파일을 연다. 끊기면(신호) 임시 파일을 지운다(서브셸 EXIT trap). 임시 파일은 대상과 같은 확장자로 끝나 `*.sif` gitignore 글롭에도
+# 걸린다(본보기: HWAXPortal infra/scripts/lib/change-detect.sh 의 hwax_install_if_changed, cae00 운영 수정요청 2026-10-27 HH-02).
+_install_if_changed() {  # $1=src $2=dst — 0=설치/동일 · 2=실패
+  if [ -f "$2" ] && cmp -s "$1" "$2"; then echo "  · $(basename "$2") 같음 — 그대로"; return 0; fi
+  local dir base ext tmp rc=0
+  dir="$(dirname -- "$2")"; base="$(basename -- "$2")"
+  case "$base" in *.*) ext=".${base##*.}" ;; *) ext="" ;; esac
+  ( tmp=""
+    trap '[ -n "$tmp" ] && rm -f -- "$tmp"' EXIT
+    tmp="$(mktemp "$dir/.$base.XXXXXX$ext")" || exit 1
+    cp -p -- "$1" "$tmp" || exit 1
+    mv -fT -- "$tmp" "$2" || exit 1
+    tmp=""
+  ) || rc=$?
+  [ "$rc" = 0 ] && return 0
+  echo "  ✗ $base 설치 실패 — $2 에 쓸 수 없다(권한·소유자·디스크·끊김). 옛 파일이 그대로다" >&2
+  return 2
+}
 # 영구 캐시 — 임시 디렉터리면 rclone 이 비교할 것이 없어 매번 전량 전송이다(앱 SIF 여럿, Drive ~2MB/s). 캐시에 받으면 안 바뀐 파일은 전송 0.
 STAGE="${HEAX_DRIVE_CACHE:-$ROOT_DIR/deploy/apptainer/cache/.drive-dist}"; mkdir -p "$STAGE"
 rclone sync --progress "$SRC/" "$STAGE/"    # sync — 원격에서 뺀 파일이 캐시에 남아 옛 SIF 가 되살아나지 않게

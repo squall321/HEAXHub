@@ -13,7 +13,7 @@
       호출 — 인스턴스 셸 잔존 제거.
 - [x] HH-07 — `_is_healthy` 프로브 순서를 prefix-aware 여부에 따라 조정 — 구조적으로 보장된 404
       시도를 없앤다(판정은 기존과 동일, 로그만 줄어듦).
-- [ ] HH-02 — `dist-from-drive.sh:40` `_install_if_changed` 를 `cp -p` 제자리 덮어쓰기 →
+- [x] HH-02 — `dist-from-drive.sh:40` `_install_if_changed` 를 `cp -p` 제자리 덮어쓰기 →
       temp 파일 + `mv -f` 로 교체(HWAXPortal `hwax_install_if_changed` 패턴).
 - [ ] HH-04 — `dist-to-drive.sh` `SHA256SUMS` 를 부분배포 시 통째로 덮지 않고, 기존
       `latest/SHA256SUMS` 와 병합(이번 배포분만 갱신, 나머지 줄 보존).

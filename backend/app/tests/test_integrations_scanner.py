@@ -342,6 +342,54 @@ def test_build_failure_records_failed_and_audits(
     assert audit.meta and audit.meta.get("app_id") == app_id
 
 
+def test_build_failure_mail_cooldown_but_audit_always_fires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """같은 앱·같은 오류의 반복된 빌드실패 — audit 는 매번(내구 기록), 메일은 쿨다운
+    동안 한 번만(HH-08, cae00 운영 수정요청 2026-10-27). 오류가 바뀌면 다시 보낸다."""
+    import uuid as uuid_mod
+    from types import SimpleNamespace
+
+    import app.config as config_module
+    from app.services import mail_service as mail_service_module
+
+    integrations_scanner._BUILD_FAIL_SEEN.clear()
+
+    audit_calls: list[str] = []
+    monkeypatch.setattr(
+        integrations_scanner.audit_service, "safe_log",
+        lambda *a, **kw: audit_calls.append(kw.get("action", "")),
+    )
+    monkeypatch.setattr(
+        config_module, "get_settings",
+        lambda: SimpleNamespace(seed_admin_email="ops@example.com"),
+    )
+    mail_calls: list[str] = []
+    monkeypatch.setattr(
+        mail_service_module, "send_mail",
+        lambda **kw: mail_calls.append(kw.get("subject", "")),
+    )
+
+    app = SimpleNamespace(id="demo_cooldown_app")
+    version = SimpleNamespace(id=uuid_mod.uuid4(), version="1.0.0")
+
+    for _ in range(3):
+        integrations_scanner._notify_build_failed(
+            None, app=app, version=version, manifest={},
+            log_path="/tmp/x.log", error="apptainer build exit=255",
+        )
+
+    assert len(audit_calls) == 3, "audit 는 매번 남아야 한다(durable record)"
+    assert len(mail_calls) == 1, "메일은 같은 오류가 반복되면 쿨다운 동안 한 번만"
+
+    # 오류 내용이 바뀌면 쿨다운을 건너뛰고 다시 보낸다 — 새 정보라 알릴 값이 있다.
+    integrations_scanner._notify_build_failed(
+        None, app=app, version=version, manifest={},
+        log_path="/tmp/x.log", error="apptainer build exit=137 (OOM)",
+    )
+    assert len(mail_calls) == 2
+
+
 def test_busy_build_skips_scan_without_recording_commit(
     tmp_path: Path,
     db: Session,

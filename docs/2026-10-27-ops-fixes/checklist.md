@@ -19,7 +19,7 @@
       `latest/SHA256SUMS` 와 병합(이번 배포분만 갱신, 나머지 줄 보존).
 - [x] HH-05 — `appdata-to-drive.sh` 제외목록에 `knobs.env` 추가 + `appdata-merge-from-drive.sh`
       시드 단계에서 `knobs.env` 제외.
-- [ ] HH-08 — `_notify_build_failed` 에 쿨다운 추가(기존 `_LAUNCH_FAIL_COOLDOWN_S` 패턴 재사용·공유).
+- [x] HH-08 — `_notify_build_failed` 에 쿨다운 추가(기존 `_LAUNCH_FAIL_COOLDOWN_S` 패턴 재사용·공유).
 - [ ] HH-09 — 형제 앱 주소를 `HEAX_APP_URL_<SLUG>` 로 각 앱의 `env_in_container` 에 주입.
 
 각 항목: 수정 → 가능하면 실측(또는 기존 테스트) 검증 → 해당 항목만 커밋(의미단위, CLAUDE.md #9).

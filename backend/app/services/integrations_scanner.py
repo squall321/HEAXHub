@@ -766,6 +766,11 @@ def _clear_source_unavailable(app: App) -> None:
         logger.info("source reachable again for %s — fallback flag cleared", app.id)
 
 
+# 빌드실패 메일 쿨다운(초) — _LAUNCH_FAIL_COOLDOWN_S(위) 재사용. 같은 앱의 같은 빌드오류가
+# 스캔(5분)마다 반복되면 매번 메일이 나가던 것을 막는다(HH-08).
+_BUILD_FAIL_SEEN: dict[str, tuple[float, str]] = {}
+
+
 def _notify_build_failed(
     db: Session,
     *,
@@ -794,6 +799,21 @@ def _notify_build_failed(
         target_id=str(version.id),
         meta=meta,
     )
+
+    # 메일(알림)은 쿨다운 — audit 행(위, 내구 기록)은 매번 남기지만 메일은 그 위에 얹는
+    # "알림" 이라 스캔(5분)마다 같은 실패가 반복되면 매번 나가 worker.log 를 뒤덮었다
+    # (dry-run 모드는 메일을 로그로만 남긴다 — 10-25 사례 ×35·×12·업데이트 전 173건, cae00
+    # 운영 수정요청 2026-10-27 HH-08). 기동실패 쿨다운(_LAUNCH_FAIL_COOLDOWN_S)을 같은
+    # 간격으로 재사용 — 두 실패 종류를 같은 기준으로 다루는 게 기존 설계 의도(이미
+    # _SOURCE_FALLBACK_SEEN 도 이 상수를 공유한다).
+    import time  # noqa: PLC0415
+
+    err = (error or "")[:1000]
+    _now = time.monotonic()
+    _prev = _BUILD_FAIL_SEEN.get(app.id)
+    if _prev and _prev[1] == err and (_now - _prev[0]) < _LAUNCH_FAIL_COOLDOWN_S:
+        return
+    _BUILD_FAIL_SEEN[app.id] = (_now, err)
 
     # Best-effort operator email. Never let a mail failure escape.
     try:

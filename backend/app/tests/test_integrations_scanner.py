@@ -591,3 +591,36 @@ def test_fallback_flag_clears_when_source_returns(
     integrations_scanner.scan_integrations(db, root=tmp_path)
 
     assert "source_unavailable" not in (db.get(App, app_id).extra or {})
+
+
+def test_sibling_app_urls_only_includes_routable_modes(
+    tmp_path: Path,
+    db: Session,
+    admin_user: User,
+) -> None:
+    """HEAX_APP_URL_<SLUG> — proxy/service/static 모드(=실제 /apps/<id> 라우트가 있는
+    앱)만 넣고, url 모드(브라우저가 직접 여는 바깥 링크, 호출할 백엔드가 없음)와 자기
+    자신은 뺀다(cae00 운영 수정요청 2026-10-27 HH-09)."""
+    from app.services import integration_launcher
+
+    routable_id = _unique_app_id("sibling_routable_")
+    _write_manifest(
+        tmp_path, slug="demo-sibling-routable", app_id=routable_id, version="1.0.0",
+        extra={"launch": {"mode": "proxy", "upstream": "http://127.0.0.1:19999"}},
+    )
+    nonroutable_id = _unique_app_id("sibling_nonroutable_")
+    _write_manifest(
+        tmp_path, slug="demo-sibling-nonroutable", app_id=nonroutable_id, version="1.0.0",
+        extra={"launch": {"mode": "url", "url": "https://example.com"}},
+    )
+    integrations_scanner.scan_integrations(db, root=tmp_path)
+
+    urls = integration_launcher._sibling_app_urls(db, exclude_canonical=routable_id)
+
+    assert urls.get(f"HEAX_APP_URL_{routable_id.upper()}") is None, "자기 자신은 빠져야 한다"
+    assert urls.get(f"HEAX_APP_URL_{nonroutable_id.upper()}") is None, \
+        "url 모드는 호출할 백엔드가 없어 빠져야 한다"
+
+    # 다른 쪽(nonroutable_id) 기준으로 보면 routable_id 가 포함되고, 값은 허브 프록시 주소다.
+    urls2 = integration_launcher._sibling_app_urls(db, exclude_canonical=nonroutable_id)
+    assert urls2[f"HEAX_APP_URL_{routable_id.upper()}"] == f"http://127.0.0.1:4180/apps/{routable_id}"

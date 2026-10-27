@@ -486,6 +486,7 @@ def _launch_once(
         "HEAX_BASE_PATH": base_path,        # generic HEAXHub-side convention
         "DASH_URL_BASE_PATHNAME": base_path + "/",  # Plotly Dash needs trailing slash
     })
+    env.update(_sibling_app_urls(db, canonical))  # HEAX_APP_URL_<SLUG> (HH-09)
 
     logger.info("launching %s on :%d (root=%s) → %s",
                 canonical, port, base_path, argv)
@@ -726,6 +727,7 @@ def _launch_via_sif(
         "HEAX_BASE_PATH": base_path,
         "DASH_URL_BASE_PATHNAME": base_path + "/",
     })
+    env_in_container.update(_sibling_app_urls(db, canonical))  # HEAX_APP_URL_<SLUG> (HH-09)
     # CA 를 bind 한 경우에만 각 런타임이 보는 변수를 채운다. bind 없이 변수만 세우면
     # 존재하지 않는 경로를 가리켜 TLS 가 통째로 실패한다 — 안 넣느니만 못하다.
     if _ca_host:
@@ -891,6 +893,49 @@ def _inherited_env() -> dict[str, str]:
     out = {dst: os.environ[src] for src, dst in _APP_LLM_ENV.items() if os.environ.get(src)}
     out.update({k: os.environ[k] for k in _PROXY_ENV if os.environ.get(k)})
     out.update({k: os.environ[k] for k in _SEARCH_ENV if os.environ.get(k)})
+    return out
+
+
+def _sibling_app_urls(db, exclude_canonical: str) -> dict[str, str]:
+    """다른 앱들의 허브 프록시 주소를 ``HEAX_APP_URL_<SLUG>`` 로 돌려준다(HH-09).
+
+    StepForge 가 MaterialTwin 을 부를 때 기본 주소가 고정 포트(``127.0.0.1:9233``)라
+    HEAXHub 가 배정한 실제 포트와 어긋났다 — 포트는 재기동마다 바뀔 수 있어 앱이 미리
+    알 방법이 없었다(cae00 운영 수정요청 2026-10-27 HH-09). 포트 대신 안정적인 허브
+    프록시(Caddy, ``/apps/<id>``)를 가리키면 포트가 바뀌어도 주소는 그대로다.
+
+    proxy·service·static 모드만 ``/apps/<id>`` 라우트가 실제로 있다 — url·iframe 모드는
+    브라우저가 직접 여는 바깥 링크라 호출할 백엔드가 없다(그 집합은
+    ``integration_tasks._RECONCILE_MODES`` 와 같다 — 거기서 이 모듈을 import 하므로
+    순환참조를 피해 그대로 다시 쓴다). db 가 없으면(단위테스트 등) 빈 dict.
+    """
+    if db is None:
+        return {}
+    try:
+        from sqlalchemy import select  # noqa: PLC0415
+
+        from app.config import get_settings  # noqa: PLC0415
+        from app.db.models.app import App  # noqa: PLC0415
+        from app.db.models.app_version import AppVersion  # noqa: PLC0415
+
+        rows = db.execute(
+            select(App.id, AppVersion.manifest_snapshot)
+            .join(AppVersion, App.current_version_id == AppVersion.id, isouter=True)
+        ).all()
+    except Exception:  # noqa: BLE001 — sibling-URL 주입은 부가기능, 실패해도 기동은 계속
+        logger.warning("sibling app URL lookup failed — skipping HEAX_APP_URL_* injection",
+                       exc_info=True)
+        return {}
+
+    origin = f"http://127.0.0.1:{get_settings().public_port}"
+    out: dict[str, str] = {}
+    for app_id, manifest_snapshot in rows:
+        if app_id == exclude_canonical:
+            continue
+        mode = ((manifest_snapshot or {}).get("launch") or {}).get("mode")
+        if mode not in ("service", "static", "proxy"):
+            continue
+        out[f"HEAX_APP_URL_{app_id.upper()}"] = f"{origin}/apps/{app_id}"
     return out
 
 

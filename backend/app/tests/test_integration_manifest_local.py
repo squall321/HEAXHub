@@ -696,3 +696,25 @@ def test_diagnose_app_은_보류를_알리고_마지막으로_건_업스트림�
     assert "보류:" in r.stdout and "YAML" in r.stdout, r.stdout + r.stderr
     assert "http://127.0.0.1:9/last-applied/health" in r.stdout, "지금 걸린(마지막으로 얹은) 업스트림을 두드려야 한다"
     assert "/tracked" not in r.stdout.split("===== 2.")[1], "보류 중인데 추적 파일의 업스트림을 두드렸다"
+
+
+@pytest.mark.parametrize("id_line", ["id: sf_probe            # /apps/sf_probe · state · 인스턴스명의 원천",
+                                     'id: "sf_probe"', "id: 'sf_probe'  # 따옴표와 주석"],
+                         ids=["꼬리_주석", "큰따옴표", "작은따옴표_주석"])
+def test_diagnose_app_은_id_줄의_따옴표와_꼬리_주석을_받는다(tmp_path, id_line):
+    """step_forge 매니페스트 2행이 `id: step_forge   # …` 라 예전 grep(줄 끝 앵커)이 '등록 자체가 안 됐다' 로 끝났다 —
+    덮어쓰기의 주 대상에서 효과 값 줄이 나오지 않았다(HH-15 검토)."""
+    root = tmp_path / "hub"
+    (root / "scripts").mkdir(parents=True)
+    shutil.copy(REPO / "scripts" / "diagnose-app.sh", root / "scripts")
+    body = yaml.safe_dump({k: v for k, v in _BASE.items() if k != "id"}, allow_unicode=True)
+    _write(root / "integrations" / "sf-probe", f"{id_line}\n{body}", {"launch": {"upstream": "http://127.0.0.1:9/dev-local"}})
+    _write(root / "integrations" / "other", {**_BASE, "id": "sf_probe_other"})          # 앞부분이 같은 다른 id 는 잡지 않는다
+    _fake_backend(root, stub_launcher=False)
+    r = subprocess.run(["bash", str(root / "scripts" / "diagnose-app.sh"), "sf_probe"],
+                       capture_output=True, text=True, timeout=120,
+                       env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
+                            "CADDY_BASE": "http://127.0.0.1:9", "CADDY_ADMIN": "http://127.0.0.1:9"})
+    assert "파일: integrations/sf-probe/.portal/manifest.yaml" in r.stdout, r.stdout + r.stderr
+    assert "upstream=http://127.0.0.1:9/dev-local" in r.stdout, "덮어쓴 효과 값 줄이 나와야 한다"
+    assert "http://127.0.0.1:9/dev-local/health" in r.stdout

@@ -12,7 +12,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 code() { curl -s -o /dev/null -w '%{http_code}' -m 6 "$@" 2>/dev/null || echo 000; }
 
 echo "===== 1. 매니페스트 ====="
-F="$(grep -rl "^id: *${SLUG}\$" "$ROOT"/integrations/*/.portal/manifest.yaml 2>/dev/null | head -1)"
+# id 줄은 따옴표 · 꼬리 주석을 달 수 있다(step_forge 는 `id: step_forge   # …`) — 줄 끝에 바로 앵커를 걸면 그런 앱을 '등록 안 됨' 으로 읽는다.
+F="$(grep -lE "^id:[[:space:]]*['\"]?${SLUG}['\"]?[[:space:]]*(#.*)?\$" "$ROOT"/integrations/*/.portal/manifest.yaml 2>/dev/null | head -1)"
 if [ -z "$F" ]; then
   echo "  X id: $SLUG 인 매니페스트가 integrations/ 에 없다 — 등록 자체가 안 된 것이다."
 else

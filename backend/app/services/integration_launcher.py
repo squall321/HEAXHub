@@ -42,10 +42,9 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import yaml
 
 from app.core.logger import get_logger
-from app.services import apt_runner, port_allocator, proxy_manager
+from app.services import apt_runner, integration_manifest, port_allocator, proxy_manager
 from app.services.stack_resolver import StackSpec, load_stacks
 
 logger = get_logger(__name__)
@@ -1626,12 +1625,12 @@ def _safe_register_caddy(
 
 
 def read_manifest(workspace: Path) -> dict[str, Any] | None:
-    """Convenience used by the scanner to feed launch()."""
+    """Convenience used by the scanner to feed launch() — 박스 덮어쓰기(manifest.local.yaml)를 얹은 효과 매니페스트(HH-15)."""
     manifest = workspace / ".portal" / "manifest.yaml"
     if not manifest.exists():
         return None
     try:
-        return yaml.safe_load(manifest.read_text(encoding="utf-8"))
+        return integration_manifest.load_file(manifest)
     except Exception as exc:
         logger.error("manifest load failed for %s: %s", workspace, exc)
         return None

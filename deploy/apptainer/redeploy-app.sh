@@ -34,16 +34,18 @@ PY="$ROOT/backend/.venv/bin/python"
 [[ -d "$ROOT/integrations/$SLUG" ]] || { echo "[ERROR] integrations/$SLUG 없음" >&2; exit 1; }
 
 REBUILD="$REBUILD" SLUG="$SLUG" HH_ROOT="$ROOT" "$PY" - <<'PYEOF'
-import os, sys, yaml
+import os, sys
 from pathlib import Path
 
 ROOT = Path(os.environ["HH_ROOT"]); slug = os.environ["SLUG"]; rebuild = os.environ["REBUILD"] == "1"
 sys.path.insert(0, str(ROOT / "backend"))
 from app.db.session import SessionLocal
 from app.services import integration_launcher as L
+from app.services import integration_manifest
 
 child = ROOT / "integrations" / slug
-manifest = yaml.safe_load((child / ".portal" / "manifest.yaml").read_text())
+# 스캐너 · reconcile 과 같은 효과 매니페스트 — 박스 전용 manifest.local.yaml 을 얹는다(HH-15).
+manifest = integration_manifest.load_file(child / ".portal" / "manifest.yaml")
 canonical = manifest.get("id") or slug.replace("-", "_")
 sif = ROOT / "var" / "sifs" / f"{slug}.sif"
 src = manifest.get("source") if isinstance(manifest.get("source"), dict) else None

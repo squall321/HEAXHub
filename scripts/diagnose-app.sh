@@ -21,6 +21,33 @@ else
 fi
 
 UP="$(grep -oE 'upstream: *http[^ ]*' "${F:-/dev/null}" 2>/dev/null | head -1 | sed 's/upstream: *//')"
+# 박스 전용 덮어쓰기(HH-15) — 있으면 허브는 그것을 얹은 효과 매니페스트로 돈다. 위의 추적 파일 값만 보면 엉뚱한 업스트림을 두드린다.
+LOCAL="$(dirname "${F:-/nonexistent/x}")/manifest.local.yaml"
+if [ -n "$F" ] && [ -f "$LOCAL" ]; then
+  echo "  ! 박스 덮어쓰기 ${LOCAL#"$ROOT"/} 가 있다 — 허브는 그것을 얹은 효과 매니페스트로 돈다."
+  EFF="$(cd "$ROOT/backend" && .venv/bin/python - "$F" 2>&1 <<'PYEOF'
+import logging, sys
+from pathlib import Path
+logging.disable(logging.CRITICAL)
+from app.services import integration_manifest as M
+m, o = M.load_file_with_override(Path(sys.argv[1]))
+m = m if isinstance(m, dict) else {}
+la = m.get("launch") or {}
+if o is not None and not o.applied:
+    print(f"    무시됨: {o.error} — 추적 파일 값 그대로다")
+else:
+    print(f"    바뀐 최상위 키: {', '.join(o.changed_keys) if o else '-'}"
+          + (f"  (받지 않은 키: {', '.join(o.rejected_keys)})" if o and o.rejected_keys else ""))
+    print(f"    효과 값: status={m.get('status')} execution_target={m.get('execution_target')} mode={la.get('mode')}"
+          f" upstream={la.get('upstream') or '-'} portal_auth={la.get('portal_auth')}"
+          f" visibility={(m.get('permissions') or {}).get('visibility')}")
+    print(f"UP={la.get('upstream') or ''}")
+PYEOF
+)" || EFF="    (효과 값을 못 셌다 — backend/.venv 확인) ${EFF}"
+  printf '%s\n' "$EFF" | grep -v '^UP=' || true
+  # grep -q 로 판정하지 않는다 — pipefail 아래서 일찍 끝난 grep 이 '있다' 를 '없다' 로 뒤집는다.
+  case $'\n'"$EFF" in *$'\n'UP=*) UP="$(printf '%s\n' "$EFF" | sed -n 's/^UP=//p' | tail -1)" ;; esac
+fi
 echo
 echo "===== 2. 업스트림(앱 자체 서버) ====="
 if [ -n "$UP" ]; then

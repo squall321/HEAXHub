@@ -47,7 +47,7 @@ from app.db.models.app import (
 )
 from app.db.models.app_version import AppVersion, BuildStatus
 from app.db.models.user import User, UserRole
-from app.services import audit_service, stack_resolver
+from app.services import audit_service, integration_manifest, stack_resolver
 from app.services.stack_resolver import StackSpec
 
 logger = get_logger(__name__)
@@ -150,9 +150,13 @@ class SourceSpec:
 
 
 def _load_manifest(manifest_path: Path) -> dict[str, Any] | None:
-    """Parse manifest.yaml. Returns None on any error (logs the cause)."""
+    """Parse manifest.yaml. Returns None on any error (logs the cause).
+
+    옆의 박스 전용 ``manifest.local.yaml`` 을 얹은 효과 매니페스트를 돌려준다(HH-15) — 스냅숏 · 빌드 해시 ·
+    기동 지문이 모두 이것을 보므로 로컬 파일을 더하거나 고치거나 지우면 다음 스캔에 반영된다.
+    """
     try:
-        raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        raw = integration_manifest.load_file(manifest_path)
     except (OSError, yaml.YAMLError) as exc:
         logger.warning("manifest unreadable: %s (%s)", manifest_path, exc)
         return None

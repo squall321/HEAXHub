@@ -414,14 +414,16 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
       - state file:      — pid + port + base_path + started_at (if launched)
       - process_alive    — os.kill 0
       - http_health      — curl 200 via Caddy /apps/<id>/<health_path>
+      - local_override   — 박스 전용 manifest.local.yaml 이 있는 앱에만 — 얹었는지 · 바뀐 최상위 키 · 무시한 까닭(HH-15)
     """
-    from pathlib import Path  # noqa: PLC0415
+    from app.services import (  # noqa: PLC0415
+        integration_launcher,
+        integration_manifest,
+        integrations_scanner,
+    )
 
-    import yaml as _yaml  # noqa: PLC0415
-
-    from app.services import integration_launcher  # noqa: PLC0415
-
-    root = Path(__file__).resolve().parents[3] / "integrations"
+    # 스캐너 · reconcile 과 같은 뿌리(값은 예전과 같은 <리포>/integrations — 시험이 바꿔 끼울 수 있게 상수를 읽는다).
+    root = integrations_scanner.INTEGRATIONS_ROOT
     rows: list[dict[str, Any]] = []
     if not root.exists():
         return {"root": str(root), "exists": False, "items": []}
@@ -430,9 +432,11 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
         slug = child.name
         manifest_path = child / ".portal" / "manifest.yaml"
         manifest: dict[str, Any] = {}
+        local: integration_manifest.LocalOverride | None = None
         if manifest_path.exists():
             try:
-                manifest = _yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+                loaded, local = integration_manifest.load_file_with_override(manifest_path)
+                manifest = loaded or {}
             except Exception as exc:  # noqa: BLE001
                 manifest = {"__error__": str(exc)}
 
@@ -447,7 +451,7 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
                 root=state.get("base_path") or f"/apps/{canonical}",
             )
 
-        rows.append({
+        row: dict[str, Any] = {
             "slug": slug,
             "id": canonical,
             "name": manifest.get("name"),
@@ -460,7 +464,17 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
             "process_alive": alive,
             "http_healthy": healthy,
             "log_file": f"var/logs/integration_{canonical}.log",
-        })
+        }
+        # 로컬 파일이 있는 앱에만 붙인다 — 없는 박스의 응답은 예전과 같다.
+        if local is not None:
+            row["local_override"] = {
+                "file": f"integrations/{slug}/.portal/{integration_manifest.LOCAL_FILE}",
+                "applied": local.applied,
+                "changed_keys": local.changed_keys,
+                "rejected_keys": local.rejected_keys,
+                "error": local.error,
+            }
+        rows.append(row)
     return {"root": str(root), "exists": True, "count": len(rows), "items": rows}
 
 

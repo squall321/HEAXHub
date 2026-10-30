@@ -112,3 +112,48 @@ jsonschema.Draft7Validator(schema).validate(data)
 print("OK")
 PY
 ```
+
+## 10. 박스 전용 덮어쓰기 — `manifest.local.yaml` (2026-10-31, HH-15)
+
+통합 앱(`integrations/<폴더>/`)의 추적 매니페스트는 git 이 정본이라 박스에서 고치면 다음 당기기(update-all · deploy-all 의 `git reset --hard`)가 되돌린다. 같은 앱을 박스마다 다르게 돌려야 하면(운영 박스는 운영 노드로 넘기고 dev 는 여기서 서비스로 띄우는 것 같은) 그 차이만 박스 전용 파일에 적는다.
+
+| 항목 | 내용 |
+|---|---|
+| 파일 | `integrations/<폴더>/.portal/manifest.local.yaml` — 추적 `manifest.yaml` 바로 옆. gitignore 라 커밋되지 않고 deploy-all 의 `git stash -u` 도 가져가지 않는다. `bundle.sh` 도 싣지 않는다. |
+| 병합 | 추적 `manifest.yaml` 을 읽은 뒤 RFC 7386(JSON Merge Patch)으로 얹는다. 매핑은 키마다 재귀로 합치고, `null` 은 그 키를 지우고, 목록 · 글자 · 숫자는 통째로 바꾼다(목록끼리 이어 붙이지 않는다). |
+| 못 바꾸는 것 | `id` — `/apps/<id>` · 상태 파일 · 인스턴스 이름(`heax_app_<id>`)의 원천이다. 로컬 파일의 `id` 는 버리고 WARNING 을 남긴 뒤 나머지만 얹는다. 추적 `manifest.yaml` 이 없는 폴더는 로컬 파일만으로 앱이 생기지 않는다. |
+| 깨졌을 때 | YAML 오류 · 최상위가 매핑이 아님(빈 파일 포함) · 읽히지 않음이면 통째로 무시하고 추적 매니페스트만으로 돈다. 로그에 WARNING 한 줄(같은 내용이면 한 시간에 한 번만 다시)과 상태 화면에 까닭이 남는다. |
+| 언제 반영되나 | 스캐너(카탈로그 · 스냅숏 · MCP 레지스트리 · SIF 빌드 해시) · reconcile(라우트 · 기동) · 런처 · `redeploy-app.sh` · 상태 화면 · `scripts/diagnose-app.sh` 가 모두 같은 로더(`backend/app/services/integration_manifest.py`)로 읽는다. 더하거나 고치거나 지우면 다음 reconcile(45초 안)에 라우트 · 기동이, 다음 스캔(5분 안)에 카탈로그 · MCP 레지스트리가 따른다. 허브 재기동은 필요 없다. 도는 서비스의 env 같은 값은 추적 파일을 고칠 때와 같이 `redeploy-app.sh` 로 다시 띄워야 들어간다. |
+| 보는 법 | `GET /api/v1/admin/integrations/builtin` 의 행에 `local_override`(`file` · `applied` · `changed_keys` · `rejected_keys` · `error`)가 붙는다 — 로컬 파일이 있는 앱에만. `scripts/diagnose-app.sh <앱 id>` 도 효과 값을 보여 준다. 로그는 `var/logs/worker.log` · `backend.log` 의 `manifest.local.yaml` 줄이다. |
+| 모드가 바뀌면 | 효과 매니페스트의 `launch.mode` 가 service 에서 다른 모드로 바뀌면(로컬 파일로든 추적 파일로든) 허브가 그 앱 id 로 띄워 둔 `heax_app_<id>` 를 다음 reconcile 이 새 라우트를 건 뒤 내린다(HH-16). |
+| 앱을 지울 때 | 로컬 파일도 같이 지운다 — 무시되는 파일이라 `git rm` 이 남긴다. |
+
+예 — 운영 전환(HH-14)으로 추적 매니페스트의 `step_forge` 가 운영 노드 proxy(`127.0.0.1:16110`)가 된 뒤에도 dev 는 StepForge 를 이 허브가 빌드해 서비스로 띄운다. 아래를 얹은 효과 매니페스트는 전환 전 추적 매니페스트와 같다(스냅숏 · 빌드 해시가 그대로라 다시 빌드 · 기동하지 않는다).
+
+```yaml
+# integrations/step_forge/.portal/manifest.local.yaml — dev 박스 전용
+execution_target: linux_runner
+build:
+  stack: fastapi
+  type: python_venv
+  python_version: "3.12"
+launch:
+  mode: service
+  upstream: null          # proxy 갈래의 키는 지운다
+  strip_prefix: null
+  health_check: { type: http, path: /health }
+  restart_policy: { policy: on_failure, max_attempts: 3 }
+  env: { STEPFORGE_DATA_DIR: /data }
+resources:
+  cpu: 2
+  memory_gb: 16
+  gpu: false
+source:
+  type: git
+  url: https://github.com/squall321/StepForge.git
+  ref: main
+```
+
+proxy 앱의 업스트림만 바꿀 때는 그 키 하나면 된다(예 — dev 의 `kooremapper` · `kooremapper-api` 는 `launch: { upstream: http://127.0.0.1:8700 }`, `kooremapper-mcp` 는 `:8701`).
+
+⚠ 순서 — 무시 목록은 git 이 당기기 전에 읽는다. 이 기능이 들어간 판을 먼저 받고(무시 목록 · 로더) 로컬 파일을 둔 뒤에, 그 앱의 추적 매니페스트를 바꾸는 판을 받는다. 판을 받기 전에 로컬 파일부터 두어야 하면 `.git/info/exclude` 에 같은 줄을 먼저 넣는다 — 안 그러면 deploy-all 의 `git stash -u` 가 그 파일을 가져간다.

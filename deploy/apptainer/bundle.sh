@@ -68,6 +68,8 @@ EXCLUDES=(
   --exclude='*.log'
   --exclude='cache'
   --exclude='.tools'
+  # 박스 전용 매니페스트 덮어쓰기(HH-15) — 이 박스의 설정이다. 번들로 다른 박스에 실어 보내지 않는다.
+  --exclude='manifest.local.yaml'
 )
 
 # WITH_* 가 아니면 큰 것들도 제외

@@ -23,11 +23,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from app.core.logger import get_logger
 from app.db.session import SessionLocal
-from app.services import integrations_scanner
+from app.services import integration_manifest, integrations_scanner
 from app.workers.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -100,7 +98,9 @@ def reconcile_integrations() -> dict[str, object]:
             if not manifest_path.exists():
                 continue
             try:
-                manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+                # 박스 전용 manifest.local.yaml 을 얹은 효과 매니페스트(HH-15) — 로컬 파일을 더하거나 고치거나 지우면
+                # 이 패스에서 라우트 · 기동 판정이 그것을 따른다.
+                manifest = integration_manifest.load_file(manifest_path) or {}
             except Exception as exc:  # noqa: BLE001 — never break the loop
                 logger.warning("reconcile: manifest load failed for %s: %s", slug, exc)
                 continue

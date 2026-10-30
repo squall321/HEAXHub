@@ -18,7 +18,7 @@ from app.deps import CurrentUser, DbSession, get_app_or_404
 from app.schemas.app import AppDetailOut, AppOut, AppVersionOut
 from app.schemas.common import Paginated
 from app.schemas.job import JobOut
-from app.services import job_orchestrator, permission_service
+from app.services import integration_manifest, job_orchestrator, permission_service
 from app.services.workspace_manager import safe_join
 
 router = APIRouter(prefix="/apps", tags=["apps"])
@@ -173,14 +173,17 @@ def get_app(
         if current_v and isinstance(current_v.manifest_snapshot, dict):
             manifest = current_v.manifest_snapshot
     if manifest is None:
+        integ = Path(__file__).resolve().parents[3] / "integrations" / app.id.replace("_", "-") / ".portal" / "manifest.yaml"
         for candidate in (
             Path(app.workspace_path) / "overlay" / ".portal" / "manifest.yaml",
-            Path(__file__).resolve().parents[3] / "integrations" / app.id.replace("_", "-") / ".portal" / "manifest.yaml",
+            integ,
         ):
             if candidate.exists():
                 try:
                     import yaml
-                    manifest = yaml.safe_load(candidate.read_text(encoding="utf-8"))
+                    # integrations/ 쪽은 박스 덮어쓰기(manifest.local.yaml)를 얹어 읽는다 — 스캐너와 같은 효과 매니페스트(HH-15).
+                    manifest = (integration_manifest.load_file(candidate) if candidate == integ
+                                else yaml.safe_load(candidate.read_text(encoding="utf-8")))
                     break
                 except Exception:
                     continue
@@ -207,12 +210,15 @@ def get_app_manifest(
         v = db.get(AppVersion, app.current_version_id)
         if v and isinstance(v.manifest_snapshot, dict):
             return v.manifest_snapshot
+    integ = Path(__file__).resolve().parents[3] / "integrations" / app.id.replace("_", "-") / ".portal" / "manifest.yaml"
     for candidate in (
         Path(app.workspace_path) / "overlay" / ".portal" / "manifest.yaml",
-        Path(__file__).resolve().parents[3] / "integrations" / app.id.replace("_", "-") / ".portal" / "manifest.yaml",
+        integ,
     ):
         if candidate.exists():
             import yaml
+            if candidate == integ:  # 박스 덮어쓰기를 얹은 효과 매니페스트(HH-15)
+                return integration_manifest.load_file(candidate) or {}
             return yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
     raise NotFoundError("Manifest not found")
 

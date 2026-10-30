@@ -105,6 +105,10 @@ var/sifs/
 # 앱 런타임 데이터(영구 볼륨은 var/app_data/ — 소스 트리에 커밋 금지)
 integrations/*/data/
 
+# 박스 전용 매니페스트 덮어쓰기(HH-15) — integrations/<폴더>/.portal/manifest.yaml 위에 얹는 RFC 7386 병합 패치.
+# 무시 목록에 있어야 커밋되지 않고, deploy-all 의 git stash -u 도 가져가지 않는다(-u 는 무시된 파일을 건드리지 않는다).
+integrations/*/.portal/manifest.local.yaml
+
 # 운영서버 외부 연계(proxy) 앱 — register-external.sh 가 var/external-apps.yaml 에서
 # 자동 생성. gitignore 라 update-all(git reset --hard)이 못 건드려 운영팀 등록분이 보존된다.
 # (내 관리 앱과 라이프사이클 완전 분리 — 별도 apply 로만 갱신.)

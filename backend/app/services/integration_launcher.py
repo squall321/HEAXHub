@@ -31,6 +31,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -1233,7 +1234,8 @@ def _stale_service_record(state: dict | None) -> dict | None:
 
 
 def _retire_stale_service(canonical: str, *, db) -> bool:
-    """상태 파일에 남은 서비스를 내리고 포트를 돌려준다. 끝났으면(내렸거나 이미 없었다) True, 못 내렸으면 False — 기록을 남겨 다음 패스가 다시 한다.
+    """상태 파일에 남은 서비스를 내리고 포트를 돌려준다. 끝났으면(내렸거나 이미 없었다) True, 못 내렸거나 이 앱의 것인지 확인하지
+    못했으면 False — 기록 · 포트를 남겨 다음 패스가 다시 본다.
 
     reconcile(45초) · scan(5분) · 기동 때 reconcile 이 같은 앱을 함께 만질 수 있어 앱별 기동 잠금(HH-12) 안에서 한다.
     다른 워커가 쥐고 있으면 이번에는 건너뛴다.
@@ -1258,15 +1260,20 @@ def _retire_stale_service(canonical: str, *, db) -> bool:
 
 
 def _stop_stale_service(canonical: str, rec: dict) -> bool:
-    """기록된 인스턴스(또는 호스트 프로세스)를 멈춘다. 멈췄거나 이미 없으면 True, 못 멈췄으면 False."""
+    """기록된 인스턴스(또는 호스트 프로세스)를 멈춘다. 멈췄거나 이미 없으면 True, 못 멈췄으면 False.
+
+    이 앱의 것인지 확인하지 못해 건드리지 않은 때도 False 다 — 기록 · 포트를 그대로 두고 다음 패스도 같은 판정을 한다(사람이 본다).
+    예전엔 True 를 돌려줘, 확인 못 한 프로세스가 포트를 쥔 채 살아 있는데 포트 배정을 풀고 기록을 proxy 로 덮어 다시는 못 찾았다.
+    """
     name = rec.get("instance_name")
     stopped = False
     if name:
         expected = _instance_name_for(canonical)
         if name != expected:
-            logger.warning("HH-16: %s 상태 파일이 적은 인스턴스 %r 는 이 앱의 이름(%r)이 아니다 — 건드리지 않고 기록만 버린다",
-                           canonical, name, expected)
-            return True
+            _warn_hourly(f"{canonical}:foreign-instance:{name}",
+                         "HH-16: %s 상태 파일이 적은 인스턴스 %r 는 이 앱의 이름(%r)이 아니다 — 건드리지 않고 기록 · 포트도 그대로 둔다"
+                         "(사람이 확인한다)", canonical, name, expected)
+            return False
         try:
             cp = apt_runner.instance_stop(name, check=False, capture_output=True, text=True, timeout=120)
         except Exception as exc:  # noqa: BLE001
@@ -1288,8 +1295,10 @@ def _stop_stale_service(canonical: str, rec: dict) -> bool:
         if not _is_alive(pid):
             what = f"호스트 프로세스 pid={pid} 는 이미 없다 — 상태 기록만 정리한다"
         elif not _pid_matches_argv(int(pid), rec.get("argv") or []):
-            logger.warning("HH-16: %s — pid %s 의 명령줄이 기록과 달라(pid 재사용) 건드리지 않고 기록만 버린다", canonical, pid)
-            return True
+            _warn_hourly(f"{canonical}:foreign-pid:{pid}",
+                         "HH-16: %s — pid %s 의 명령줄이 기록과 다르다(pid 재사용일 수 있다) — 건드리지 않고 기록 · 포트도 그대로 둔다."
+                         " 그 프로세스가 끝나면 다음 패스가 기록을 정리한다", canonical, pid)
+            return False
         else:
             try:
                 os.killpg(os.getpgid(int(pid)), signal.SIGTERM)
@@ -1690,6 +1699,10 @@ def _is_alive(pid: int | None) -> bool:
         return False
 
 
+# shebang 이 부르는 인터프리터 — /proc/<pid>/cmdline 의 첫 토큰이 이것이면 둘째 토큰이 스크립트다(_pid_matches_argv).
+_INTERPRETER_RE = re.compile(r"^(python[0-9.]*|node|nodejs|bash|sh|dash|perl|ruby)$")
+
+
 def _pid_matches_argv(pid: int, expected_argv: list[str]) -> bool:
     """True when /proc/<pid>/cmdline starts with the expected argv prefix.
 
@@ -1718,7 +1731,17 @@ def _pid_matches_argv(pid: int, expected_argv: list[str]) -> bool:
     exp0 = os.path.basename(expected_argv[0])
     act0 = os.path.basename(actual[0])
     if exp0 != act0:
-        return False
+        # shebang 스크립트(venv 의 uvicorn · streamlit · gunicorn 콘솔 스크립트, node_modules/.bin/next)는 /proc 에 인터프리터가
+        # 앞에 붙는다 — [python, <스크립트>, …]. 인터프리터 옵션(-u 같은 것)을 건너뛰고 그다음이 기록의 첫 토큰이면 거기서부터
+        # 견준다. 예전엔 자기 프로세스를 남의 것으로 읽었다(HH-16 검토 — stop() 도 같은 가드를 쓴다).
+        if not _INTERPRETER_RE.match(act0):
+            return False
+        i = 1
+        while i < len(actual) and actual[i].startswith("-"):
+            i += 1
+        if i >= len(actual) or os.path.basename(actual[i]) != exp0:
+            return False
+        actual = actual[i:]
     if len(expected_argv) >= 2 and len(actual) >= 2:
         if expected_argv[1] != actual[1]:
             return False

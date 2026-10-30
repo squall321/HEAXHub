@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -173,14 +177,18 @@ def test_다른_앱의_인스턴스는_건드리지_않는다(env, monkeypatch):
     assert json.loads((L.STATE_DIR / "other_app.json").read_text(encoding="utf-8"))["instance_name"] == "heax_app_other_app"
 
 
-def test_이름이_이_앱의_것이_아니면_건드리지_않는다(env, caplog):
+def test_이름이_이_앱의_것이_아니면_건드리지_않고_기록과_포트도_둔다(env, caplog):
+    """예전엔 '기록만 버린다' 며 포트 배정을 풀고 기록을 proxy 로 덮어, 그 인스턴스를 다시는 못 찾았다(HH-16 검토)."""
     L._write_state("step_forge", _service_state("step_forge", instance="heax_app_someone_else"))
     env.write("step_forge", _PROXY)
     with caplog.at_level(logging.WARNING):
-        env.run()
-    assert not [e for e in env.events if e[0] == "stop"]
-    assert any("heax_app_someone_else" in r.getMessage() for r in caplog.records)
-    assert json.loads((L.STATE_DIR / "step_forge.json").read_text(encoding="utf-8"))["mode"] == "proxy"
+        for _ in range(3):
+            env.run()
+    assert not [e for e in env.events if e[0] in ("stop", "release")], env.events
+    warned = [r.getMessage() for r in caplog.records if "heax_app_someone_else" in r.getMessage()]
+    assert len(warned) == 1, "같은 경고를 패스마다 되풀이했다"
+    st = json.loads((L.STATE_DIR / "step_forge.json").read_text(encoding="utf-8"))
+    assert st["instance_name"] == "heax_app_someone_else" and st["port"] == 9115, "확인 못 한 기록을 덮었다"
 
 
 def test_못_내리면_기록을_남겨_다음_패스가_다시_한다(env, caplog):
@@ -364,12 +372,83 @@ def test_호스트_프로세스도_명령줄이_맞을_때만_내린다(env, mon
     L._write_state("step_forge", _service_state("step_forge"))
     env.run()
     assert killed == []
+    assert ("release", 9115) not in env.events, "확인 못 한 프로세스가 쥔 포트를 돌려줬다"
+    assert json.loads((L.STATE_DIR / "step_forge.json").read_text(encoding="utf-8"))["pid"] == 4242
 
     monkeypatch.setattr(L, "_pid_matches_argv", lambda pid, argv: True)
     L._write_state("step_forge", _service_state("step_forge"))
     env.run()
     assert killed == [(4243, signal.SIGTERM)]
     assert not [e for e in env.events if e[0] == "stop"], "인스턴스 기록이 없는데 instance stop 을 불렀다"
+
+
+def _spawn(argv: list[str]) -> subprocess.Popen:
+    """시험용 프로세스 하나 — 자기 세션으로 띄워 끝에 그 묶음만 정리한다. /proc 의 명령줄이 찰 때까지 기다린다."""
+    proc = subprocess.Popen(argv, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    want = Path(argv[1] if os.path.basename(argv[0]).startswith("python") else argv[0]).name
+    for _ in range(100):
+        try:
+            if want.encode() in Path(f"/proc/{proc.pid}/cmdline").read_bytes():
+                break
+        except OSError:
+            pass
+        time.sleep(0.05)
+    return proc
+
+
+def _reap(proc: subprocess.Popen) -> None:
+    if proc.poll() is None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    proc.wait(timeout=10)
+
+
+def _console_script(tmp_path: Path) -> Path:
+    """venv 콘솔 스크립트처럼 shebang 으로 이 파이썬을 부르는 uvicorn — /proc 에는 [python, …/uvicorn, …] 로 보인다."""
+    bin_dir = tmp_path / ".venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    uv = bin_dir / "uvicorn"
+    uv.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(120)\n", encoding="utf-8")
+    uv.chmod(0o755)
+    return uv
+
+
+def test_shebang_스크립트로_뜬_자기_프로세스를_알아보고_내린다(env, tmp_path):
+    """호스트 모드 fastapi 앱 — 기록은 [.venv/bin/uvicorn, app.main:app, …] 인데 /proc 은 [python, …/uvicorn, …] 다(HH-16 검토).
+    예전엔 가드가 'pid 재사용' 으로 읽어 프로세스는 포트를 쥔 채 살려 두고 포트 배정만 풀었다."""
+    argv = [str(_console_script(tmp_path)), "app.main:app", "--host", "127.0.0.1", "--port", "65001", "--root-path", "/apps/demo"]
+    proc = _spawn(argv)
+    try:
+        assert L._pid_matches_argv(proc.pid, argv) is True
+        L._write_state("demo_host", {"schema_version": L._STATE_SCHEMA_VERSION, "slug": "demo_host", "pid": proc.pid,
+                                     "port": 9555, "base_path": "/apps/demo_host", "stack": "fastapi", "argv": argv})
+        assert L._retire_stale_service("demo_host", db=_DB) is True
+        proc.wait(timeout=10)
+        assert ("release", 9555) in env.events
+    finally:
+        _reap(proc)
+
+
+@pytest.mark.parametrize("stranger", [["sleep", "120"], [sys.executable, "-c", "import time; time.sleep(120)"]],
+                         ids=["다른_실행_파일", "인터프리터인데_다른_스크립트"])
+def test_명령줄이_다른_살아_있는_프로세스는_건드리지_않고_기록과_포트를_둔다(env, tmp_path, caplog, stranger):
+    argv = [str(tmp_path / ".venv" / "bin" / "uvicorn"), "app.main:app", "--port", "65002"]
+    proc = _spawn(stranger)
+    try:
+        assert L._pid_matches_argv(proc.pid, argv) is False
+        L._write_state("step_forge", {**_service_state("step_forge", pid=proc.pid), "argv": argv})
+        env.write("step_forge", _PROXY)
+        with caplog.at_level(logging.WARNING):
+            for _ in range(2):
+                env.run()
+        assert proc.poll() is None, "남의 프로세스를 죽였다"
+        assert ("release", 9115) not in env.events, "아직 그 프로세스가 쥐었을 수 있는 포트를 돌려줬다"
+        assert json.loads((L.STATE_DIR / "step_forge.json").read_text(encoding="utf-8"))["pid"] == proc.pid
+        assert sum("명령줄이 기록과 다르다" in r.getMessage() for r in caplog.records) == 1
+    finally:
+        _reap(proc)
 
 
 def test_서비스로_도는_앱은_그대로다(env, monkeypatch):

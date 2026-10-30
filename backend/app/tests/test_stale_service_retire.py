@@ -280,6 +280,58 @@ def test_모드가_없어도_남은_기록이_없으면_말하지_않는다(env,
     assert env.events == [] and not [r for r in caplog.records if "HH-16" in r.getMessage()]
 
 
+# dev 박스의 step_forge 덮어쓰기(MANIFEST_SPEC 10절 예) — HH-14 판 추적 매니페스트(_PROXY) 위에 얹으면 서비스 앱이 된다.
+_DEV_LOCAL = """execution_target: linux_runner
+build:
+  stack: fastapi
+  type: python_venv
+  python_version: "3.12"
+launch:
+  mode: service
+  upstream: null
+  strip_prefix: null
+  health_check: { type: http, path: /health }
+resources:
+  memory_gb: 16
+"""
+
+
+def _break(lp: Path, how: str) -> None:
+    if how == "dir":
+        lp.mkdir()
+    elif how == "dangling":
+        lp.symlink_to(lp.parent / "gone.yaml")
+    else:
+        lp.write_text({
+            "yaml_tab": _DEV_LOCAL.replace("  mode: service", "\tmode: service"),       # 손으로 고치다 탭이 들어갔다
+            "empty": "",                                                                  # 다시 쓰는 도중의 빈 파일
+            "partial": _DEV_LOCAL.split("launch:")[0],                                   # launch: 앞에서 끊긴 파일
+            "indent_slip": "launch:\nmode: service\n",                                   # 들여쓰기 하나를 빠뜨렸다
+            "str_launch": "launch: service\n",                                           # 블록을 글자로 적었다
+        }[how], encoding="utf-8")
+
+
+@pytest.mark.parametrize("how", ["yaml_tab", "empty", "partial", "indent_slip", "str_launch", "dir", "dangling"])
+def test_덮어쓰기가_깨지면_추적_값으로_돌지_않고_도는_서비스를_그대로_둔다(env, monkeypatch, how):
+    """HH-14 뒤 dev — 로컬 파일이 깨졌다고 추적 값(운영 노드 16110)을 따르면 HH-16 이 건강한 heax_app_step_forge 를 내렸다(검토 재현)."""
+    monkeypatch.setattr(L, "_is_alive", lambda pid: True)
+    monkeypatch.setattr(L, "_is_healthy", lambda *a, **k: True)
+    L._write_state("step_forge", _service_state("step_forge", instance="heax_app_step_forge"))
+    ws = env.write("step_forge", _PROXY)
+    (env.sifs / "step_forge.sif").write_bytes(b"sif")
+    lp = ws / ".portal" / "manifest.local.yaml"
+    lp.write_text(_DEV_LOCAL, encoding="utf-8")
+    assert env.run()["by_action"] == {"already_running": 1}                   # 대조 — 멀쩡한 덮어쓰기면 서비스 그대로
+    env.events.clear()
+    lp.unlink()
+    _break(lp, how)
+    for _ in range(2):
+        assert env.run()["by_action"] == {"held": 1}
+    assert env.events == [], f"보류해야 하는데 라우트를 바꾸거나 서비스를 내렸다: {env.events}"
+    st = json.loads((L.STATE_DIR / "step_forge.json").read_text(encoding="utf-8"))
+    assert st["instance_name"] == "heax_app_step_forge" and st["port"] == 9115
+
+
 def test_비라우트_모드는_스택_표의_launch_mode_에서_라우트_모드를_뺀_것이다():
     from app.services import stack_resolver
     from app.workers import integration_tasks

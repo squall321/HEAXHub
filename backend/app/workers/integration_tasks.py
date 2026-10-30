@@ -124,6 +124,10 @@ def _reconcile_one(integration_launcher, db, child: Path, manifest_path: Path) -
         # 박스 전용 manifest.local.yaml 을 얹은 효과 매니페스트(HH-15) — 로컬 파일을 더하거나 고치거나 지우면
         # 이 패스에서 라우트 · 기동 판정이 그것을 따른다.
         manifest = integration_manifest.load_file(manifest_path) or {}
+    except integration_manifest.LocalOverrideError as exc:
+        # 로컬 파일이 있는데 얹지 못했다 — 추적 값으로 돌면 박스에 맞지 않는 값(dev 의 step_forge → 없는 16110)으로 라우트를
+        # 바꾸고 HH-16 이 도는 서비스를 내린다. 라우트 · 인스턴스를 마지막 상태 그대로 두고 건너뛴다(까닭은 로더가 WARNING 으로 남겼다).
+        return {"slug": slug, "action": "held", "port": None, "base_path": None, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001 — never break the loop
         logger.warning("reconcile: manifest load failed for %s: %s", slug, exc)
         return None

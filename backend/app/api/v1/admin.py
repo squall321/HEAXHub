@@ -414,7 +414,7 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
       - state file:      — pid + port + base_path + started_at (if launched)
       - process_alive    — os.kill 0
       - http_health      — curl 200 via Caddy /apps/<id>/<health_path>
-      - local_override   — 박스 전용 manifest.local.yaml 이 있는 앱에만 — 얹었는지 · 바뀐 최상위 키 · 무시한 까닭(HH-15)
+      - local_override   — 박스 전용 manifest.local.yaml 이 있는 앱에만 — 얹었는지 · 바뀐 최상위 키 · 얹지 못해 보류한 까닭(HH-15)
     """
     from app.services import (  # noqa: PLC0415
         integration_launcher,
@@ -478,6 +478,8 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
                 "changed_keys": local.changed_keys,
                 "rejected_keys": local.rejected_keys,
                 "error": local.error,
+                # 얹지 못해 보류 중이다 — reconcile · 스캔이 이 앱을 건너뛰어 마지막 상태 그대로다(위 표의 값은 추적 파일 것이다).
+                "held": local.held,
             }
         rows.append(row)
     return {"root": str(root), "exists": True, "count": len(rows), "items": rows}

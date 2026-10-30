@@ -25,16 +25,25 @@ UP="$(grep -oE 'upstream: *http[^ ]*' "${F:-/dev/null}" 2>/dev/null | head -1 | 
 LOCAL="$(dirname "${F:-/nonexistent/x}")/manifest.local.yaml"
 if [ -n "$F" ] && [ -f "$LOCAL" ]; then
   echo "  ! 박스 덮어쓰기 ${LOCAL#"$ROOT"/} 가 있다 — 허브는 그것을 얹은 효과 매니페스트로 돈다."
-  EFF="$(cd "$ROOT/backend" && .venv/bin/python - "$F" 2>&1 <<'PYEOF'
-import logging, sys
+  EFF="$(cd "$ROOT/backend" && .venv/bin/python - "$F" "$ROOT/var/integration_state/${SLUG}.json" 2>&1 <<'PYEOF'
+import json, logging, sys
 from pathlib import Path
 logging.disable(logging.CRITICAL)
 from app.services import integration_manifest as M
 m, o = M.load_file_with_override(Path(sys.argv[1]))
 m = m if isinstance(m, dict) else {}
 la = m.get("launch") or {}
-if o is not None and not o.applied:
-    print(f"    무시됨: {o.error} — 추적 파일 값 그대로다")
+if o is not None and o.held:
+    print(f"    보류: {o.error}")
+    print("    허브는 이 파일을 고칠 때까지 이 앱을 건너뛴다 — 라우트 · 기동은 마지막으로 얹은 값 그대로다(추적 파일 값이 아니다).")
+    try:  # 지금 걸린 업스트림은 마지막 proxy 기록이 안다. 서비스 앱이면 2번이 상태 파일을 보여 준다.
+        st = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        st = {}
+    up = st.get("upstream") if isinstance(st, dict) and st.get("mode") == "proxy" else ""
+    print(f"UP={up or ''}")
+elif o is not None and not o.applied:
+    print(f"    얹지 않음: {o.error} — 추적 파일 값 그대로다")
 else:
     print(f"    바뀐 최상위 키: {', '.join(o.changed_keys) if o else '-'}"
           + (f"  (받지 않은 키: {', '.join(o.rejected_keys)})" if o and o.rejected_keys else ""))

@@ -182,7 +182,8 @@ def get_app(
                 try:
                     import yaml
                     # integrations/ 쪽은 박스 덮어쓰기(manifest.local.yaml)를 얹어 읽는다 — 스캐너와 같은 효과 매니페스트(HH-15).
-                    manifest = (integration_manifest.load_file(candidate) if candidate == integ
+                    # 보여 주기만 하므로 얹지 못해 보류 중이면 추적 값을 보여 준다(도는 쪽만 load_file 로 보류한다).
+                    manifest = (integration_manifest.load_file_with_override(candidate)[0] if candidate == integ
                                 else yaml.safe_load(candidate.read_text(encoding="utf-8")))
                     break
                 except Exception:
@@ -217,8 +218,8 @@ def get_app_manifest(
     ):
         if candidate.exists():
             import yaml
-            if candidate == integ:  # 박스 덮어쓰기를 얹은 효과 매니페스트(HH-15)
-                return integration_manifest.load_file(candidate) or {}
+            if candidate == integ:  # 박스 덮어쓰기를 얹은 효과 매니페스트(HH-15) — 얹지 못해 보류 중이면 추적 값
+                return integration_manifest.load_file_with_override(candidate)[0] or {}
             return yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
     raise NotFoundError("Manifest not found")
 

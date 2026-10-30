@@ -45,7 +45,13 @@ from app.services import integration_manifest
 
 child = ROOT / "integrations" / slug
 # 스캐너 · reconcile 과 같은 효과 매니페스트 — 박스 전용 manifest.local.yaml 을 얹는다(HH-15).
-manifest = integration_manifest.load_file(child / ".portal" / "manifest.yaml")
+try:
+    manifest = integration_manifest.load_file(child / ".portal" / "manifest.yaml")
+except integration_manifest.LocalOverrideError as exc:
+    # 로컬 파일이 있는데 얹지 못했다 — 추적 값으로 내렸다 올리면 이 박스에 맞지 않는 앱이 뜬다. 멈추기 전에 끝낸다.
+    print(f"[ERROR] 박스 덮어쓰기를 얹지 못했다 — {exc}. 고치거나 지운 뒤 다시 실행한다(추적 값으로 띄우지 않는다)",
+          file=sys.stderr)
+    sys.exit(2)
 canonical = manifest.get("id") or slug.replace("-", "_")
 sif = ROOT / "var" / "sifs" / f"{slug}.sif"
 src = manifest.get("source") if isinstance(manifest.get("source"), dict) else None

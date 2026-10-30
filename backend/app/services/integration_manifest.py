@@ -16,7 +16,10 @@
 
 * 로컬 파일이 없으면 ``yaml.safe_load`` 가 돌려준 것을 그대로 돌려준다 — 예전과 한 글자도 다르지 않다.
 * 추적 파일을 읽다 난 예외(파일 없음 · YAML 오류)는 그대로 올린다 — 부르는 쪽의 처리가 예전 그대로 돈다.
-* 로컬 파일이 깨졌거나(YAML 오류 · 매핑이 아님) 읽히지 않으면 통째로 무시하고 추적 매니페스트로 돈다(WARNING).
+* 로컬 파일이 있는데 얹지 못하면(YAML 오류 · 매핑이 아님 · 빈 파일 · 읽히지 않음 · 대상이 없는 심링크 · 얹은 결과의 모양이 틀림)
+  그 앱을 **보류한다** — ``load_file`` 이 :class:`LocalOverrideError` 를 올리고, 도는 쪽(스캐너 · reconcile · redeploy-app.sh)은
+  그 앱을 이번 패스에서 건너뛰어 라우트 · 인스턴스 · 스냅숏을 마지막 상태 그대로 둔다(WARNING). 추적 값으로 돌지 않는 것이 요점이다 —
+  덮어쓰기는 추적 값이 이 박스에 맞지 않아서 둔 것이라, 오타 하나로 추적 값을 따르면 그 앱이 끊기고 HH-16 이 도는 서비스를 내린다.
 * 로컬 파일은 앱 id 를 못 바꾼다 — id 는 /apps/<id> · 상태 파일 · 인스턴스 이름(heax_app_<id>)의 원천이다. 그 키만 버린다(WARNING).
 * 같은 내용을 되풀이해 알리지 않는다 — reconcile 은 45초마다 돈다. 경고는 내용이 그대로면 한 시간에 한 번만 다시 남긴다.
 """
@@ -54,7 +57,21 @@ class LocalOverride:
     applied: bool
     changed_keys: list[str] = field(default_factory=list)   # 효과 매니페스트에서 실제로 달라진 최상위 키
     rejected_keys: list[str] = field(default_factory=list)  # 받아들이지 않은 키(지금은 id 하나)
-    error: str | None = None                                # 통째로 무시한 까닭
+    error: str | None = None                                # 얹지 못한 까닭
+    held: bool = False                                      # 로컬 파일이 있는데 얹지 못해 그 앱을 보류한다(추적 값으로 돌지 않는다)
+
+
+class LocalOverrideError(Exception):
+    """``manifest.local.yaml`` 이 있는데 얹지 못했다 — 부르는 쪽은 추적 값으로 돌지 말고 그 앱을 이번 패스에서 건너뛴다."""
+
+    def __init__(self, path: Path, reason: str) -> None:
+        super().__init__(f"{path}: {reason}")
+        self.path = path
+        self.reason = reason
+
+
+# 있으면 매핑이어야 하는 최상위 키 — 부르는 쪽이 모두 `.get` 으로 읽는다.
+_MAPPING_KEYS = ("launch", "build", "permissions", "resources", "source", "mcp")
 
 
 def merge_patch(target: Any, patch: Any) -> Any:
@@ -71,33 +88,46 @@ def merge_patch(target: Any, patch: Any) -> Any:
 
 
 def load_file(manifest_path: Path) -> Any:
-    """``manifest.yaml`` 을 읽어 효과 매니페스트를 돌려준다 — 옆에 ``manifest.local.yaml`` 이 있으면 얹은 것."""
-    return load_file_with_override(manifest_path)[0]
+    """``manifest.yaml`` 을 읽어 효과 매니페스트를 돌려준다 — 옆에 ``manifest.local.yaml`` 이 있으면 얹은 것.
+
+    로컬 파일이 있는데 얹지 못하면 :class:`LocalOverrideError` 를 올린다 — 추적 값으로 돌지 않게(그 앱을 보류한다).
+    """
+    manifest, info = load_file_with_override(manifest_path)
+    if info is not None and info.held:
+        raise LocalOverrideError(info.path, info.error or "")
+    return manifest
 
 
 def load_file_with_override(manifest_path: Path) -> tuple[Any, LocalOverride | None]:
-    """효과 매니페스트와, 로컬 파일을 어떻게 다뤘는지(로컬 파일이 없으면 None)를 함께 돌려준다."""
+    """효과 매니페스트와, 로컬 파일을 어떻게 다뤘는지(로컬 파일이 없으면 None)를 함께 돌려준다.
+
+    로컬 파일을 얹지 못했으면(``held``) 돌려주는 매니페스트는 추적 값이다 — 상태 화면 · 진단이 보여 주기만 하고 그것으로 돌지 않는다.
+    도는 쪽은 :func:`load_file` 을 쓴다.
+    """
     base = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     local_path = manifest_path.with_name(LOCAL_FILE)
     try:
         raw = local_path.read_bytes()
     except FileNotFoundError:
+        if local_path.is_symlink():
+            # 있던 파일을 가리키던 심링크가 대상을 잃었다 — '파일 없음' 으로 치면 추적 값으로 조용히 넘어간다.
+            return base, _held(local_path, "가리키는 대상이 없는 심링크다", state="dangling")
         _forget(local_path)
         return base, None
     except OSError as exc:
-        return base, _ignored(local_path, f"읽지 못했다({exc})", state=f"unreadable:{exc}")
+        return base, _held(local_path, f"읽지 못했다({exc})", state=f"unreadable:{exc}")
 
     sig = hashlib.sha256(raw).hexdigest()[:16]
     try:
         patch = yaml.safe_load(raw.decode("utf-8"))
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
         reason = " ".join(str(exc).split())
-        return base, _ignored(local_path, f"YAML 로 읽히지 않는다({reason})", state=f"broken:{sig}")
+        return base, _held(local_path, f"YAML 로 읽히지 않는다({reason})", state=f"broken:{sig}")
     if not isinstance(patch, dict):
         kind = "빈 파일" if patch is None else type(patch).__name__
-        return base, _ignored(local_path, f"최상위가 매핑이 아니다({kind})", state=f"broken:{sig}")
+        return base, _held(local_path, f"최상위가 매핑이 아니다({kind})", state=f"broken:{sig}")
     if not isinstance(base, dict):
-        # 추적 매니페스트부터 깨졌다 — 부르는 쪽이 그것을 따로 알린다. 얹을 자리가 없다.
+        # 추적 매니페스트부터 깨졌다 — 부르는 쪽이 그것을 따로 알린다(예전과 같다). 얹을 자리가 없다.
         return base, LocalOverride(path=local_path, applied=False,
                                    error="추적 매니페스트가 매핑이 아니라 얹지 않았다")
 
@@ -109,6 +139,9 @@ def load_file_with_override(manifest_path: Path) -> tuple[Any, LocalOverride | N
             rejected.append("id")
 
     effective = merge_patch(base, patch)
+    shape = _shape_error(base, patch, effective)
+    if shape:
+        return base, _held(local_path, f"얹은 결과의 모양이 틀렸다 — {shape}", state=f"shape:{sig}")
     changed = sorted(
         str(k) for k in set(base) | set(effective)
         if base.get(k, _MISSING) != effective.get(k, _MISSING)
@@ -126,11 +159,56 @@ def load_file_with_override(manifest_path: Path) -> tuple[Any, LocalOverride | N
     return effective, info
 
 
-def _ignored(local_path: Path, reason: str, *, state: str) -> LocalOverride:
+def _held(local_path: Path, reason: str, *, state: str) -> LocalOverride:
     _note(local_path, state, logging.WARNING, repeat=True,
-          msg="manifest.local.yaml 을 무시한다 — %s: %s. 추적 매니페스트(manifest.yaml)만으로 돈다",
+          msg=("manifest.local.yaml 을 얹지 못해 이 앱을 보류한다 — %s: %s. 고칠 때까지 라우트 · 기동 · 스냅숏을 마지막 상태 그대로 두고"
+               " 추적 값(manifest.yaml)으로 돌지 않는다"),
           args=(local_path, reason))
-    return LocalOverride(path=local_path, applied=False, error=reason)
+    return LocalOverride(path=local_path, applied=False, error=reason, held=True)
+
+
+def _shape_error(base: dict, patch: dict, effective: dict) -> str | None:
+    """얹은 결과를 허브가 그대로 읽을 수 있는지 — 아니면 까닭을 돌려준다(그 앱을 보류한다).
+
+    YAML 로는 멀쩡한 실수를 잡는다. ``launch: http://…`` · ``launch: service`` 처럼 블록을 글자로 적은 것, 짧은 덮어쓰기에서
+    들여쓰기를 하나 빠뜨려 ``launch:`` 가 null 로 읽힌 것(그 블록이 통째로 지워진다), 쓰는 도중에 읽혀 build 만 바뀌고
+    launch 는 추적 값으로 남은 것(fastapi 스택에 proxy 모드).
+    """
+    for key in _MAPPING_KEYS:
+        if key in patch and key in effective and not isinstance(effective[key], dict):
+            return f"{key} 는 매핑이어야 한다(지금 {type(effective[key]).__name__})"
+    for key, sub in (("launch", "mode"), ("build", "stack")):
+        if not isinstance(base.get(key), dict):
+            continue
+        if key not in effective:
+            return f"추적 매니페스트의 {key} 블록을 통째로 지운다(들여쓰기가 빠지면 '{key}:' 가 null 로 읽힌다)"
+        if base[key].get(sub) and not effective[key].get(sub):
+            return f"추적 매니페스트의 {key}.{sub} 를 지운다"
+    if "launch" in patch or "build" in patch:
+        mismatch = _stack_mode_mismatch(effective)
+        if mismatch and not _stack_mode_mismatch(base):
+            return mismatch
+    return None
+
+
+def _stack_mode_mismatch(manifest: dict) -> str | None:
+    """build.stack 이 config/stacks.yaml 에 적힌 launch_mode 와 launch.mode 가 어긋나면 그 설명을 돌려준다."""
+    build, launch = manifest.get("build"), manifest.get("launch")
+    if not isinstance(build, dict) or not isinstance(launch, dict):
+        return None
+    stack, mode = build.get("stack"), launch.get("mode")
+    if not stack or not mode:
+        return None
+    try:
+        from app.services import stack_resolver  # noqa: PLC0415 — 스택 표는 첫 호출 뒤 캐시된다
+
+        spec = stack_resolver.load_stacks().get(str(stack))
+    except Exception:  # noqa: BLE001 — 스택 표를 못 읽으면 이 검사만 건너뛴다(모르는 스택은 스캐너가 따로 알린다)
+        return None
+    if spec is None or spec.launch_mode == mode:
+        return None
+    return (f"build.stack {stack} 는 launch.mode {spec.launch_mode} 인 스택인데 launch.mode 가 {mode!r} 다"
+            "(모드를 바꾸면 스택도 함께 바꾼다)")
 
 
 def _note(local_path: Path, state: str, level: int, *, repeat: bool, msg: str, args: tuple) -> None:

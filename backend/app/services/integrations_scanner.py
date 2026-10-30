@@ -154,6 +154,7 @@ def _load_manifest(manifest_path: Path) -> dict[str, Any] | None:
 
     옆의 박스 전용 ``manifest.local.yaml`` 을 얹은 효과 매니페스트를 돌려준다(HH-15) — 스냅숏 · 빌드 해시 ·
     기동 지문이 모두 이것을 보므로 로컬 파일을 더하거나 고치거나 지우면 다음 스캔에 반영된다.
+    로컬 파일이 있는데 얹지 못하면 ``integration_manifest.LocalOverrideError`` 를 그대로 올린다(_process_dir 가 그 앱을 건너뛴다).
     """
     try:
         raw = integration_manifest.load_file(manifest_path)
@@ -852,7 +853,12 @@ def _process_dir(
     db: Session, *, slug: str, integration_dir: Path, system_user_id: Any
 ) -> ScanResult:
     manifest_path = integration_dir / ".portal" / "manifest.yaml"
-    manifest = _load_manifest(manifest_path)
+    try:
+        manifest = _load_manifest(manifest_path)
+    except integration_manifest.LocalOverrideError as exc:
+        # 박스 덮어쓰기가 있는데 얹지 못했다(HH-15 검토) — 추적 값으로 돌지 않는다. App · AppVersion 행 · 스냅숏 · 빌드 · 기동을
+        # 마지막 상태 그대로 두고 건너뛴다(건너뛴 앱의 행은 지우지 않으므로 카탈로그 · MCP 레지스트리도 마지막 값을 쓴다).
+        return ScanResult(slug=slug, action="skipped", reason=f"manifest.local.yaml 을 못 얹었다: {exc.reason}")
     if manifest is None:
         return ScanResult(slug=slug, action="skipped", reason="manifest invalid")
 

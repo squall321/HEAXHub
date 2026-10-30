@@ -146,7 +146,17 @@ def test_바뀐_키는_실제로_달라진_것만_센다(tmp_path):
     assert info.changed_keys == ["version"]
 
 
-# ─── 깨진 로컬 파일은 무시하고 추적 매니페스트로 돈다 ──────────────────────────────
+# ─── 로컬 파일이 있는데 얹지 못하면 그 앱을 보류한다 — 추적 값으로 돌지 않는다(HH-15 검토) ────────────
+#
+# 덮어쓰기는 추적 값이 이 박스에 맞지 않아서 둔 것이다. 오타 하나로 추적 값을 따르면 dev 의 step_forge 가 없는 16110 으로 가고
+# HH-16 이 도는 heax_app_step_forge 를 내린다(검토 재현). 그래서 보여 주기용으로만 추적 값을 돌려주고, 도는 쪽(load_file)은 올린다.
+
+
+def _assert_held(mp: Path, info, why: str) -> None:
+    assert info is not None and info.held and not info.applied and why in (info.error or ""), info
+    with pytest.raises(M.LocalOverrideError) as ei:
+        M.load_file(mp)
+    assert why in ei.value.reason and ei.value.path == mp.with_name(M.LOCAL_FILE)
 
 
 @pytest.mark.parametrize(
@@ -159,33 +169,100 @@ def test_바뀐_키는_실제로_달라진_것만_센다(tmp_path):
         (b"\xff\xfe\x00bad", "YAML 로 읽히지 않는다"),
     ],
 )
-def test_깨진_로컬_파일은_무시하고_크게_알린다(tmp_path, caplog, raw, why):
+def test_깨진_로컬_파일이면_그_앱을_보류하고_크게_알린다(tmp_path, caplog, raw, why):
     mp = _write(tmp_path / "app", _BASE)
     lp = mp.with_name(M.LOCAL_FILE)
     lp.write_bytes(raw if isinstance(raw, bytes) else raw.encode("utf-8"))
     with caplog.at_level(logging.WARNING, logger=M.logger.name):
         got, info = M.load_file_with_override(mp)
-    assert got == yaml.safe_load(mp.read_text(encoding="utf-8")), "추적 매니페스트로 돌아야 한다"
-    assert info is not None and not info.applied and why in (info.error or "")
+        _assert_held(mp, info, why)
+    assert got == yaml.safe_load(mp.read_text(encoding="utf-8")), "보여 주기용으로는 추적 값을 돌려준다"
     warned = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warned) == 1 and str(lp) in warned[0].getMessage() and "무시" in warned[0].getMessage()
+    assert len(warned) == 1 and str(lp) in warned[0].getMessage() and "보류" in warned[0].getMessage()
 
 
-def test_디렉터리라_못_읽어도_추적_매니페스트로_돈다(tmp_path, caplog):
+def test_디렉터리라_못_읽어도_보류한다(tmp_path, caplog):
     mp = _write(tmp_path / "app", _BASE)
     mp.with_name(M.LOCAL_FILE).mkdir()
     with caplog.at_level(logging.WARNING, logger=M.logger.name):
         got, info = M.load_file_with_override(mp)
-    assert got == _BASE and not info.applied and "읽지 못했다" in info.error
-    assert any("무시" in r.getMessage() for r in caplog.records)
+    assert got == _BASE
+    _assert_held(mp, info, "읽지 못했다")
+    assert any("보류" in r.getMessage() for r in caplog.records)
+
+
+def test_대상이_없는_심링크는_파일_없음이_아니라_보류다(tmp_path):
+    """'파일 없음' 으로 치면 아무 말 없이 추적 값으로 넘어간다 — 상태 화면에도 행이 생기지 않았다."""
+    mp = _write(tmp_path / "app", _BASE)
+    mp.with_name(M.LOCAL_FILE).symlink_to(tmp_path / "gone.yaml")
+    got, info = M.load_file_with_override(mp)
+    assert got == _BASE
+    _assert_held(mp, info, "대상이 없는 심링크")
+
+
+_SERVICE_BASE = {**_BASE, "execution_target": "linux_runner", "build": {"stack": "fastapi", "type": "python_venv"},
+                 "launch": {"mode": "service", "health_check": {"path": "/health"}}}
+
+
+@pytest.mark.parametrize(
+    ("base", "raw", "why"),
+    [
+        (_BASE, "launch: http://127.0.0.1:8700\n", "launch 는 매핑이어야 한다(지금 str)"),      # upstream 만 바꾸려다 블록을 글자로
+        (_BASE, "launch: service\n", "launch 는 매핑이어야 한다(지금 str)"),
+        (_BASE, "permissions: company\n", "permissions 는 매핑이어야 한다"),
+        (_BASE, "resources: 16\n", "resources 는 매핑이어야 한다(지금 int)"),
+        (_BASE, "launch:\nmode: service\n", "launch 블록을 통째로 지운다"),               # 들여쓰기 하나를 빠뜨렸다
+        (_BASE, "build: null\n", "build 블록을 통째로 지운다"),
+        (_BASE, "launch: {mode: null}\n", "launch.mode 를 지운다"),
+        (_BASE, "build: {stack: ''}\n", "build.stack 를 지운다"),
+        # 쓰는 도중에 읽혔다 — build 만 서비스 스택이 되고 launch 는 추적 값(proxy)으로 남았다
+        (_BASE, "execution_target: linux_runner\nbuild: {stack: fastapi, type: python_venv}\n",
+         "build.stack fastapi 는 launch.mode service 인 스택인데 launch.mode 가 'proxy' 다"),
+        (_BASE, "launch: {mode: servise}\n", "launch.mode 가 'servise' 다"),                # 모드 오타
+        (_SERVICE_BASE, "launch: {mode: proxy, upstream: 'http://127.0.0.1:9999'}\n",  # 모드만 바꾸고 스택을 그대로 뒀다
+         "build.stack fastapi 는 launch.mode service 인 스택인데 launch.mode 가 'proxy' 다"),
+    ],
+    ids=["launch_주소", "launch_글자", "permissions_글자", "resources_숫자", "launch_null", "build_null", "mode_null",
+         "stack_빈글자", "덜_쓰인_파일", "모드_오타", "스택_그대로"],
+)
+def test_YAML_로는_멀쩡해도_얹은_결과의_모양이_틀리면_보류한다(tmp_path, caplog, base, raw, why):
+    mp = _write(tmp_path / "app", base, raw)
+    with caplog.at_level(logging.WARNING, logger=M.logger.name):
+        got, info = M.load_file_with_override(mp)
+    assert got == base
+    _assert_held(mp, info, why)
+    assert any("보류" in r.getMessage() and "모양" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize(
+    ("base", "local", "want_mode", "want_stack"),
+    [
+        (_BASE, {"launch": {"upstream": "http://127.0.0.1:8700"}}, "proxy", "external_proxy"),   # dev 의 kooremapper 셋
+        (_BASE, {"execution_target": "linux_runner",                                              # dev 의 step_forge
+                 "build": {"stack": "fastapi", "type": "python_venv", "python_version": "3.12"},
+                 "launch": {"mode": "service", "upstream": None, "strip_prefix": None,
+                            "health_check": {"type": "http", "path": "/health"}}}, "service", "fastapi"),
+        (_SERVICE_BASE, {"build": {"stack": "external_proxy", "type": None},                     # 서비스 앱을 이 박스에서만 넘긴다
+                         "launch": {"mode": "proxy", "upstream": "http://127.0.0.1:9999", "health_check": None}},
+         "proxy", "external_proxy"),
+        (_BASE, {"mcp": None, "resources": {"memory_gb": 4}, "permissions": {"visibility": "team"}}, "proxy",
+         "external_proxy"),
+    ],
+    ids=["upstream_만", "proxy_를_service_로", "service_를_proxy_로", "지우기와_더하기"],
+)
+def test_모드와_스택을_함께_바꾼_덮어쓰기는_얹는다(tmp_path, base, local, want_mode, want_stack):
+    mp = _write(tmp_path / "app", base, local)
+    got = M.load_file(mp)
+    assert got["launch"]["mode"] == want_mode and got["build"]["stack"] == want_stack
 
 
 def test_같은_경고는_되풀이하지_않고_내용이_바뀌면_다시_말한다(tmp_path, caplog):
     mp = _write(tmp_path / "app", _BASE, "launch: [\n")
     with caplog.at_level(logging.INFO, logger=M.logger.name):
         for _ in range(5):                    # reconcile 45초 × 5
-            M.load_file(mp)
-        assert sum("무시" in r.getMessage() for r in caplog.records) == 1
+            with pytest.raises(M.LocalOverrideError):
+                M.load_file(mp)
+        assert sum("보류" in r.getMessage() for r in caplog.records) == 1
         _write(tmp_path / "app", _BASE, {"launch": {"upstream": "http://127.0.0.1:8700"}})   # 고쳤다
         M.load_file(mp)
         M.load_file(mp)
@@ -262,7 +339,7 @@ def test_상태_화면이_덮어쓴_앱만_표시한다(tmp_path, monkeypatch):
 
     _write(tmp_path / "plain_app", {**_BASE, "id": "plain_app"})
     _write(tmp_path / "step_forge", {**_BASE, "id": "step_forge"},
-           {"execution_target": "linux_runner", "launch": {"mode": "service", "upstream": None}})
+           {"execution_target": "linux_runner", "build": {"stack": "fastapi"}, "launch": {"mode": "service", "upstream": None}})
     _write(tmp_path / "broken_app", {**_BASE, "id": "broken_app"}, "launch: [\n")
     monkeypatch.setattr(integrations_scanner, "INTEGRATIONS_ROOT", tmp_path)
 
@@ -272,11 +349,11 @@ def test_상태_화면이_덮어쓴_앱만_표시한다(tmp_path, monkeypatch):
     assert "local_override" not in rows["plain_app"], "로컬 파일 없는 앱의 행은 예전과 같아야 한다"
     lo = rows["step_forge"]["local_override"]
     assert lo == {"file": "integrations/step_forge/.portal/manifest.local.yaml", "applied": True,
-                  "changed_keys": ["execution_target", "launch"], "rejected_keys": [], "error": None}
+                  "changed_keys": ["build", "execution_target", "launch"], "rejected_keys": [], "error": None, "held": False}
     assert rows["step_forge"]["launch_mode"] == "service", "표의 값도 효과 매니페스트다"
     bad = rows["broken_app"]["local_override"]
-    assert bad["applied"] is False and "YAML" in bad["error"]
-    assert rows["broken_app"]["launch_mode"] == "proxy"
+    assert bad["applied"] is False and bad["held"] is True and "YAML" in bad["error"]
+    assert rows["broken_app"]["launch_mode"] == "proxy", "보류 중인 앱의 표 값은 추적 파일 것이다"
 
 
 # ─── reconcile 이 로컬 파일을 다음 패스에 따른다 ─────────────────────────────────
@@ -338,11 +415,15 @@ def test_reconcile_은_로컬_파일을_더하고_고치고_지운_것을_다음
     assert ups == ["http://127.0.0.1:16110", "http://127.0.0.1:8700", "http://127.0.0.1:8701", "http://127.0.0.1:16110"]
 
 
-def test_깨진_로컬_파일이면_reconcile_은_추적_값으로_돈다(reconcile_env):
+def test_깨진_로컬_파일이면_reconcile_은_그_앱을_보류한다(reconcile_env):
+    """예전엔 추적 값(16110)으로 라우트를 돌렸다 — dev 에는 없는 포트다."""
     base = {**_BASE, "id": "kooremapper_mcp"}
     _write(reconcile_env.root / "kooremapper-mcp", base, "launch: {upstream: http://127.0.0.1:8701\n")
-    reconcile_env.run()
-    assert reconcile_env.proxy.calls == [("proxy", "kooremapper_mcp", "http://127.0.0.1:16110")]
+    _write(reconcile_env.root / "zz-good", {**_BASE, "id": "zz_good"})
+    out = reconcile_env.run()
+    assert reconcile_env.proxy.calls == [("proxy", "zz_good", "http://127.0.0.1:16110")], "보류한 앱의 라우트를 건드렸다"
+    assert out["by_action"] == {"held": 1, "started": 1}
+    assert out["items"][0]["slug"] == "kooremapper-mcp" and "YAML" in out["items"][0]["error"]
 
 
 # ─── 모양이 틀린 매니페스트 하나가 다른 앱까지 깨지 않는다(HH-15 검토) ─────────────────
@@ -520,6 +601,98 @@ def test_스캐너의_스냅숏과_빌드_기동이_로컬_파일을_따른다(t
     want = M.merge_patch(base, local)
     assert _snapshot() == want, "스냅숏(MCP 레지스트리 · 형제 주소 · API 가 읽는 것)이 로컬 파일을 안 봤다"
     assert built[-1] == want and launched[-1] == want, "빌드 해시 · 기동 지문이 로컬 파일을 안 봤다"
+    n_built, n_launched = len(built), len(launched)
+    _write(d, base, "launch: {env: [\n")                       # 고치다 깨뜨렸다 — 그 앱을 보류한다(HH-15 검토)
+    res = {r.slug: r for r in integrations_scanner.scan_integrations(scan_db, root=tmp_path)}
+    assert res["local-scan"].action == "skipped" and "manifest.local.yaml" in (res["local-scan"].reason or "")
+    assert _snapshot() == want, "보류한 앱의 스냅숏을 추적 값으로 바꿨다"
+    assert (len(built), len(launched)) == (n_built, n_launched), "보류한 앱을 추적 값으로 빌드 · 기동했다"
     _write(d, base, None)
     integrations_scanner.scan_integrations(scan_db, root=tmp_path)
     assert _snapshot() == base and built[-1] == base and launched[-1] == base, "로컬 파일을 지운 것이 반영되지 않았다"
+
+
+# ─── 운영 스크립트도 보류를 따른다 — redeploy-app.sh 는 멈추기 전에 끝내고, diagnose-app.sh 는 지금 걸린 값을 보여 준다 ─────
+
+
+_STUB_LAUNCHER = '''# 시험용 대역 — redeploy-app.sh 가 런처의 stop · launch 를 불렀는지만 적는다(실제 apptainer · Caddy 에 닿지 않는다)
+import os
+
+
+def _log(what):
+    with open(os.environ["REDEPLOY_PROBE_LOG"], "a", encoding="utf-8") as fh:
+        fh.write(what + "\\n")
+
+
+def stop(canonical, *, db):
+    _log(f"stop {canonical}")
+    return False
+
+
+def launch(*a, **k):
+    _log("launch")
+    raise SystemExit(9)
+'''
+
+_STUB_SESSION = '''# 시험용 대역 — DB 에 닿지 않는 세션
+class SessionLocal:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, *a):
+        return False
+'''
+
+
+def _fake_backend(root: Path, *, stub_launcher: bool) -> None:
+    """가짜 리포 루트의 backend — 로더는 진짜(심링크), 런처 · DB 는 대역(stub_launcher) 또는 진짜 app 통째."""
+    import sys
+
+    backend = root / "backend"
+    backend.mkdir(parents=True)
+    (backend / ".venv").symlink_to(sys.prefix)                 # 이 시험을 도는 venv
+    real = REPO / "backend" / "app"
+    if not stub_launcher:
+        (backend / "app").symlink_to(real)
+        return
+    for sub in ("", "core", "db", "services"):
+        (backend / "app" / sub).mkdir(parents=True, exist_ok=True)
+        (backend / "app" / sub / "__init__.py").write_text("", encoding="utf-8")
+    for rel in ("core/logger.py", "core/errors.py", "services/integration_manifest.py", "services/stack_resolver.py"):
+        (backend / "app" / rel).symlink_to(real / rel)
+    (backend / "app" / "services" / "integration_launcher.py").write_text(_STUB_LAUNCHER, encoding="utf-8")
+    (backend / "app" / "db" / "session.py").write_text(_STUB_SESSION, encoding="utf-8")
+
+
+def test_redeploy_app_은_로컬_파일을_못_얹으면_멈추기_전에_끝낸다(tmp_path):
+    root = tmp_path / "hub"
+    (root / "deploy" / "apptainer").mkdir(parents=True)
+    shutil.copy(REPO / "deploy" / "apptainer" / "redeploy-app.sh", root / "deploy" / "apptainer")
+    _write(root / "integrations" / "hold-app", {**_BASE, "id": "hold_app_probe"}, "launch: {upstream: http://127.0.0.1:8701\n")
+    _fake_backend(root, stub_launcher=True)
+    log = tmp_path / "probe.log"
+    r = subprocess.run(["bash", str(root / "deploy" / "apptainer" / "redeploy-app.sh"), "hold-app"],
+                       capture_output=True, text=True, timeout=60,
+                       env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "REDEPLOY_PROBE_LOG": str(log)})
+    calls = log.read_text(encoding="utf-8").split() if log.exists() else []
+    assert "stop" not in calls and "launch" not in calls, f"추적 값으로 내렸다 올렸다: {calls}"
+    assert r.returncode == 2 and "박스 덮어쓰기를 얹지 못했다" in r.stderr, r.stdout + r.stderr
+
+
+def test_diagnose_app_은_보류를_알리고_마지막으로_건_업스트림을_두드린다(tmp_path):
+    root = tmp_path / "hub"
+    (root / "scripts").mkdir(parents=True)
+    shutil.copy(REPO / "scripts" / "diagnose-app.sh", root / "scripts")
+    _write(root / "integrations" / "hold-app", {**_BASE, "id": "hold_app_probe", "launch": {
+        "mode": "proxy", "upstream": "http://127.0.0.1:9/tracked"}}, "launch: {upstream: http://127.0.0.1:8701\n")
+    (root / "var" / "integration_state").mkdir(parents=True)
+    (root / "var" / "integration_state" / "hold_app_probe.json").write_text(
+        json.dumps({"mode": "proxy", "upstream": "http://127.0.0.1:9/last-applied"}), encoding="utf-8")
+    _fake_backend(root, stub_launcher=False)
+    r = subprocess.run(["bash", str(root / "scripts" / "diagnose-app.sh"), "hold_app_probe"],
+                       capture_output=True, text=True, timeout=120,
+                       env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
+                            "CADDY_BASE": "http://127.0.0.1:9", "CADDY_ADMIN": "http://127.0.0.1:9"})
+    assert "보류:" in r.stdout and "YAML" in r.stdout, r.stdout + r.stderr
+    assert "http://127.0.0.1:9/last-applied/health" in r.stdout, "지금 걸린(마지막으로 얹은) 업스트림을 두드려야 한다"
+    assert "/tracked" not in r.stdout.split("===== 2.")[1], "보류 중인데 추적 파일의 업스트림을 두드렸다"

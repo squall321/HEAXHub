@@ -943,7 +943,10 @@ def _sibling_app_urls(db, exclude_canonical: str) -> dict[str, str]:
     for app_id, manifest_snapshot in rows:
         if app_id == exclude_canonical:
             continue
-        mode = ((manifest_snapshot or {}).get("launch") or {}).get("mode")
+        # 스냅숏 · launch 가 매핑이 아니면 그 앱만 건너뛴다 — 한 앱의 모양 때문에 다른 모든 서비스 앱의 찬 기동이
+        # 여기서 AttributeError 로 죽지 않게(HH-15 검토).
+        launch_section = manifest_snapshot.get("launch") if isinstance(manifest_snapshot, dict) else None
+        mode = launch_section.get("mode") if isinstance(launch_section, dict) else None
         if mode not in ("service", "static", "proxy"):
             continue
         out[f"HEAX_APP_URL_{app_id.upper()}"] = f"{origin}/apps/{app_id}"

@@ -345,6 +345,64 @@ def test_깨진_로컬_파일이면_reconcile_은_추적_값으로_돈다(reconc
     assert reconcile_env.proxy.calls == [("proxy", "kooremapper_mcp", "http://127.0.0.1:16110")]
 
 
+# ─── 모양이 틀린 매니페스트 하나가 다른 앱까지 깨지 않는다(HH-15 검토) ─────────────────
+
+
+def test_launch_가_글자인_매니페스트가_있어도_reconcile_은_뒤의_앱까지_돈다(reconcile_env):
+    """예전엔 `(manifest.get("launch") or {}).get("mode")` 가 글자에서 AttributeError 를 내 패스 전체가 끝났다."""
+    _write(reconcile_env.root / "aa-bad", {**_BASE, "id": "aa_bad", "launch": "service", "build": "fastapi"})
+    _write(reconcile_env.root / "zz-good", {**_BASE, "id": "zz_good"})
+    out = reconcile_env.run()
+    assert reconcile_env.proxy.calls == [("proxy", "zz_good", "http://127.0.0.1:16110")], "뒤의 앱이 라우트를 못 받았다"
+    assert out["by_action"] == {"started": 1}
+
+
+def test_앱_하나가_무엇을_내도_reconcile_패스는_끝까지_돈다(reconcile_env, monkeypatch):
+    from app.workers import integration_tasks
+
+    class _Boom(dict):
+        def get(self, *a, **k):
+            raise RuntimeError("boom")
+
+    real = M.load_file
+    monkeypatch.setattr(integration_tasks.integration_manifest, "load_file",
+                        lambda p: _Boom(id="aa_boom") if p.parent.parent.name == "aa-boom" else real(p))
+    _write(reconcile_env.root / "aa-boom", {**_BASE, "id": "aa_boom"})
+    _write(reconcile_env.root / "zz-good", {**_BASE, "id": "zz_good"})
+    out = reconcile_env.run()
+    assert reconcile_env.proxy.calls == [("proxy", "zz_good", "http://127.0.0.1:16110")]
+    assert out["by_action"] == {"failed": 1, "started": 1}
+    assert [i["slug"] for i in out["items"]] == ["aa-boom", "zz-good"] and "boom" in out["items"][0]["error"]
+
+
+def test_상태_화면은_모양이_틀린_앱이_있어도_200_이다(tmp_path, monkeypatch):
+    from app.api.v1 import admin
+    from app.services import integrations_scanner
+
+    _write(tmp_path / "aa-bad", {**_BASE, "id": "aa_bad", "launch": "service", "build": "fastapi"})
+    _write(tmp_path / "list-app", "- a\n- b\n")
+    _write(tmp_path / "zz-good", {**_BASE, "id": "zz_good"})
+    monkeypatch.setattr(integrations_scanner, "INTEGRATIONS_ROOT", tmp_path)
+    rows = {r["slug"]: r for r in admin.list_builtin_integrations(_admin=None)["items"]}
+    assert rows["aa-bad"]["launch_mode"] is None and rows["aa-bad"]["stack"] is None
+    assert rows["list-app"]["name"] is None and rows["list-app"]["id"] == "list_app"
+    assert rows["zz-good"]["launch_mode"] == "proxy" and rows["zz-good"]["stack"] == "external_proxy"
+
+
+def test_형제_앱_주소는_스냅숏_모양이_틀린_앱만_건너뛴다():
+    """한 앱의 스냅숏에 launch 가 글자로 들어가도 다른 서비스 앱의 찬 기동(HEAX_APP_URL_* 계산)이 죽지 않는다(HH-09)."""
+
+    class _DB:
+        def execute(self, *a, **k):
+            return SimpleNamespace(all=lambda: [
+                ("step_forge", {"launch": "service"}), ("odd_app", ["x"]), ("none_app", None),
+                ("svc_app", {"launch": {"mode": "service"}}), ("url_app", {"launch": {"mode": "url"}}),
+            ])
+
+    out = L._sibling_app_urls(_DB(), "me")
+    assert list(out) == ["HEAX_APP_URL_SVC_APP"] and out["HEAX_APP_URL_SVC_APP"].endswith("/apps/svc_app")
+
+
 def test_되풀이_실패_늦추기도_로컬_파일이_바뀌면_곧바로_다시_한다(reconcile_env, monkeypatch):
     """기동 지문(launch-backoff)이 효과 매니페스트를 본다 — 로컬 파일을 고치면 기다리지 않고 다시 띄운다."""
     calls: list[dict] = []

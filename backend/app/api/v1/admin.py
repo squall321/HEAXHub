@@ -439,6 +439,11 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
                 manifest = loaded or {}
             except Exception as exc:  # noqa: BLE001
                 manifest = {"__error__": str(exc)}
+            if not isinstance(manifest, dict):
+                manifest = {"__error__": f"매니페스트 최상위가 매핑이 아니다({type(manifest).__name__})"}
+        # build · launch 가 매핑이 아니면(글자 하나로 적은 것 같은) 빈 것으로 본다 — 한 앱 때문에 표 전체가 500 이 되지 않게(HH-15 검토).
+        build_section = manifest.get("build") if isinstance(manifest.get("build"), dict) else {}
+        launch_section = manifest.get("launch") if isinstance(manifest.get("launch"), dict) else {}
 
         canonical = str(manifest.get("id") or slug.replace("-", "_"))
         state = integration_launcher._read_state(canonical)  # noqa: SLF001
@@ -456,8 +461,8 @@ def list_builtin_integrations(_admin: AdminUser) -> dict[str, Any]:
             "id": canonical,
             "name": manifest.get("name"),
             "version": manifest.get("version"),
-            "stack": (manifest.get("build") or {}).get("stack"),
-            "launch_mode": (manifest.get("launch") or {}).get("mode"),
+            "stack": build_section.get("stack"),
+            "launch_mode": launch_section.get("mode"),
             "has_venv": (child / ".venv" / "bin").exists(),
             "build_sentinel": (child / ".heaxhub_build_ok").exists(),
             "state": state,

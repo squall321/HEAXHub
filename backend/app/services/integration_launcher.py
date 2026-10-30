@@ -1310,6 +1310,7 @@ def retire_unrouted(canonical: str, *, db) -> bool:
 
     내렸으면(또는 이미 없어 기록만 정리했으면) 그 앱의 /apps/<id> 라우트와 상태 파일도 지우고 True. 남은 것이 없거나
     못 내렸으면 False — 못 내린 기록은 그대로 두어 다음 패스가 다시 한다. proxy · static 은 _launch_once 가 새 라우트를 건 뒤 내린다.
+    reconcile 은 그 모드를 매니페스트가 '명시했을' 때만 부른다 — 모드가 없거나 모르는 값이면 warn_stale_service 로 알리기만 한다.
     """
     if _stale_service_record(_read_state(canonical)) is None or not _retire_stale_service(canonical, db=db):
         return False
@@ -1319,6 +1320,34 @@ def retire_unrouted(canonical: str, *, db) -> bool:
         logger.warning("HH-16: %s 의 옛 라우트를 지우지 못했다: %s", canonical, exc)
     _delete_state(canonical)
     return True
+
+
+# 같은 경고를 reconcile(45초)마다 되풀이하지 않는다(HH-08 로그 소음) — 열쇠마다 한 시간에 한 번. 프로세스마다 따로다.
+_WARN_REPEAT_S = 3600
+_WARNED: dict[str, float] = {}
+
+
+def _warn_hourly(key: str, msg: str, *args: Any) -> None:
+    now = time.monotonic()
+    last = _WARNED.get(key)
+    if last is not None and now - last < _WARN_REPEAT_S:
+        return
+    _WARNED[key] = now
+    logger.warning(msg, *args)
+
+
+def warn_stale_service(canonical: str, why: str) -> None:
+    """허브가 이 id 로 띄운 서비스 기록이 남았는데 내리지 않기로 했으면 그 까닭을 알린다(같은 까닭은 한 시간에 한 번).
+
+    reconcile 이 launch.mode 가 없거나 모르는 값인 앱에 부른다(HH-16 검토) — 오타(``mode: servise``) · launch 블록 삭제 ·
+    git 이 파일을 다시 쓰는 순간의 빈 읽기만으로 도는 서비스를 내리고 라우트 · 상태 파일까지 지우던 자리다. 남은 기록이 없으면 말하지 않는다.
+    """
+    rec = _stale_service_record(_read_state(canonical))
+    if rec is None:
+        return
+    _warn_hourly(f"{canonical}:{why}",
+                 "HH-16: %s — %s. 허브가 띄워 둔 서비스(%s)를 내리지 않는다 — 매니페스트를 고치면 다음 reconcile 이 따른다",
+                 canonical, why, rec.get("instance_name") or f"pid={rec.get('pid')}")
 
 
 # ---------------------------------------------------------------------------

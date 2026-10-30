@@ -39,6 +39,9 @@ _SIF_DIR = _REPO_ROOT / "var" / "sifs"
 # launch() handles these by registering a route (or cold-starting a process).
 # Everything else (url/iframe/job-runner) has nothing for reconcile to restore.
 _RECONCILE_MODES = frozenset({"service", "static", "proxy"})
+# 라우트를 걸지 않는다고 '명시한' 모드 — config/stacks.yaml 의 launch_mode 가운데 위 셋을 뺀 것이다(시험이 둘을 견준다).
+# 이 모드로 바뀐 앱만 남은 서비스를 내린다(HH-16). 모드가 없거나 모르는 값이면 내리지 않는다(HH-16 검토).
+_UNROUTED_MODES = frozenset({"url", "iframe", "job_runner", "installer"})
 
 
 @celery_app.task(name="integration_tasks.scan_integrations_periodic")
@@ -114,9 +117,13 @@ def reconcile_integrations() -> dict[str, object]:
             if mode not in _RECONCILE_MODES:
                 # HH-16 — 라우트를 걸지 않는 모드(url · iframe · job_runner …)로 바뀐 앱이 허브가 띄운 서비스를 남겨 두었으면
                 # 내린다. 남은 것이 없으면 아무것도 하지 않아 요약도 예전과 같다. proxy · static 은 launch() 가 새 라우트를 건 뒤 내린다.
+                # 모드가 없거나 모르는 값(오타 · launch 블록 삭제 · 파일을 다시 쓰는 순간의 빈 읽기)이면 내리지 않고 알리기만 한다.
                 canonical = manifest.get("id") or slug.replace("-", "_")
                 try:
-                    if integration_launcher.retire_unrouted(canonical, db=db):
+                    if mode not in _UNROUTED_MODES:
+                        integration_launcher.warn_stale_service(
+                            canonical, f"launch.mode 가 {mode!r} 다(없거나 모르는 값)")
+                    elif integration_launcher.retire_unrouted(canonical, db=db):
                         by_action["retired"] = by_action.get("retired", 0) + 1
                         items.append({"slug": slug, "action": "retired", "port": None,
                                       "base_path": None, "error": None})

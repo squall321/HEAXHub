@@ -99,6 +99,7 @@ def env(tmp_path, monkeypatch):
     sifs.mkdir()
     events: list = []
     apt = _Apt(events)
+    monkeypatch.setattr(L, "_WARNED", {})                      # 한 시간에 한 번 경고 기록은 프로세스 전역이다 — 시험마다 비운다
     monkeypatch.setattr(integration_tasks, "_INTEGRATIONS_ROOT", root)
     monkeypatch.setattr(integration_tasks, "_SIF_DIR", sifs)
     monkeypatch.setattr(integration_tasks, "SessionLocal", lambda: _Session())
@@ -244,6 +245,47 @@ def test_url_모드로_바뀌면_라우트와_상태_파일도_지운다(env):
     assert out["by_action"] == {"retired": 1} and not (L.STATE_DIR / "step_forge.json").exists()
     env.events.clear()
     assert env.run()["by_action"] == {} and env.events == [], "남은 것이 없으면 요약 · 동작이 예전과 같아야 한다"
+
+
+@pytest.mark.parametrize(
+    "manifest_text",
+    [
+        yaml.safe_dump({**_SERVICE, "launch": {"mode": "servise", "health_check": {"path": "/health"}}}),  # 오타
+        yaml.safe_dump({k: v for k, v in _SERVICE.items() if k != "launch"}),                              # launch 블록을 지웠다
+        yaml.safe_dump({**_SERVICE, "launch": {"health_check": {"path": "/health"}}}),                    # mode 줄만 빠졌다
+        "",                                                                                               # 다시 쓰는 순간의 빈 읽기
+    ],
+    ids=["오타", "launch_없음", "mode_없음", "빈_파일"],
+)
+def test_모드가_없거나_모르는_값이면_내리지_않고_알리기만_한다(env, caplog, manifest_text):
+    """명시된 비라우트 모드(url · iframe · job_runner · installer)일 때만 내린다 — 예전엔 이것들도 retire 로 가서 도는 서비스를 내리고
+    라우트 · 상태 파일까지 지웠다(HH-16 검토)."""
+    L._write_state("step_forge", _service_state("step_forge", instance="heax_app_step_forge"))
+    d = env.root / "step_forge" / ".portal"
+    d.mkdir(parents=True)
+    (d / "manifest.yaml").write_text(manifest_text, encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):                                     # reconcile 45초 × 3
+            assert env.run()["by_action"] == {}
+    assert env.events == [], "모드가 없거나 모르는 값인데 서비스를 내리거나 라우트를 지웠다"
+    assert json.loads((L.STATE_DIR / "step_forge.json").read_text(encoding="utf-8"))["instance_name"] == "heax_app_step_forge"
+    warned = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING and "HH-16" in r.getMessage()]
+    assert len(warned) == 1 and "heax_app_step_forge" in warned[0], warned
+
+
+def test_모드가_없어도_남은_기록이_없으면_말하지_않는다(env, caplog):
+    env.write("plain-app", {**_SERVICE, "id": "plain_app", "launch": {"health_check": {"path": "/health"}}})
+    with caplog.at_level(logging.WARNING):
+        assert env.run()["by_action"] == {}
+    assert env.events == [] and not [r for r in caplog.records if "HH-16" in r.getMessage()]
+
+
+def test_비라우트_모드는_스택_표의_launch_mode_에서_라우트_모드를_뺀_것이다():
+    from app.services import stack_resolver
+    from app.workers import integration_tasks
+
+    modes = {spec.launch_mode for spec in stack_resolver.load_stacks().values()}
+    assert integration_tasks._UNROUTED_MODES == modes - integration_tasks._RECONCILE_MODES
 
 
 def test_static_모드로_바뀌면_새_라우트_뒤에_내리고_상태_파일을_지운다(env, monkeypatch):

@@ -287,6 +287,9 @@ def _launch_once(
     canonical = manifest.get("id") or slug.replace("-", "_")
     launch_section = manifest.get("launch") or {}
     mode = launch_section.get("mode")
+    # HH-16 — 라우트를 거는 다른 모드(proxy · static)로 바뀐 앱이면, 아래 갈래가 상태 파일을 덮기 전에 허브가 예전에 이 id 로
+    # 띄운 서비스 기록을 집어 둔다. 새 라우트가 선 뒤에 내린다(반대 순서면 그 사이 요청이 죽어 가는 인스턴스로 간다).
+    stale = _stale_service_record(_read_state(canonical)) if mode in ("proxy", "static") else None
 
     # Non-process launch modes: bail out before any port allocation or Popen.
     # ``url`` and ``iframe`` are pure-frontend dispatches — the catalog reads
@@ -331,6 +334,11 @@ def _launch_once(
                 slug=slug, action="failed", port=None, base_path=base_path,
                 error=f"caddy register failed: {getattr(res, 'reason', 'unknown')}",
             )
+        if stale and not _retire_stale_service(canonical, db=db):
+            # 못 내렸다 — 서비스 기록이 든 상태 파일을 그대로 두어 다음 reconcile 이 다시 내리게 한다(라우트는 이미 새것이다).
+            return LaunchResult(
+                slug=slug, action="started", port=None, base_path=base_path,
+            )
         # 기동 이력(state)을 남긴다. HEAX 가 프로세스를 띄우지 않는 proxy 라도, MCP 레지스트리의
         # _ever_launched 게이트(state 파일 유무)를 통과해야 /api/v1/mcp/servers 에 노출된다 —
         # 없으면 mcp.expose:true 를 선언해도 외부 연계 앱이 게이트웨이에서 영원히 안 보인다.
@@ -353,10 +361,14 @@ def _launch_once(
     # static_root directory via the file_server handler. We resolve the root
     # to an absolute filesystem path Caddy can read, then register the route.
     if mode == "static":
-        return _launch_static(
+        res = _launch_static(
             workspace, canonical, manifest,
             slug=slug, source=source,
         )
+        # static 은 상태 파일을 쓰지 않는다 — 새 라우트가 섰으면 남은 서비스를 내리고 그 기록도 지운다(HH-16).
+        if stale and res.action == "started" and _retire_stale_service(canonical, db=db):
+            _delete_state(canonical)
+        return res
 
     if mode != "service":
         return LaunchResult(
@@ -1198,6 +1210,115 @@ def stop(canonical: str, *, db) -> bool:
             logger.exception("release_port failed for %s", canonical)
     _delete_state(canonical)
     return killed
+
+
+# ── 서비스가 아니게 된 앱의 남은 서비스(HH-16, 2026-10-31) ───────────────────────────────────────
+# 효과 매니페스트의 launch.mode 가 service 에서 proxy · static · url · iframe · job_runner 같은 다른 모드로 바뀌면(추적 매니페스트로든
+# 박스 덮어쓰기로든) 그 앱은 더 띄울 것이 없다. 그런데 예전엔 아무 길도 그 서비스를 내리지 않았다 — proxy 갈래가 상태 파일을
+# proxy 기록으로 덮어 instance_name 을 잃고, heax_app_<id> 는 포트와 메모리를 쥔 채 남았다(내려가는 길은 stop.sh 가
+# heax_app_* 를 통째로 내릴 때뿐이다). 상태 파일이 '허브가 이 id 로 띄웠다' 고 적은 것만 내린다 — 인스턴스라면 이름이
+# _instance_name_for(id) 와 같아야 하고, 호스트 프로세스라면 명령줄이 기록과 맞아야 한다. 다른 앱의 인스턴스는 건드리지 않는다.
+
+
+def _stale_service_record(state: dict | None) -> dict | None:
+    """상태 파일이 '허브가 이 id 로 띄운 서비스' 를 적고 있으면 그 기록을, 아니면 None 을 돌려준다."""
+    if not isinstance(state, dict) or state.get("mode") == "proxy":
+        return None
+    if state.get("instance_name") or (state.get("pid") and state.get("argv")):
+        return state
+    return None
+
+
+def _retire_stale_service(canonical: str, *, db) -> bool:
+    """상태 파일에 남은 서비스를 내리고 포트를 돌려준다. 끝났으면(내렸거나 이미 없었다) True, 못 내렸으면 False — 기록을 남겨 다음 패스가 다시 한다.
+
+    reconcile(45초) · scan(5분) · 기동 때 reconcile 이 같은 앱을 함께 만질 수 있어 앱별 기동 잠금(HH-12) 안에서 한다.
+    다른 워커가 쥐고 있으면 이번에는 건너뛴다.
+    """
+    with _slug_launch_lock(canonical) as acquired:
+        if not acquired:
+            logger.info("HH-16: %s — 다른 워커가 이 앱을 만지는 중이라 남은 서비스 정리를 다음 패스로 미룬다", canonical)
+            return False
+        # 잠금 안에서 다시 읽는다 — 기록을 읽은 뒤 다른 워커가 먼저 정리했으면 손대지 않는다(같은 포트를 두 번 돌려주면 그새
+        # 그 포트를 받은 다른 앱의 것을 놓게 된다). 그 사이 다른 서비스 기록으로 바뀌었으면 지금 기록된 것을 내린다.
+        rec = _stale_service_record(_read_state(canonical))
+        if rec is None:
+            return True
+        if not _stop_stale_service(canonical, rec):
+            return False
+        if rec.get("port") and db is not None:
+            try:
+                port_allocator.release_port(db, port=int(rec["port"]))
+            except Exception:  # noqa: BLE001
+                logger.exception("HH-16: release_port failed for %s", canonical)
+    return True
+
+
+def _stop_stale_service(canonical: str, rec: dict) -> bool:
+    """기록된 인스턴스(또는 호스트 프로세스)를 멈춘다. 멈췄거나 이미 없으면 True, 못 멈췄으면 False."""
+    name = rec.get("instance_name")
+    stopped = False
+    if name:
+        expected = _instance_name_for(canonical)
+        if name != expected:
+            logger.warning("HH-16: %s 상태 파일이 적은 인스턴스 %r 는 이 앱의 이름(%r)이 아니다 — 건드리지 않고 기록만 버린다",
+                           canonical, name, expected)
+            return True
+        try:
+            cp = apt_runner.instance_stop(name, check=False, capture_output=True, text=True, timeout=120)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("HH-16: %s — 남은 서비스 인스턴스 %s 를 내리지 못했다(%s). 다음 reconcile 이 다시 한다",
+                           canonical, name, exc)
+            return False
+        rc = getattr(cp, "returncode", 1)
+        out = " ".join(f"{getattr(cp, 'stderr', '') or ''} {getattr(cp, 'stdout', '') or ''}".split())
+        if rc == 0:
+            stopped, what = True, f"인스턴스 {name} 를 내렸다"
+        elif "no instance found" in out:
+            what = f"인스턴스 {name} 는 이미 없다 — 상태 기록만 정리한다"
+        else:
+            logger.warning("HH-16: %s — 남은 서비스 인스턴스 %s 를 내리지 못했다(rc=%s: %s). 다음 reconcile 이 다시 한다",
+                           canonical, name, rc, out[-300:])
+            return False
+    else:
+        pid = rec.get("pid")
+        if not _is_alive(pid):
+            what = f"호스트 프로세스 pid={pid} 는 이미 없다 — 상태 기록만 정리한다"
+        elif not _pid_matches_argv(int(pid), rec.get("argv") or []):
+            logger.warning("HH-16: %s — pid %s 의 명령줄이 기록과 달라(pid 재사용) 건드리지 않고 기록만 버린다", canonical, pid)
+            return True
+        else:
+            try:
+                os.killpg(os.getpgid(int(pid)), signal.SIGTERM)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("HH-16: %s — 남은 호스트 프로세스 pid=%s 를 내리지 못했다(%s). 다음 reconcile 이 다시 한다",
+                               canonical, pid, exc)
+                return False
+            stopped, what = True, f"호스트 프로세스 pid={pid} 를 내렸다"
+    msg = f"효과 매니페스트의 launch.mode 가 더는 service 가 아니다 — 허브가 띄워 둔 {what}(HH-16)"
+    (logger.warning if stopped else logger.info)("%s: %s", canonical, msg)
+    try:  # 그 앱의 로그도 여기서 끊긴다 — 왜 끊겼는지 같은 자리에 남긴다
+        with (LOG_DIR / f"integration_{canonical}.log").open("a", encoding="utf-8") as fh:
+            fh.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+    except OSError:
+        pass
+    return True
+
+
+def retire_unrouted(canonical: str, *, db) -> bool:
+    """라우트를 걸지 않는 모드(url · iframe · job_runner …)로 바뀐 앱의 남은 서비스를 내린다(HH-16, reconcile 이 부른다).
+
+    내렸으면(또는 이미 없어 기록만 정리했으면) 그 앱의 /apps/<id> 라우트와 상태 파일도 지우고 True. 남은 것이 없거나
+    못 내렸으면 False — 못 내린 기록은 그대로 두어 다음 패스가 다시 한다. proxy · static 은 _launch_once 가 새 라우트를 건 뒤 내린다.
+    """
+    if _stale_service_record(_read_state(canonical)) is None or not _retire_stale_service(canonical, db=db):
+        return False
+    try:
+        proxy_manager.unregister_app_route(app_id=canonical)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("HH-16: %s 의 옛 라우트를 지우지 못했다: %s", canonical, exc)
+    _delete_state(canonical)
+    return True
 
 
 # ---------------------------------------------------------------------------

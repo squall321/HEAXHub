@@ -78,6 +78,9 @@ def reconcile_integrations() -> dict[str, object]:
 
     Returns a summary dict counting results by ``launch`` action so the caller
     (celery task / admin endpoint / startup) can surface what happened.
+
+    효과 매니페스트가 더는 service 가 아닌 앱이 허브가 띄운 서비스(heax_app_<id>)를 남겨 두었으면 이 패스가 내린다(HH-16) —
+    proxy · static 은 launch() 가 새 라우트를 건 뒤, 그 밖의 모드는 아래 retire_unrouted 가('retired' 로 센다).
     """
     # Lazy import — integration_launcher pulls in apt_runner/httpx and we want
     # this module importable by celery_app's include list without that weight
@@ -109,6 +112,16 @@ def reconcile_integrations() -> dict[str, object]:
 
             mode = (manifest.get("launch") or {}).get("mode")
             if mode not in _RECONCILE_MODES:
+                # HH-16 — 라우트를 걸지 않는 모드(url · iframe · job_runner …)로 바뀐 앱이 허브가 띄운 서비스를 남겨 두었으면
+                # 내린다. 남은 것이 없으면 아무것도 하지 않아 요약도 예전과 같다. proxy · static 은 launch() 가 새 라우트를 건 뒤 내린다.
+                canonical = manifest.get("id") or slug.replace("-", "_")
+                try:
+                    if integration_launcher.retire_unrouted(canonical, db=db):
+                        by_action["retired"] = by_action.get("retired", 0) + 1
+                        items.append({"slug": slug, "action": "retired", "port": None,
+                                      "base_path": None, "error": None})
+                except Exception:  # noqa: BLE001 — never break the loop
+                    logger.exception("reconcile: stale service retire crashed for %s", slug)
                 continue
 
             sif_path = _SIF_DIR / f"{slug}.sif"

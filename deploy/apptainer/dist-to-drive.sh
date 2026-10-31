@@ -86,6 +86,11 @@ fi
 # + .sif.hash). 기본은 **데모 포함 전체**(폐쇄망 서버가 빌드 없이 데모까지 다 뜨게).
 #   끄기(전체): HEAX_DRIVE_WITH_APP_SIFS=0 · 명시목록: HEAX_DRIVE_APP_SIFS="a b"
 #   데모만 빼기(용량 절약): HEAX_DRIVE_SKIP_DEMO_SIFS=1
+#   ⚠ 박스 덮어쓰기(integrations/<slug>/.portal/manifest.local.yaml, HH-15)가 있는 앱은 기본으로 싣지 않는다 — 그 SIF 의
+#   열쇠(.sif.hash)는 이 박스의 효과 매니페스트로 셈한 것이라 받는 박스(추적 매니페스트로 셈한다)와 맞지 않는다. 받는 박스는
+#   캐시 미스로 보고 다시 지으려 하고(cae00 은 못 짓는다 — 빌드 실패 · 그 회차 기동 건너뜀), 쓰지 않는 SIF 라도 깔리면 허브 재기동
+#   지문이 바뀐다. HEAX_DRIVE_APP_SIFS 로 이름을 대면 경고와 함께 싣는다.
+_SKIPPED_LOCAL=""
 if [ "${HEAX_DRIVE_WITH_APP_SIFS:-1}" = "1" ]; then
   APP_SIF_DIR="$ROOT_DIR/var/sifs"
   _ship_app_sif() {  # $1=절대 sif 경로
@@ -93,9 +98,15 @@ if [ "${HEAX_DRIVE_WITH_APP_SIFS:-1}" = "1" ]; then
     cp "$f" "$STAGE/"; echo "  · app SIF: $b ($(du -h "$f" | cut -f1))"
     [ -f "$f.hash" ] && cp "$f.hash" "$STAGE/"
   }
+  _has_local() {     # $1=slug — 끊긴 심링크도 '있다' 로 친다(허브도 그 앱을 보류한다)
+    local l="$ROOT_DIR/integrations/$1/.portal/manifest.local.yaml"
+    [ -e "$l" ] || [ -L "$l" ]
+  }
   if [ -n "${HEAX_DRIVE_APP_SIFS:-}" ]; then          # 명시 목록
     for slug in $HEAX_DRIVE_APP_SIFS; do
-      [ -f "$APP_SIF_DIR/$slug.sif" ] && _ship_app_sif "$APP_SIF_DIR/$slug.sif"
+      [ -f "$APP_SIF_DIR/$slug.sif" ] || continue
+      _has_local "$slug" && echo "  ⚠ app SIF $slug.sif — 이 박스의 manifest.local.yaml 로 지은 SIF 다(열쇠가 받는 박스와 다르다). 이름을 대서 싣는다" >&2
+      _ship_app_sif "$APP_SIF_DIR/$slug.sif"
     done
   else                                                # 기본: 전체(데모 포함)
     for f in "$APP_SIF_DIR"/*.sif; do
@@ -104,6 +115,12 @@ if [ "${HEAX_DRIVE_WITH_APP_SIFS:-1}" = "1" ]; then
       case "$(basename "$f")" in
         heax-demo-*) [ "${HEAX_DRIVE_SKIP_DEMO_SIFS:-0}" = "1" ] && continue ;;
       esac
+      _s="$(basename "$f" .sif)"
+      if _has_local "$_s"; then
+        echo "  ○ app SIF $_s.sif 싣지 않음 — integrations/$_s/.portal/manifest.local.yaml(이 박스 덮어쓰기)로 지은 SIF 라 열쇠가 받는 박스와 다르다. 실으려면 HEAX_DRIVE_APP_SIFS=\"$_s …\""
+        _SKIPPED_LOCAL="$_SKIPPED_LOCAL $_s"
+        continue
+      fi
       _ship_app_sif "$f"
     done
   fi
@@ -143,4 +160,7 @@ fi
 
 echo
 echo "✓ pushed to $REMOTE"
+if [ -n "$_SKIPPED_LOCAL" ]; then
+  echo "  ○ 싣지 않은 app SIF(박스 덮어쓰기):$_SKIPPED_LOCAL — 실으려면 HEAX_DRIVE_APP_SIFS 로 이름을 댄다"
+fi
 echo "  On cae00:  set HEAX_DRIVE_REMOTE in .env  →  ./deploy/apptainer/dist-from-drive.sh  →  start.sh"

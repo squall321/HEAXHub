@@ -5,6 +5,10 @@ simultaneously, get distinct ports from :mod:`port_allocator`, get their
 ``/apps/{app_id}/*`` routes installed in the live Caddy instance, and are
 reachable + distinguishable via the public Caddy port.
 
+Opt-in: marked ``integration`` — it registers routes in the live Caddy, commits
+rows to the real DB and starts streamlit daemons, so the default run
+(``-m 'not integration'``) leaves it out. Run it with ``pytest -m integration``.
+
 Skip rules:
   * Skip when the database is unreachable — needs port_allocator persistence.
   * Skip when the Caddy admin API at ``CADDY_ADMIN_URL`` is not responding —
@@ -41,6 +45,9 @@ from app.services import proxy_manager, service_manager_dev
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE_DIR = REPO_ROOT / "templates" / "streamlit-hello"
+
+# 실제 Caddy · DB · 데몬을 쓰는 종단 시험이라 기본 실행에서 빠진다(켜려면 pytest -m integration).
+pytestmark = pytest.mark.integration
 
 
 # ─── Skip guards ─────────────────────────────────────────────────────────────
@@ -109,9 +116,10 @@ def _require_template_dir() -> None:
 # ─── The actual E2E ──────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(not _caddy_reachable(), reason="Caddy admin API unreachable")
+# 문자열 조건은 시험을 실제로 돌릴 때만 판정된다 — 빠진 실행에서는 import 할 때도 Caddy · 백엔드를 두드리지 않는다.
+@pytest.mark.skipif("not _caddy_reachable()", reason="Caddy admin API unreachable")
 @pytest.mark.skipif(
-    not _authz_reachable(),
+    "not _authz_reachable()",
     reason="forward_auth gate endpoint /api/v1/authz unreachable; "
     "every /apps/* route is gated through it",
 )

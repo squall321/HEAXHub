@@ -28,7 +28,7 @@ command -v rclone >/dev/null 2>&1 || { echo "✗ rclone not installed (https://r
 REMOTE="${HEAX_DRIVE_REMOTE:-}"
 [ -n "$REMOTE" ] || { echo "✗ HEAX_DRIVE_REMOTE not set in .env (e.g. HeaxDrive:HEAXHub/dist)"; exit 1; }
 REMOTE="${REMOTE%/}"
-RETAIN="${HEAX_DRIVE_RETAIN:-3}"
+RETAIN="${HEAX_DRIVE_RETAIN:-5}"   # 되돌림 판 dist-* 를 최근 다섯 벌 남긴다(사용자 결정 2026-10-31 — 셋이던 것을 넉넉히)
 
 # ── base 가드: 포털 서브패스(/heax-hub/)로 빌드되지 않은 dist 는 업로드를 거부한다 ──
 # (루트 base dist 가 배포되면 포털에서 자산 404 전면 장애. 의도적 루트 배포는

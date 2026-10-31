@@ -25,7 +25,7 @@ command -v rclone >/dev/null 2>&1 || { echo "✗ rclone not installed (https://r
 REMOTE="${HEAX_DRIVE_REMOTE:-}"
 [ -n "$REMOTE" ] || { echo "✗ HEAX_DRIVE_REMOTE not set in .env (e.g. HeaxDrive:HEAXHub/dist)"; exit 1; }
 REMOTE="${REMOTE%/}"
-RETAIN="${HEAX_DRIVE_RETAIN:-3}"
+RETAIN="${HEAX_DRIVE_RETAIN:-5}"   # dist-to-drive.sh 와 같은 손잡이 · 같은 기본값(사용자 결정 2026-10-31)
 
 TS="$(date -u +%Y%m%d-%H%M%SZ)"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT

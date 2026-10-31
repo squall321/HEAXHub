@@ -35,3 +35,22 @@
 - [x] 변이 실험(사본) — HH-15 여덟 · HH-16 열둘을 모두 잡는다.
 - [x] 전체 — HH-15 뒤 438 passed · HH-16 뒤 450 passed, 실패 14 는 기준선과 같은 목록.
 - [x] 변이 사본을 되돌린 뒤 __pycache__ 를 지우고 worktree diff 를 줄 단위로 대조(탐침 없음).
+
+## 검토 후속(2026-10-31, 열두 건 — 근거는 context-notes 「검토 후속」)
+
+- [x] 열두 건을 사본에서 모두 재현(#4 · #12 는 다른 리포라 읽기로 확인).
+- [x] #9 — 남은 서비스는 명시된 비라우트 모드(url · iframe · job_runner · installer)에서만 내린다. 모드 없음 · 오타 · 빈 매니페스트는 경고만(`27d89fd`).
+- [x] #1 — 모양이 틀린 매니페스트 하나가 reconcile 패스 · 상태 화면 · 다른 앱의 찬 기동을 깨지 않는다 — 앱별로 견딘다(`cad8b2b`).
+- [x] #1 · #2 · #7 — 로컬 파일이 있는데 못 얹으면(깨짐 · 빈 파일 · 못 읽음 · 끊긴 심링크 · 모양 규칙 셋) 추적 값으로 돌지 않고 그 앱을 보류한다 —
+  reconcile `held` · 스캐너 `skipped` · redeploy-app.sh rc 2 · 상태 화면 `held` · diagnose-app.sh 보류 표시 · MANIFEST_SPEC 10절(`6b53981`).
+- [x] #3 — 호스트 프로세스 가드가 shebang 스크립트를 자기 것으로 알아보고, 확인 못 한 것은 기록 · 포트를 그대로 둔다(`3d16b7a`).
+- [x] #5 — diagnose-app.sh 가 id 줄의 따옴표 · 꼬리 주석을 받는다(`d383e8b`).
+- [x] #6 · #8 — dist-to-drive 가 덮어쓴 앱의 SIF 를 기본으로 싣지 않는다 · MANIFEST_SPEC 'SIF 를 보내는 박스'(`d4a6fe6`), cutover 주석(`c1f8fbc`).
+- [x] #10 · #11 — cae00 받는 순서와 B-1 을 하지 않는다는 것을 HH-16 답에 적었다.
+- [x] 새 시험 마흔셋이 커밋마다 부모 사본에서 실패하는 것을 봤다. 전체 493 passed · 14 failed(기준선과 같은 목록) · 8 deselected, 앞뒤 `heax_app_*` 같음.
+- [x] dev 덮어쓰기 넷은 바꾸지 않았다 — 새 규칙 아래에서도 `applied` · 보류 아님 · main 추적 매니페스트와 형까지 같음 · step_forge SIF 열쇠 같음.
+- [ ] 포털에 알리기(사람 몫 · 다른 리포) — `check-mcp-registration.sh` · `drive-drift.sh` 가 추적 매니페스트를 읽는다(context-notes 「포털에 알릴 것」).
+- [ ] 요청자 결정 — 극성 뒤집기(D-20): 추적 매니페스트는 지금 값으로 두고 cae00 이 로컬 파일로 넘기는 길과 견준다.
+- [ ] cae00 순서(사람 몫) — ① 이 브랜치를 main 에 합치고 update-all ② `var/run/backend.rev` 가 그 커밋인지 확인 ③ 그다음 전환 창에서 HH-14.
+  전환 창에서는 heax 재기동이 실제로 됐는지 보고, 빠졌으면 `apptainer instance stop heax_app_step_forge` 를 손으로 한다. 당기기 전에 손으로 멈추지 않는다(B-1).
+- [ ] dev 에 로컬 파일 넷을 둘 때 임시 이름에 쓰고 `mv` 로 바꾼다(사람 몫).

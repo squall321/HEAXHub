@@ -54,3 +54,11 @@
 - [ ] cae00 순서(사람 몫) — ① 이 브랜치를 main 에 합치고 update-all ② `var/run/backend.rev` 가 그 커밋인지 확인 ③ 그다음 전환 창에서 HH-14.
   전환 창에서는 heax 재기동이 실제로 됐는지 보고, 빠졌으면 `apptainer instance stop heax_app_step_forge` 를 손으로 한다. 당기기 전에 손으로 멈추지 않는다(B-1).
 - [ ] dev 에 로컬 파일 넷을 둘 때 임시 이름에 쓰고 `mv` 로 바꾼다(사람 몫).
+
+## 시험 가드(2026-10-31 사용자 결정 — HH-06 을 좁힌 `5c4e8e7` 은 합치지 않는다, 근거는 context-notes 「시험 가드」)
+
+- [x] conftest 가 기본으로 lifespan 기동의 clone · scan · reconcile 을 건너뛰고, 기동하는 동안 apptainer · Caddy admin 길목에 덫을 걸고,
+  integrations 뿌리 둘을 빈 임시 폴더로 돌린다. `HEAX_TEST_LIVE=1` 이면 아무것도 바꾸지 않는다. 세션 첫 줄에 어느 쪽인지 찍는다.
+- [x] `test_multi_host_e2e` 를 integration 으로(기본 실행에서 빠진다 · 도달 확인은 돌릴 때만).
+- [x] 증명 시험 넷(`test_live_guard.py`) — 변이 일곱을 사본에서 모두 잡는다.
+- [x] 하네스 없이 · `--ignore` 없이 전체 — 496 passed · 14 failed(기준선과 같은 목록) · 9 deselected, 앞뒤 `heax_app_*` 이름 · PID 같음 · DB `apps` · `users` 같음.

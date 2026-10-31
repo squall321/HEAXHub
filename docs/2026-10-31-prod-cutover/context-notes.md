@@ -254,6 +254,7 @@ launch:
 | HH-15 뒤 `0b02759` | 438(+38) | 14 | 8 |
 | HH-16 뒤 `c33a9f6` | 450(+12) | 14 | 8 |
 | 검토 후속 뒤 `d4a6fe6`(문서 커밋 앞) | 493(+43) | 14 | 8 |
+| 시험 가드 뒤 `baf4c0c`(하네스 없이 · `--ignore` 없이) | 496(+4 · multi_host −1) | 14 | 9 |
 
 실패 14 는 세 판 모두 같은 목록이다 — `test_launcher_reports` 9 · `test_launcher_agents::test_manifest_etag_then_304` 1(enroll 429, Redis 의 IP 당
 10회/60초 창), `test_heavy_stacks::test_dotnet_launcher_argv` 1(.NET 인자 순서, 앞서부터), `test_updater_feed` 3(sqlalchemy 환경). 10-27 노트의 '13개' 와
@@ -290,9 +291,55 @@ launch:
   경로(`integration_launcher.py:808` · `:817`, origin/main 기준 `:797` · `:806`)는 instance start 를 건너뛰어 원래 떠 있던 인스턴스에도 `instance_name` 을 넘긴다.
   그래서 상태 파일을 잃은 채 떠 있는 건강한 인스턴스(상태 디렉터리를 비운 박스 · schema 판이 바뀐 상태 파일)를 reconcile 이 한 번 죽였다 살린다.
   고치는 길 — `instance_name not in running_instances` 로 이번에 띄운 경우에만 넘긴다. 운영에서도 날 수 있는 일이라 다음 판에 넣기를 권한다.
+  → **10-31 사용자 결정 — HH-06 을 좁힌 고침(`5c4e8e7`)은 합치지 않는다. 운영의 스스로 낫기를 그대로 둔다.** 지금 코드는 상태 파일을 잃은 채 떠 있는
+  인스턴스를 기동 실패 정리가 한 번 내리고, 다음 reconcile 이 찬 기동으로 되살린다(10-30 의 다섯이 9~36초 만에 그렇게 돌아왔다). 좁힌 고침은 그 인스턴스를
+  내리지 않는 대신 다시 거두지도 못한다 — 상태 파일 · MCP 레지스트리 · 라우트 재등록에서 빠진 채 남고, 늦추기가 풀릴 때마다 그 안에 하나 더 exec 한 서버가
+  포트 충돌로 끝나며, 사람이 `apptainer instance stop` 으로 멈춰야 낫는다. 10-30 사고의 뿌리는 런처가 아니라 시험이 lifespan 을 이 박스의 실제 서비스로
+  돌린 것이라 시험 쪽에서 고쳤다(아래 「시험 가드」).
 - 시험 쪽 함정 — `test_api_smoke` · `test_pat` · `test_publish_route` 는 lifespan 을 돈다. 본 체크아웃에서도 그 스캔은 dev 의 `var/integration_workspaces` 에서
   git fetch 를 하고, 새 커밋이 있으면 SIF 를 다시 짓는다(도는 인스턴스 밑의 SIF 를 바꾼다). conftest 에서 두 뿌리를 빈 폴더로 돌리는 것을 권한다 —
-  이 브랜치에서는 하지 않았다(요청 밖).
+  이 브랜치에서는 하지 않았다(요청 밖). **→ 10-31 고쳤다(아래 「시험 가드」).**
+
+## 시험 가드 — 기본 실행은 이 박스의 서비스에 닿지 않는다(2026-10-31 사용자 결정)
+
+브랜치 `wt1031/testguard`(origin/main `055b023` 에서), 커밋 `baf4c0c`. HH-06 을 좁히는 대신(위 「사고」) 사고의 뿌리를 시험 쪽에서 막았다. 기본 실행이 안전하므로
+리포 밖 하네스는 더 쓰지 않는다.
+
+- **D-21 무엇을 막나(`backend/app/tests/conftest.py`).** 셋이다. ① integrations 뿌리 둘(`integrations_scanner.INTEGRATIONS_ROOT` ·
+  `integration_tasks._INTEGRATIONS_ROOT`)을 세션 내내 빈 임시 폴더로 돌린다 — 하네스와 같고, 자기 뿌리를 monkeypatch 하는 시험은 그 값이 이긴다.
+  ② 앱 lifespan 기동의 clone(`ensure_all_cloned`) · scan(`scan_integrations`) · reconcile(`reconcile_integrations`)을 기동하는 동안만 빈 대역으로 바꾼다.
+  하네스로는 본 체크아웃에서 `backend/.env` 의 `INTEGRATION_REPO_URLS` clone 과 스캐너의 DB 읽기가 남았는데, 이제 기동은 git · DB · 디스크에 아무것도
+  하지 않는다. ③ 기동하는 동안 apptainer(`apt_runner.local_apptainer_path` — integrations 길의 인스턴스 start · exec · stop · list · build 가 모두 지난다)와
+  Caddy admin(`proxy_manager._admin_url` — 라우트 호출이 모두 지난다) 길목에 덫을 건다. 가드가 모르는 새 기동 단계가 닿으면 부르기 전에 막고, 기동 단계는
+  실패를 삼키므로 막은 것을 모아 lifespan 을 실패시킨다(글이 `_STARTUP_STEPS` 에 대역을 넣으라고 알린다).
+- **D-22 왜 기동하는 동안만인가.** 스캐너 · reconcile · 런처 · apt_runner · proxy_manager 를 직접 부르거나 대역으로 바꿔 쓰는 시험이 많다(apptainer 해석 ·
+  라우트 · HH-15 · HH-16). 세션 내내 덫을 걸거나 함수를 바꾸면 그 시험들이 깨진다. lifespan 을 도는 셋(test_api_smoke · test_pat · test_publish_route)은
+  기동 결과를 쓰지 않는다. 기동하는 동안에는 시험이 바꿔 둔 대역도 덮고 끝나면 되돌린다 — lifespan 안에서 대역이 불리는지 보려는 시험이 생기면
+  `HEAX_TEST_LIVE=1` 로 돌린다. 감싸는 자리는 `app.main.app.router.lifespan_context`(TestClient 가 기동 때 부르는 것)와 `app.main.lifespan`
+  (`create_app()` 으로 새로 만드는 앱)이다.
+- **D-23 켜는 길은 `HEAX_TEST_LIVE=1` 하나(정확히 `1`).** 그러면 아무것도 바꾸지 않아 오늘의 길과 같다. 세션 첫 줄에 `[HEAX 시험 가드] 켜짐(기본) …`
+  또는 `[HEAX 시험 가드] 꺼짐(HEAX_TEST_LIVE=1) …` 을 찍는다. `flush` 를 붙였다 — stdout 이 파이프면 버퍼에 남았다가 첫 시험의 출력 포착 안에서
+  비워져 통과한 시험과 함께 버려졌다(`-q` 로 파일에 받을 때 실제로 그랬다).
+- **D-24 `test_multi_host_e2e` 는 integration.** 리포의 표지를 그대로 쓴다(pyproject `addopts = "-m 'not integration'"`, 켜려면 `pytest -m integration` ·
+  `make test-integration`). 도달 확인(Caddy admin `/config/` · 백엔드 `/api/v1/authz`)은 문자열 조건으로 바꿔 시험을 돌릴 때만 판정한다 — 빠진 실행에서
+  import 할 때 두드리던 두 번이 0 이 됐다(httpx 대역으로 원래 파일과 견줬다). `-m integration` 에서는 닫힌 포트로 돌려 'authz unreachable' 로 건너뛰는
+  것까지 봤다(실제 Caddy · DB 로는 돌리지 않았다).
+- 증명 — `backend/app/tests/test_live_guard.py` 넷. 기본 lifespan 이 기동 단계 셋 · 길목 둘을 부르지 않고 시험의 대역을 제자리에 되돌린다 · 새 기동 단계가
+  apptainer · Caddy 에 닿으면 부르기 전에 막고 lifespan 이 실패한다 · 자식 pytest 로 `test_api_smoke.py::test_public_get_returns_200` 을 돌려, 기본은
+  대역이 한 번도 불리지 않고 뿌리가 빈 폴더이고 `HEAX_TEST_LIVE=1` 은 clone → scan → reconcile 을 차례로 부르고 뿌리가 이 리포의 integrations/ 다.
+  대역은 기록만 한다 — 가드가 깨져도 이 시험들은 아무 데도 닿지 않는다(자식은 닫힌 포트 · 빈 clone 목록 · 임시 디렉터리와 런처 · apptainer · Caddy
+  길목을 막는 대역으로 한 번 더 막는다). 변이 일곱(가드 없음 · 뿌리 그대로 · 덫 없음 · 단계 대역 없음 · 끄기 무시 · 대역 안 되돌림 · 모듈 앱 안 감쌈)을
+  사본에서 모두 잡았고, 되돌린 사본은 넷 다 통과한다.
+- 전체 — 하네스 없이 · `--ignore` 없이 worktree 의 `backend` 에서 496 passed · 14 failed · 9 deselected(위 「시험 수」). 실패 14 는 기준선과 같은 목록이다
+  (429 열 · updater_feed 셋 · .NET 인자 하나). 실행 앞뒤로 `apptainer instance list` 를 파일로 받아 `heax_app_*` 열일곱의 이름 · PID 가 같고(목록 마흔셋
+  전부 같다), HEAX DB `apps`(33) · `users`(44)의 행 수 · id · `max(created_at)` 이 같다(읽기 전용 SELECT — 실행 창 안에 만들어진 행이 남지 않았다).
+  커밋 뒤 한 번 더 돌린 실행에서는 Caddy 라우트 `@id` 스물일곱도 앞뒤가 같았다(읽기 전용 GET — `demo-a` · `demo-b` 없음).
+  `test_publish_route` 의 SAWarning 둘은 origin/main 에서도 난다.
+- 남은 것(손대지 않음) — import 할 때 읽기만 하는 확인은 그대로다 — `test_pat` 의 DB `SELECT 1` 과 PAT 표 `create_all`(있으면 그대로),
+  `test_service_mode_e2e`(integration)의 Caddy GET, `test_gpu_pool_real` 의 nvidia-smi · DB. 시험 고정물이 실제 DB 에 사용자 · 앱을 만들고 지우는 것
+  (test_api_smoke · test_pat · test_publish_route 등)도 lifespan 길이 아니라 그대로다. 덫은 integrations 길만 본다 — 사용자 등록 앱의
+  `service_manager` · `apptainer_runner` 는 `settings.apptainer_bin` 을 바로 부르지만 lifespan 이 닿지 않는다. 런처가 import 할 때 `var/integration_state` ·
+  `var/logs` 빈 폴더를 만드는 것도 그대로다.
 
 ## 확인하지 못한 것
 

@@ -1,0 +1,3 @@
+# cae00 전용 — kooremapper-api 를 운영 노드 터널로 넘기는 박스 덮어쓰기(HEAXHub HH-14 · 사용자 결정 10-31 — 추적 매니페스트는 그대로 두고 cae00 만 이 파일로 넘긴다)
+launch:
+  upstream: http://127.0.0.1:16120

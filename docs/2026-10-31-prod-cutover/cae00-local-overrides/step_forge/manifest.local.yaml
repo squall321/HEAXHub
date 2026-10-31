@@ -1,0 +1,15 @@
+# cae00 전용 — step_forge 를 운영 노드 터널로 넘기는 박스 덮어쓰기(HEAXHub HH-14 · 사용자 결정 10-31 — 추적 매니페스트는 그대로 두고 cae00 만 이 파일로 넘긴다)
+resources: null
+source: null
+execution_target: external_url
+build:
+  type: null
+  python_version: null
+  stack: external_proxy
+launch:
+  health_check: null
+  restart_policy: null
+  env: null
+  mode: proxy
+  upstream: http://127.0.0.1:16110
+  strip_prefix: true

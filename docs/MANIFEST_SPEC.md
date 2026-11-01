@@ -48,6 +48,19 @@
 | `remote_agent` | `agent_pool`, `command` |
 | `local_protocol` | `protocol`, `installer_url` |
 
+### 4.1 `launch.forward_authorization` — 앱에 Authorization 을 넘기나 (2026-11-01)
+
+| 값 | 뜻 |
+|---|---|
+| 없음 · `true` (기본) | 지금처럼 클라이언트의 `Authorization` 을 앱까지 넘긴다. |
+| `false` | 허브 게이트(forward_auth)가 그 헤더로 판정을 마친 뒤, 앱으로 가는 요청에서 `Authorization` 을 지운다. 사람은 검증된 `X-Heax-User-Email` · `X-Heax-User-Name` 으로 넘어간다. |
+
+- 걸리는 곳 — `service`(허브가 띄운 앱)와 `proxy`(외부 업스트림) 라우트다. `static` 은 넘길 업스트림이 없다.
+- 왜 — 그 헤더의 토큰(포털 PAT · 허브 PAT · 게이트웨이 서비스 PAT)은 사람이 볼 수 있는 앱 전부에 통한다. 그 헤더를 쓰지 않는 앱이 그것을 남기거나 털리면 다른 앱의 열쇠가 된다. 앱이 그 헤더로 자기 인증을 하면 켜지 않는다(예 — `kooremapper_mcp` 는 `kr_` PAT 를 자기 REST 로 넘긴다).
+- 다루지 않는 것 — 쿠키는 그대로 넘어간다(허브 세션 쿠키 `heax_access_token` 포함). 이 손잡이는 `Authorization` 만 지운다.
+- 반영 — 다음 reconcile(45초 안)이 라우트를 다시 건다. 앱 재기동 · SIF 재빌드는 필요 없다. 다만 허브 워커가 이 기능이 들어간 코드로 떠 있어야 한다 — 옛 코드의 워커는 45초마다 옛 모양으로 다시 건다.
+- 쓰는 앱 — `web_design_agents`(사용자 결정 2026-11-01).
+
 ## 5. inputs / outputs
 
 `inputs[]`는 사용자 실행 폼을 자동 생성하기 위한 정의다. 각 항목:

@@ -44,6 +44,21 @@ _AUTHZ_DIAL = "127.0.0.1:4040"
 # portal_auth 시 업스트림으로 복사하는 identity 헤더 (authz 2xx 응답이 싣는다).
 _IDENTITY_HEADERS = ("X-Heax-User-Email", "X-Heax-User-Name")
 
+# manifest ``launch.forward_authorization: false`` 앱의 업스트림 요청에서 지우는 헤더.
+# 이 헤더의 토큰(허브 PAT · 포털 PAT · 게이트웨이 서비스 PAT)은 게이트가 보는 것이지 앱이 볼 것이 아니다 —
+# 사람이 볼 수 있는 앱 전부에 통하므로, 앱이 남기거나 털리면 다른 앱의 열쇠가 된다(사용자 결정 2026-11-01).
+_UPSTREAM_DROP_HEADERS = ("Authorization",)
+
+
+def _drop_authorization(reverse_proxy: dict[str, Any]) -> None:
+    """앱으로 가는 reverse_proxy 의 요청에서 Authorization 을 지운다.
+
+    업스트림 reverse_proxy 의 ``headers.request`` 는 그 업스트림으로 나가는 요청에만 걸린다 — 앞선 forward_auth
+    서브요청(원 요청의 사본이다)은 이미 이 헤더로 판정을 마쳤고, 신원 복사(handle_response)도 끝난 뒤다.
+    신원은 검증된 X-Heax-User-* 로 그대로 간다."""
+    request = reverse_proxy.setdefault("headers", {}).setdefault("request", {})
+    request["delete"] = list(_UPSTREAM_DROP_HEADERS)
+
 
 def _forward_auth_handler(*, copy_identity: bool = False) -> dict[str, Any]:
     """Build the Caddy ``forward_auth`` gate as native JSON.
@@ -130,6 +145,7 @@ def _build_route(
     base_path: str | None,
     *,
     strip_prefix: bool = True,
+    forward_authorization: bool = True,
 ) -> dict[str, Any]:
     """Build a Caddy route object for path-based reverse proxy.
 
@@ -142,6 +158,9 @@ def _build_route(
     ``strip_prefix=False`` forwards the path unchanged — required for apps that
     bake the prefix into their own routing (e.g. Streamlit ``baseUrlPath``,
     Next.js ``basePath``).
+
+    ``forward_authorization=False`` (manifest ``launch.forward_authorization: false``) 는 게이트를 지난 뒤
+    앱으로 가는 요청에서 ``Authorization`` 을 지운다(:func:`_drop_authorization`). 기본값은 지금처럼 넘긴다.
     """
     path = base_path or f"/apps/{app_id}"
     if not path.startswith("/"):
@@ -162,10 +181,13 @@ def _build_route(
     handle_chain: list[dict[str, Any]] = [_forward_auth_handler(copy_identity=True)]
     if strip_prefix:
         handle_chain.append({"handler": "rewrite", "strip_path_prefix": path})
-    handle_chain.append({
+    upstream: dict[str, Any] = {
         "handler": "reverse_proxy",
         "upstreams": [{"dial": f"127.0.0.1:{port}"}],
-    })
+    }
+    if not forward_authorization:
+        _drop_authorization(upstream)
+    handle_chain.append(upstream)
 
     return {
         "@id": _route_id(app_id),
@@ -282,13 +304,15 @@ def register_app_route(
     base_path: str | None = None,
     *,
     strip_prefix: bool = True,
+    forward_authorization: bool = True,
 ) -> ProxyResult:
     """Idempotently register/replace a route for `app_id` -> `127.0.0.1:port`.
 
     ``strip_prefix=False`` for apps that handle the base path themselves
-    (Streamlit baseUrlPath, Next.js basePath).
+    (Streamlit baseUrlPath, Next.js basePath). ``forward_authorization=False`` 는 :func:`_build_route` 참조.
     """
-    route = _build_route(app_id, port, base_path, strip_prefix=strip_prefix)
+    route = _build_route(app_id, port, base_path, strip_prefix=strip_prefix,
+                         forward_authorization=forward_authorization)
     route_id = _route_id(app_id)
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
@@ -333,6 +357,7 @@ def _build_external_proxy_route(
     *,
     strip_prefix: bool = True,
     portal_auth: bool = False,
+    forward_authorization: bool = True,
 ) -> dict[str, Any]:
     """Build a Caddy route reverse-proxying to an external ``upstream_url``.
 
@@ -345,6 +370,10 @@ def _build_external_proxy_route(
     forward_auth 게이트를 앞단에 세우고, authz 2xx 의 X-Heax-* identity 헤더를
     업스트림으로 복사하며, 설정된 gateway_shared_secret 을 정적 헤더로 주입한다
     — 업스트림 앱의 SSO 자동 로그인 근거.
+
+    ``forward_authorization=False`` 는 내부 라우트와 같은 뜻이다 — 업스트림 요청에서 ``Authorization`` 을 지운다.
+    외부 업스트림도 같은 위험(사람의 토큰을 받아 쥔다)이라 같은 손잡이를 둔다. 기본값은 지금처럼 넘긴다 —
+    kooremapper_mcp 처럼 그 헤더로 자기 인증을 하는 업스트림이 있다.
     """
     from urllib.parse import urlparse
 
@@ -395,6 +424,8 @@ def _build_external_proxy_route(
             "protocol": "http",
             "tls": {"server_name": parsed.hostname},
         }
+    if not forward_authorization:
+        _drop_authorization(reverse_proxy)
     handle_chain.append(reverse_proxy)
 
     return {
@@ -411,6 +442,7 @@ def register_external_proxy_route(
     *,
     strip_prefix: bool = True,
     portal_auth: bool = False,
+    forward_authorization: bool = True,
 ) -> ProxyResult:
     """Register a Caddy route ``/apps/{app_id}/*`` -> external ``upstream_url``.
 
@@ -421,6 +453,7 @@ def register_external_proxy_route(
         route = _build_external_proxy_route(
             app_id, upstream_url, base_path,
             strip_prefix=strip_prefix, portal_auth=portal_auth,
+            forward_authorization=forward_authorization,
         )
     except ValueError as exc:
         logger.warning("external proxy route invalid for app=%s: %s", app_id, exc)

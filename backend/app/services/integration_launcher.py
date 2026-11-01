@@ -324,6 +324,7 @@ def _launch_once(
                 base_path=base_path,
                 strip_prefix=strip_prefix,
                 portal_auth=portal_auth,
+                **_route_auth_kwargs(_forward_authorization(manifest)),
             )
         except Exception as exc:
             return LaunchResult(
@@ -405,6 +406,7 @@ def _launch_once(
         if needs_caddy:
             caddy_ok = _safe_register_caddy(
                 canonical, int(state["port"]), base_path, strip_prefix,
+                forward_authorization=_forward_authorization(manifest),
             )
             if caddy_ok:
                 state["caddy_registered"] = True
@@ -413,6 +415,7 @@ def _launch_once(
             # Idempotent refresh; harmless if Caddy already has the route.
             _safe_register_caddy(
                 canonical, int(state["port"]), base_path, strip_prefix,
+                forward_authorization=_forward_authorization(manifest),
             )
         return LaunchResult(
             slug=slug, action="already_running",
@@ -554,7 +557,8 @@ def _launch_once(
     # need Caddy to pass through the full /apps/<slug> prefix so their internal
     # routers see canonical paths. Everything else strips the prefix.
     strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
-    caddy_ok = _safe_register_caddy(canonical, port, base_path, strip_prefix)
+    caddy_ok = _safe_register_caddy(canonical, port, base_path, strip_prefix,
+                                    forward_authorization=_forward_authorization(manifest))
 
     _write_state(canonical, {
         "schema_version": _STATE_SCHEMA_VERSION,
@@ -665,6 +669,7 @@ def _launch_via_sif(
         if needs_caddy:
             ok = _safe_register_caddy(
                 canonical, int(state["port"]), base_path, strip_prefix,
+                forward_authorization=_forward_authorization(manifest),
             )
             if ok:
                 state["caddy_registered"] = True
@@ -672,6 +677,7 @@ def _launch_via_sif(
         else:
             _safe_register_caddy(
                 canonical, int(state["port"]), base_path, strip_prefix,
+                forward_authorization=_forward_authorization(manifest),
             )
         return LaunchResult(
             slug=slug, action="already_running",
@@ -827,7 +833,8 @@ def _launch_via_sif(
                        canonical, _HEALTH_WAIT_SECONDS)
 
     strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
-    caddy_ok = _safe_register_caddy(canonical, port, base_path, strip_prefix)
+    caddy_ok = _safe_register_caddy(canonical, port, base_path, strip_prefix,
+                                    forward_authorization=_forward_authorization(manifest))
 
     _write_state(canonical, {
         "schema_version": _STATE_SCHEMA_VERSION,
@@ -1778,8 +1785,26 @@ def _is_healthy(port: int | None, health_path: str, *, root: str, prefix_aware: 
     return False
 
 
+def _forward_authorization(manifest: dict[str, Any]) -> bool:
+    """manifest ``launch.forward_authorization`` — 앱 업스트림에 클라이언트의 Authorization 을 넘기나(기본 True, 지금과 같다)."""
+    launch_section = manifest.get("launch") if isinstance(manifest, dict) else None
+    if not isinstance(launch_section, dict):
+        return True
+    return bool(launch_section.get("forward_authorization", True))
+
+
+def _route_auth_kwargs(forward_authorization: bool) -> dict[str, Any]:
+    """라우트 등록 함수에 넘길 인자 — 끈 앱에만 ``forward_authorization=False`` 를 싣는다.
+
+    ⚠ 기본값일 때 인자를 아예 싣지 않는 것은 일부러다. celery 워커 부모는 기동 때 service_manager 를 거쳐 proxy_manager 를
+    읽어 두고, 이 모듈은 작업 안에서 늦게 읽는다 — 코드를 받은 뒤 워커를 다시 띄우기 전에 새로 뜬 자식은 새 런처 + 옛
+    proxy_manager 다. 인자를 늘 실으면 그 사이 모든 앱의 라우트 등록이 TypeError 로 실패한다. 끈 앱만 그 사이 옛 모양으로 남는다."""
+    return {} if forward_authorization else {"forward_authorization": False}
+
+
 def _safe_register_caddy(
     app_id: str, port: int, base_path: str, strip_prefix: bool,
+    *, forward_authorization: bool = True,
 ) -> bool:
     """Register a Caddy route, returning False on transient admin failures.
 
@@ -1789,7 +1814,7 @@ def _safe_register_caddy(
     try:
         proxy_manager.register_app_route(
             app_id=app_id, port=port, base_path=base_path,
-            strip_prefix=strip_prefix,
+            strip_prefix=strip_prefix, **_route_auth_kwargs(forward_authorization),
         )
         return True
     except Exception as exc:

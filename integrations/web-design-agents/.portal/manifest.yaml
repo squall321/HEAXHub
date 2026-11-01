@@ -9,6 +9,7 @@ owner: "squall321"
 status: stable                   # 운영 중(사내 공개). 허브의 '공개 앱' 판정이
                                  # company + stable 이라, 실제로 쓰고 있는데 draft 로
                                  # 두면 로그인 없이는 못 연다.
+                                 # 익명 열람은 2026-11-01 에 닫았다 — 아래 launch.portal_auth.
 app_type: web_app
 execution_target: linux_runner
 
@@ -45,6 +46,11 @@ build:
 
 launch:
   mode: service
+  # 로그인한 사람만 연다(사용자 결정 2026-11-01). company + stable 앱은 이 줄이 없으면 허브 게이트(authz)가 토큰 없이
+  # 통과시켜 run 목록 · 산출물 내려받기 · 웹 콘솔 · /mcp 가 익명으로 열렸다(11-01 dev 실측 200). 켜면 익명은 401 이다.
+  # 포털 사용자는 포털이 미리 심는 허브 세션 쿠키로, 게이트웨이는 허브 서비스 PAT 로 지나간다. 서비스 앱이라 라우트 · 재기동과는
+  # 상관없고 스캐너가 App.extra 에 옮기면(5분 주기) 게이트만 바뀐다. 앱 커밋이 그대로인 동안 허브는 SIF 열쇠를 다시 재지 않는다.
+  portal_auth: true
   # 스택 기본 진입점은 app.main:app 이지만 이 패키지는 src/wdweb/app.py 의 `app` 이다.
   # StaticFiles 로 frontend/dist 를 직접 서빙하고 ROOT_PATH 도 스스로 반영한다.
   command: uvicorn wdweb.app:app --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH

@@ -51,6 +51,10 @@ launch:
   # 포털 사용자는 포털이 미리 심는 허브 세션 쿠키로, 게이트웨이는 허브 서비스 PAT 로 지나간다. 서비스 앱이라 라우트 · 재기동과는
   # 상관없고 스캐너가 App.extra 에 옮기면(5분 주기) 게이트만 바뀐다. 앱 커밋이 그대로인 동안 허브는 SIF 열쇠를 다시 재지 않는다.
   portal_auth: true
+  # 게이트를 지난 뒤 이 앱으로 가는 요청에서 Authorization 을 지운다(사용자 결정 2026-11-01 — WDA 에는 넘기지 않게).
+  # 포털의 '발표자료로' 는 그 사람 이름의 포털 PAT 로 부르는데, 그 토큰은 그 사람이 볼 수 있는 허브 앱 전부에 통한다.
+  # WDA 는 웹 · /mcp 어디서도 그 헤더를 읽지 않고, 사람은 검증된 X-Heax-User-* 로 안다. 다음 reconcile(45초)이 라우트를 다시 건다.
+  forward_authorization: false
   # 스택 기본 진입점은 app.main:app 이지만 이 패키지는 src/wdweb/app.py 의 `app` 이다.
   # StaticFiles 로 frontend/dist 를 직접 서빙하고 ROOT_PATH 도 스스로 반영한다.
   command: uvicorn wdweb.app:app --host 127.0.0.1 --port $PORT --root-path $ROOT_PATH

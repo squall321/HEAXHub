@@ -96,6 +96,12 @@ def test_기본값이면_새_인자를_싣지_않는다():
     assert integration_launcher._route_auth_kwargs(False) == {"forward_authorization": False}
 
 
+def test_WDA_는_끈다():
+    """사용자 결정 2026-11-01 — WDA 에는 Authorization 을 넘기지 않는다(포털 '발표자료로' 가 그 사람의 포털 PAT 로 부른다)."""
+    manifest = yaml.safe_load((REPO / "integrations/web-design-agents/.portal/manifest.yaml").read_text(encoding="utf-8"))
+    assert integration_launcher._forward_authorization(manifest) is False
+
+
 # ─── 런처가 라우트를 걸 때 ───────────────────────────────────────────────────
 
 

@@ -398,6 +398,9 @@ def _launch_once(
         state.get("port"), health_path, root=base_path,
         prefix_aware=stack_name in _PREFIX_AWARE_STACKS,
     ):
+        # 이 칸이 생기기 전에 뜬 SIF 인스턴스의 판을 한 번 채운다(host 모드 state 는 sif_path 가 없어 지나간다).
+        if "commit" not in state and _backfill_commit(state):
+            _write_state(canonical, state)
         strip_prefix = stack_name not in _PREFIX_AWARE_STACKS
         # Re-register on every confirmed-alive probe if state says we missed
         # it last time (Caddy admin was down during the previous launch).
@@ -761,7 +764,11 @@ def _launch_via_sif(
     # --nv 를 켠다. GPU 없으면 CPU 폴백(앱 torch 가 CUDA 미탐지로 CPU 로 돈다).
     _nv = bool(_res.get("gpu")) and _host_has_nvidia()
 
+    # 떠 있는 판(mcp 목록의 build 칸). 인스턴스를 지금 띄우면 그 SIF 에서 읽는다. 이미 떠 있는 인스턴스 안에서
+    # 다시 exec 하면 그 인스턴스를 띄울 때 적은 값을 잇는다 — 디스크 SIF 는 그 뒤 새 빌드로 바뀌었을 수 있다.
+    commit = (state or {}).get("commit") if (state or {}).get("instance_name") == instance_name else None
     if instance_name not in running_instances:
+        commit = apt_runner.sif_commit(sif_path)
         try:
             _cp = apt_runner.instance_start(
                 sif=sif_path,
@@ -847,6 +854,7 @@ def _launch_via_sif(
         "argv": [str(sif_path), *container_argv],  # for the PID-reuse guard
         "instance_name": instance_name,
         "sif_path": str(sif_path),
+        "commit": commit,
         "caddy_registered": caddy_ok,
         "started_at": time.time(),
     })
@@ -1687,6 +1695,24 @@ def _write_state(canonical: str, state: dict) -> None:
         os.fsync(dir_fd)
     finally:
         os.close(dir_fd)
+
+
+def _backfill_commit(state: dict) -> bool:
+    """state 에 commit 이 없는(이 칸이 생기기 전에 뜬) 인스턴스의 판을 채운다 — 채웠으면 True.
+
+    그 SIF 가 기동 뒤 바뀌지 않았을 때만 SIF 에서 읽고, 바뀌었으면 None(모름)을 적어 다음 재기동까지 비운다.
+    판정은 mtime 이 아니라 ctime 이다. dist-from-drive 의 rclone 은 mtime 을 빌드 시각으로 보존하므로, 기동 뒤에
+    받은 새 SIF 도 mtime 이 started_at 보다 이를 수 있다. 새 파일 · rename 은 ctime 을 그 시각으로 만든다.
+    """
+    sif, started = state.get("sif_path"), state.get("started_at")
+    if not sif or not isinstance(started, (int, float)):
+        return False
+    try:
+        unchanged = Path(sif).stat().st_ctime <= started
+    except OSError:
+        unchanged = False
+    state["commit"] = apt_runner.sif_commit(sif) if unchanged else None
+    return True
 
 
 def _delete_state(canonical: str) -> None:

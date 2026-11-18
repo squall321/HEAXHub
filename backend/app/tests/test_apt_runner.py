@@ -175,3 +175,37 @@ def test_instance_start_isolation_flags(monkeypatch: pytest.MonkeyPatch) -> None
     assert "--no-privs" in captured["args"]
 
     get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# sif_commit — 빌더가 %help 에 박은 upstream commit (포털 PT-R3)
+# ---------------------------------------------------------------------------
+
+_HELP = (
+    "    HEAXHub-managed FastAPI / uvicorn SIF.\n"
+    "    slug: doc-forge\n"
+    "    upstream commit: bfa1977b0d0bf9abb650e0444790cf47ad276d58\n"
+    "    subpath: \n"
+)
+
+
+@pytest.mark.parametrize(
+    ("stdout", "returncode", "exc", "expected"),
+    [
+        (_HELP, 0, None, "bfa1977b0d0bf9abb650e0444790cf47ad276d58"),
+        ("    upstream commit: unknown\n", 0, None, None),
+        ("    slug: legacy\n", 0, None, None),
+        ("", 255, None, None),
+        ("", 0, FileNotFoundError("apptainer not found"), None),
+    ],
+    ids=["commit", "unknown", "no-line", "inspect-failed", "no-binary"],
+)
+def test_sif_commit(monkeypatch: pytest.MonkeyPatch, stdout, returncode, exc, expected) -> None:
+    def fake_run(args, **kwargs):
+        if exc is not None:
+            raise exc
+        assert args == ["inspect", "--helpfile", "/x.sif"]
+        return subprocess.CompletedProcess(args=args, returncode=returncode, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(apt_runner, "run", fake_run)
+    assert apt_runner.sif_commit("/x.sif") == expected

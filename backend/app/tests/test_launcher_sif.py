@@ -80,6 +80,8 @@ def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                         lambda port, p, *, root, prefix_aware=False: True)
     monkeypatch.setattr(integration_launcher, "_is_alive", lambda pid: True)
     monkeypatch.setattr(integration_launcher.time, "sleep", lambda *_a, **_k: None)
+    # 가짜 SIF 에 진짜 `apptainer inspect` 를 부르지 않는다 — 판을 보는 시험은 따로 바꿔 끼운다.
+    monkeypatch.setattr(integration_launcher.apt_runner, "sif_commit", lambda sif: None)
     return tmp_path
 
 
@@ -628,3 +630,88 @@ def test_pre_instance_failure_does_not_call_instance_stop(
 
     assert result.action == "failed"
     assert stopped == []
+
+
+# ---------------------------------------------------------------------------
+# 8. 떠 있는 판(포털 PT-R3) — state 의 commit 은 띄운 그 SIF 의 것이어야 한다
+# ---------------------------------------------------------------------------
+
+_SHA = "bfa1977b0d0bf9abb650e0444790cf47ad276d58"
+
+
+def test_start_records_the_commit_of_the_sif_it_launched(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws, sif, _calls = _fail_env(tmp_path, monkeypatch, start_rc=0)
+    monkeypatch.setattr(integration_launcher.apt_runner, "sif_commit",
+                        lambda s: _SHA if Path(s) == sif else None)
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "started", result.error
+    assert integration_launcher._read_state("demo_sif")["commit"] == _SHA
+
+
+def _running_state(sif: Path, **extra) -> None:
+    """이 칸이 생기기 전에 뜬 인스턴스의 state — commit 키가 없다."""
+    integration_launcher._state_path("demo_sif").write_text(json.dumps({
+        "schema_version": integration_launcher._STATE_SCHEMA_VERSION,
+        "slug": "demo_sif", "pid": 1234, "port": 17171,
+        "base_path": "/apps/demo_sif", "health_path": "/health", "stack": "fastapi",
+        "argv": [str(sif), "uvicorn", "app.main:app"],
+        "instance_name": "heax_app_demo_sif", "sif_path": str(sif),
+        "caddy_registered": True, **extra,
+    }))
+
+
+def _reuse(ws: Path, sif: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_list",
+                        lambda **kw: ["heax_app_demo_sif"])
+    inspected: list[str] = []
+
+    def fake_sif_commit(s):
+        inspected.append(str(s))
+        return _SHA
+
+    monkeypatch.setattr(integration_launcher.apt_runner, "sif_commit", fake_sif_commit)
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+    assert result.action == "already_running"
+    return inspected
+
+
+def test_running_instance_is_backfilled_when_its_sif_is_unchanged(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws = tmp_path / "demo_sif"; ws.mkdir()
+    sif = tmp_path / "demo_sif.sif"; sif.write_bytes(b"fake-sif")
+    _running_state(sif, started_at=sif.stat().st_ctime + 60)  # SIF 를 둔 뒤에 떴다
+
+    assert _reuse(ws, sif, monkeypatch) == [str(sif)]
+    assert integration_launcher._read_state("demo_sif")["commit"] == _SHA
+
+
+def test_running_instance_stays_unknown_when_its_sif_was_replaced(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """디스크 SIF 가 기동 뒤 새 빌드로 바뀌었다 — 그 판을 떠 있는 판이라고 적으면 지어낸 것이다."""
+    ws = tmp_path / "demo_sif"; ws.mkdir()
+    sif = tmp_path / "demo_sif.sif"; sif.write_bytes(b"new-build")
+    _running_state(sif, started_at=sif.stat().st_ctime - 60)  # 뜬 뒤에 SIF 가 바뀌었다
+
+    assert _reuse(ws, sif, monkeypatch) == [], "바뀐 SIF 를 읽으면 안 된다"
+    state = integration_launcher._read_state("demo_sif")
+    assert "commit" in state and state["commit"] is None  # 다시 묻지 않게 '모름'을 적는다
+
+
+def test_known_commit_is_not_reinspected(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """reconcile 은 45초마다 launch 를 부른다 — 이미 적힌 판으로 inspect 를 되풀이하지 않는다."""
+    ws = tmp_path / "demo_sif"; ws.mkdir()
+    sif = tmp_path / "demo_sif.sif"; sif.write_bytes(b"fake-sif")
+    _running_state(sif, started_at=sif.stat().st_ctime + 60, commit="1234567")
+
+    assert _reuse(ws, sif, monkeypatch) == []
+    assert integration_launcher._read_state("demo_sif")["commit"] == "1234567"

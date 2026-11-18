@@ -17,6 +17,8 @@ into ``AppVersion.manifest_snapshot``, so the ``mcp`` block is preserved as-is.
 """
 from __future__ import annotations
 
+import re
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter
@@ -46,6 +48,27 @@ def _ever_launched(app_id: str) -> bool:
     게이트웨이 revive 루프가 재연결하므로 목록에 남겨두고, 실체가 아예 없는 앱만 뺀다.
     """
     return _read_state(app_id) is not None
+
+
+_COMMIT_RE = re.compile(r"[0-9a-f]{7,40}")
+
+
+def _build_info(app_id: str) -> dict[str, str] | None:
+    """지금 떠 있는 인스턴스의 판 — 모르면 None(줄에서 build 칸을 뺀다).
+
+    런처가 인스턴스를 띄울 때 그 SIF 에 박힌 upstream commit 을 state 에 적는다. 리포 HEAD 도, 디스크의
+    최신 SIF 도 아니다(스캐너는 SIF 를 새로 빌드해도 떠 있는 인스턴스를 재기동하지 않는다). 게이트웨이가
+    폴링하는 자리라 subprocess 없이 state 파일만 읽는다. 16진 커밋이 아니면(아카이브 다이제스트 등) 뺀다.
+    """
+    state = _read_state(app_id) or {}
+    commit = str(state.get("commit") or "").lower()
+    if not _COMMIT_RE.fullmatch(commit):
+        return None
+    build = {"commit": commit[:7]}
+    started = state.get("started_at")
+    if isinstance(started, (int, float)):
+        build["started_at"] = datetime.fromtimestamp(started, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return build
 
 
 @router.get("/servers")
@@ -84,15 +107,18 @@ def list_mcp_servers(db: DbSession, user: CurrentUser) -> dict[str, Any]:
         # 게이트웨이가 빈 문자열을 싣고, 사용자는 앱 이름만으로 무엇을 하는 앱인지 추측하게 된다.
         # mcp.description(그 MCP 가 무엇을 제공하는지)이 있으면 그것을, 없으면 앱 설명을 쓴다.
         desc = str(mcp.get("description") or app.description or "").strip()
-        servers.append(
-            {
-                "id": app.id,
-                "name": app.name,
-                "description": desc[:300],
-                "path": f"/apps/{app.id}{sub}",
-                "transport": str(mcp.get("transport", "streamable_http")),
-                # 게이트웨이 그룹 필터 슬롯 — 비면 전체 공개, 있으면 caller groups 교집합 필요.
-                "allowed_groups": list(mcp.get("allowed_groups") or []),
-            }
-        )
+        entry: dict[str, Any] = {
+            "id": app.id,
+            "name": app.name,
+            "description": desc[:300],
+            "path": f"/apps/{app.id}{sub}",
+            "transport": str(mcp.get("transport", "streamable_http")),
+            # 게이트웨이 그룹 필터 슬롯 — 비면 전체 공개, 있으면 caller groups 교집합 필요.
+            "allowed_groups": list(mcp.get("allowed_groups") or []),
+        }
+        # 운영본 표시(포털 PT-R3) — 디지털워커가 어느 판이 떠 있는지 앱마다 따로 묻지 않게 한다.
+        build = _build_info(app.id)
+        if build:
+            entry["build"] = build
+        servers.append(entry)
     return {"servers": servers}

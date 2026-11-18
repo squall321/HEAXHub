@@ -260,6 +260,30 @@ def instance_list(**kwargs) -> list[str]:
     return names
 
 
+# integration_sif_builder 가 .def 의 %help 에 ``upstream commit: {{COMMIT}}`` 를 박는다.
+_HELP_COMMIT_RE = re.compile(r"^\s*upstream commit:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def sif_commit(sif: Path | str) -> str | None:
+    """SIF 에 박힌 upstream commit — 모르면(읽기 실패 · 줄 없음 · ``unknown``) None.
+
+    빌더가 커밋을 모를 때 ``unknown`` 을 박으므로 그 값도 None 으로 돌린다.
+    """
+    try:
+        proc = run(
+            ["inspect", "--helpfile", str(sif)],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    m = _HELP_COMMIT_RE.search(proc.stdout or "")
+    if not m or m.group(1).lower() in {"unknown", "none"}:
+        return None
+    return m.group(1)
+
+
 def instance_exec(
     name: str,
     argv: list[str],

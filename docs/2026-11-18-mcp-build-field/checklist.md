@@ -11,4 +11,6 @@
 - [x] `GET /api/v1/mcp/servers` — 줄마다 선택 칸 `build: {commit(7자), started_at(UTC ISO)}`, 모르면 뺀다.
 - [x] 테스트 — sif_commit 파싱, 기동 기록, 재사용 보충(바뀐 SIF 는 안 채움), 목록 칸 유무.
 - [x] 백엔드 테스트 — 새 시험 17개 통과, 나머지 실패 14개는 변경 전과 같은 묶음(dotnet argv · launcher_reports · updater_feed · etag)이다.
-- [ ] 커밋 → hwaxportal-71 에 커밋 해시와 함께 알림.
+- [x] 커밋 → hwaxportal-71 에 커밋 해시와 함께 알림(ec240e1 · 11-18 포털이 origin/main 에 올리고 dev 백엔드 재기동 · dev 실측 8/9 채움, step_forge 는 기동 뒤 SIF 교체로 빔).
+- [ ] **보류(2026-11-22~) — origin/main push · Drive(dist · 미러) 올리기 금지.** 포털 hwaxportal-87 이 cae00 업데이트 라운드를 열었다
+      (사용자 결정 — ste 판 뒤 한 번에). 로컬 커밋 · 가지 작업은 된다. 해제 — **hwaxportal-87 이 cae00 수신을 알릴 때** 이 줄을 표시하고 재개.

@@ -11,7 +11,7 @@ status: stable
 # MaterialTwin Web 과 같은 급으로 취급해야 하므로 web_app 을 명시한다(프록시 동작은 그대로).
 app_type: web_app
 execution_target: external_url
-description: "DynaForge — LS-DYNA K파일 전처리 자동화 플랫폼. 47개 op(재료DB 치환·메시 변환/재메시·조립/눌림/굽힘 초기응력(squeeze/cclip/prestress/warpage)·해석 세팅·모델 메타/연결도)를 웹 UI/REST API/MCP로 제공."
+description: "DynaForge — LS-DYNA K파일 전처리 자동화 플랫폼. 재료DB 치환·메시 변환/재메시·조립/눌림/굽힘 초기응력(squeeze/cclip/prestress/warpage)·해석 세팅·모델 메타/연결도 op 를 웹 UI/REST API/MCP로 제공."
 build:
   stack: external_proxy
 launch:

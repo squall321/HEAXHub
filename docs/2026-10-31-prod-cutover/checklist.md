@@ -55,9 +55,8 @@
   전환 창에서는 heax 재기동이 실제로 됐는지 보고, 빠졌으면 `apptainer instance stop heax_app_step_forge` 를 손으로 한다. 당기기 전에 손으로 멈추지 않는다(B-1).
   - ①은 됨(main 은 그때부터 `0b02759`~`c4af8cc` 를 포함).
   - (2026-11-12 보류, 풀림) 포털(hwaxportal-a5)의 update-all 라운드 — main 을 `d7098ad` 에서 멈췄다가 수신 확인 뒤 재개(`118059b` push·그 뒤 `ec240e1`).
-  - **2026-11-22 — 새 라운드(포털 hwaxportal-87, 사용자 결정: ste 판 뒤 한 번에). hwaxportal-87 이 'cae00 수신' 을 알릴 때까지 main push
-    와 Drive(dist · 미러) 올리기를 둘 다 멈출 것** — 지금 끝은 `ec240e1`. 로컬 커밋 · 가지 작업은 계속해도 된다(push 만 보류).
-    해제 — hwaxportal-87 에서 'cae00 수신 확인' 이 오면 이 줄을 지우고 재개.
+  - (2026-11-22 보류, 풀림 2026-11-23) 포털(hwaxportal-87)의 update-all 라운드 — main·Drive 올리기를 `ec240e1` 에서 멈췄다가
+    cae00 수신 확인(사용자가 11-23 에 포털로 알림) 뒤 재개. 쌓인 로컬 커밋(`c9b1a0f`·`ff03c29` 등)을 지금 push 한다.
 - [ ] dev 에 로컬 파일 넷을 둘 때 임시 이름에 쓰고 `mv` 로 바꾼다(사람 몫).
 
 ## 시험 가드(2026-10-31 사용자 결정 — HH-06 을 좁힌 `5c4e8e7` 은 합치지 않는다, 근거는 context-notes 「시험 가드」)

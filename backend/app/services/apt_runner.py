@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 from app.core.logger import get_logger
+from app.services import host_env
 
 logger = get_logger(__name__)
 
@@ -210,8 +211,9 @@ def instance_start(
     args.extend(_bind_flags(binds))
     args.extend([str(sif), name])
 
-    # Merge APPTAINERENV_* into the subprocess env.
-    sub_env = dict(os.environ)
+    # Merge APPTAINERENV_* into the subprocess env. 바탕은 지금의 .env 를 얹은 호스트 env 다 — apptainer 는
+    # --cleanenv 여도 호스트의 APPTAINERENV_* 를 컨테이너에 넣으므로, 허브 기동 때의 옛 값이면 앱이 옛 값을 받는다(HH-18).
+    sub_env = host_env.current()
     if "env" in kwargs and kwargs["env"] is not None:
         # Caller-supplied env takes precedence over our merge.
         sub_env = dict(kwargs.pop("env"))
@@ -310,7 +312,7 @@ def instance_exec(
     args.append(f"instance://{name}")
     args.extend(argv)
 
-    sub_env = dict(os.environ)
+    sub_env = host_env.current()   # instance_start 와 같은 바탕(HH-18)
     if env:
         for k, v in env.items():
             sub_env[f"APPTAINERENV_{k}"] = str(v)

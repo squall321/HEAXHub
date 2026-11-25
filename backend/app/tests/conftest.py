@@ -107,3 +107,11 @@ def _isolate_launcher_dirs(tmp_path_factory, monkeypatch):
     (base / "logs").mkdir()
     monkeypatch.setattr(integration_launcher, "STATE_DIR", base / "state")
     monkeypatch.setattr(integration_launcher, "LOG_DIR", base / "logs")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_host_env_file(tmp_path_factory, monkeypatch):
+    """런처 · apt_runner 가 앱을 띄울 때 읽는 .env(HH-18)를 빈 자리로 돌린다 — 이 박스의 실제 .env(프록시 · 키)가 시험에 섞이지 않게."""
+    from app.services import host_env
+
+    monkeypatch.setattr(host_env, "ENV_FILE", tmp_path_factory.mktemp("hostenv") / ".env")

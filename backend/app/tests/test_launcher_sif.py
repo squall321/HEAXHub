@@ -715,3 +715,37 @@ def test_known_commit_is_not_reinspected(
 
     assert _reuse(ws, sif, monkeypatch) == []
     assert integration_launcher._read_state("demo_sif")["commit"] == "1234567"
+
+
+# ---------------------------------------------------------------------------
+# 9. HH-18 — 자동 길로 뜨는 앱도 지금의 .env 값을 받는다(허브 기동 때의 옛 값이 아니라)
+# ---------------------------------------------------------------------------
+
+
+def test_sif_launch_reads_the_current_env_file_not_the_hub_start_env(
+    tmp_path: Path, isolated_state: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import host_env
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://old-proxy:3128")       # 허브가 뜰 때의 .env 값
+    monkeypatch.setenv("HEAX_APP_LLM_MODEL", "old-model")
+    host_env.ENV_FILE.write_text(
+        'HTTPS_PROXY="http://new-proxy:3128"\nHEAX_APP_LLM_MODEL=new-model\nSEARCH_MODE=internal\n',
+        encoding="utf-8")
+    ws, sif, _calls = _fail_env(tmp_path, monkeypatch, start_rc=0)
+    started: list[dict] = []
+
+    def capture_start(**kw):
+        started.append(dict(kw.get("env") or {}))
+        return subprocess.CompletedProcess(args=["instance", "start"], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(integration_launcher.apt_runner, "instance_start", capture_start)
+
+    result = integration_launcher.launch(ws, manifest=_manifest(), db=None,
+                                         slug="demo_sif", sif_path=sif)
+
+    assert result.action == "started", result.error
+    env = started[0]
+    assert env["HTTPS_PROXY"] == "http://new-proxy:3128"
+    assert env["LLM_MODEL"] == "new-model"          # HEAX_APP_LLM_* → 앱 이름으로 바꿔 넣는다
+    assert env["SEARCH_MODE"] == "internal"

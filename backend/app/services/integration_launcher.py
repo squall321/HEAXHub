@@ -45,7 +45,7 @@ from typing import Any
 import httpx
 
 from app.core.logger import get_logger
-from app.services import apt_runner, integration_manifest, port_allocator, proxy_manager
+from app.services import apt_runner, host_env, integration_manifest, port_allocator, proxy_manager
 from app.services.stack_resolver import StackSpec, load_stacks
 
 logger = get_logger(__name__)
@@ -472,9 +472,11 @@ def _launch_once(
     # 호스트 프로세스 경로 — bind mount 가 없으므로 영구 데이터 디렉터리의 호스트
     # 절대경로 자체를 $HEAX_DATA_DIR 로 준다(SIF 경로의 /data 와 같은 역할).
     app_data = _app_data_dir(canonical)
-    env = os.environ.copy()
+    # 허브 기동 때의 옛 env 가 아니라 지금의 .env 를 얹은 env(HH-18).
+    host = host_env.current()
+    env = dict(host)
     # 매니페스트 앱별 env(launch.env) 먼저, HEAXHub 제어 변수는 아래에서 덮는다.
-    env.update(_inherited_env())          # 공용 LLM 설정(있을 때만)
+    env.update(_inherited_env(host))      # 공용 LLM 설정(있을 때만)
     env.update({
         str(k): str(v)
         for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
@@ -485,7 +487,7 @@ def _launch_once(
     # WEB_PROVIDER 는 매니페스트에 없어 그대로 통과하면, 도구는 등록되는데 호출은 전부
     # 차단되는 함정 도구가 만들어진다. "일반 웹 금지"는 앱이 아니라 조직이 정하는 값이므로
     # 여기서 마지막에 덮는다. 호스트에 값이 없으면 아무것도 안 덮으므로 매니페스트가 남는다.
-    env.update({k: os.environ[k] for k in _SEARCH_ENV if os.environ.get(k)})
+    env.update({k: host[k] for k in _SEARCH_ENV if host.get(k)})
     env.update({
         "PORT": str(port),
         # 앱은 loopback 에만 바인드 — 포트를 외부에 노출하지 말고 리버스프록시(Caddy)
@@ -716,14 +718,15 @@ def _launch_via_sif(
     ]
     # 사내 CA 번들 — 프록시가 TLS 를 재서명하는 환경에서 컨테이너 기본 CA 로는 검증이 깨진다.
     # 호스트 파일을 컨테이너 고정 경로로 bind 해야 앱이 읽을 수 있다(경로만 넘기면 안 보인다).
-    _ca_host = _ca_bundle_host_path()
+    host = host_env.current()   # 지금의 .env 를 얹은 호스트 env(HH-18)
+    _ca_host = _ca_bundle_host_path(host)
     if _ca_host:
         binds.append((_ca_host, _CA_IN_CONTAINER))
     # 매니페스트가 선언한 앱별 env(launch.env)를 먼저 깔고 HEAXHub 제어 변수로 덮는다
     # (PORT/HOST/ROOT_PATH/HEAX_DATA_DIR 등은 항상 HEAXHub 가 결정 — 앱이 override
     # 못 함). 앱이 쓰기 경로가 필요하면 $HEAX_DATA_DIR(=/data) 아래를 쓰거나,
     # launch.env 로 앱 고유 변수를 /data 로 가리키면 된다(예: FOO_DATA_DIR: /data).
-    env_in_container: dict[str, str] = dict(_inherited_env())   # 공용 LLM 설정(있을 때만)
+    env_in_container: dict[str, str] = dict(_inherited_env(host))   # 공용 LLM 설정(있을 때만)
     env_in_container.update({
         str(k): str(v)
         for k, v in ((manifest.get("launch") or {}).get("env") or {}).items()
@@ -734,7 +737,7 @@ def _launch_via_sif(
     # WEB_PROVIDER 는 매니페스트에 없어 그대로 통과하면, 도구는 등록되는데 호출은 전부
     # 차단되는 함정 도구가 만들어진다. "일반 웹 금지"는 앱이 아니라 조직이 정하는 값이므로
     # 여기서 마지막에 덮는다. 호스트에 값이 없으면 아무것도 안 덮으므로 매니페스트가 남는다.
-    env_in_container.update({k: os.environ[k] for k in _SEARCH_ENV if os.environ.get(k)})
+    env_in_container.update({k: host[k] for k in _SEARCH_ENV if host.get(k)})
     env_in_container.update({
         "PORT": str(port),
         # loopback 전용 바인드 컨벤션 — argv 로 못 바꾸는 스택은 앱이 $HOST 를 읽어야 함.
@@ -912,14 +915,14 @@ _CA_ENV_TARGETS = ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NOD
 _CA_IN_CONTAINER = "/etc/heax-ca-bundle.crt"
 
 
-def _inherited_env() -> dict[str, str]:
-    """호스트에서 앱 컨테이너로 물려줄 환경변수.
+def _inherited_env(host: dict[str, str]) -> dict[str, str]:
+    """호스트에서 앱 컨테이너로 물려줄 환경변수 — ``host`` 는 :func:`host_env.current` 의 값.
 
     HEAX_APP_LLM_* 은 앱이 읽는 이름으로 바꿔 넣고, 프록시·검색정책은 이름 그대로 넘긴다.
     """
-    out = {dst: os.environ[src] for src, dst in _APP_LLM_ENV.items() if os.environ.get(src)}
-    out.update({k: os.environ[k] for k in _PROXY_ENV if os.environ.get(k)})
-    out.update({k: os.environ[k] for k in _SEARCH_ENV if os.environ.get(k)})
+    out = {dst: host[src] for src, dst in _APP_LLM_ENV.items() if host.get(src)}
+    out.update({k: host[k] for k in _PROXY_ENV if host.get(k)})
+    out.update({k: host[k] for k in _SEARCH_ENV if host.get(k)})
     return out
 
 
@@ -969,9 +972,9 @@ def _sibling_app_urls(db, exclude_canonical: str) -> dict[str, str]:
     return out
 
 
-def _ca_bundle_host_path() -> str | None:
+def _ca_bundle_host_path(host: dict[str, str]) -> str | None:
     """사내 CA 번들 경로(호스트). 설정돼 있고 실제로 읽히는 파일일 때만 돌려준다."""
-    p = (os.environ.get("HEAX_APP_CA_BUNDLE") or "").strip()
+    p = (host.get("HEAX_APP_CA_BUNDLE") or "").strip()
     if not p:
         return None
     if not os.path.isfile(p):

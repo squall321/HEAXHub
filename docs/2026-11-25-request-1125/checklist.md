@@ -19,9 +19,11 @@
       주석 줄로 두었고, 주석을 풀어도 bash source · python-dotenv 둘 다 같은 값으로 읽는 것을 확인했다. NO_PROXY 줄은 원래 없어 새로 넣었다.
 
 ## 3. SE-8 — Drive 받기 스크립트의 반복 줄이기
-- [ ] appdata-merge-from-drive.sh — tar 해시가 같으면 받기 · 백업 사본 · 병합을 건너뛴다, 백업 사본은 DB 마다 최근 N개.
-- [ ] models-from-drive.sh — 앱별 MANIFEST 비교로 같으면 건너뛴다, 비교는 --fast-list · --stats-one-line.
-- [ ] dist-from-drive.sh — sha256sum -c 는 옮긴 파일만(전체는 주 1회), frontend-dist 는 바뀐 때만, --stats-one-line.
+- [x] appdata-merge-from-drive.sh — tar 해시가 같으면 받기 · 백업 사본 · 병합을 건너뛴다, 백업 사본은 DB 마다 최근 N개.
+- [x] models-from-drive.sh — 앱별 MANIFEST 비교로 같으면 건너뛴다, 비교는 --fast-list · --stats-one-line.
+- [x] dist-from-drive.sh — sha256sum -c 는 옮긴 파일만(전체는 주 1회), frontend-dist 는 바뀐 때만, --stats-one-line.
+- [x] 시험 — appdata 는 리포 시험 2개 추가(같은 tar 건너뛰기 · 사본 N개). dist · models 는 가짜 rclone 으로 가짜 루트에서 실측
+      (dist 5경우 · models 4경우, context-notes 참고). 빌드 틀(.def)은 건드리지 않았다.
 
 ## 4. IR-24 — doc-forge 등록 사본에서 DOCFORGE_MAX_JOBS 빼기
 - [x] ~~HEAXHub 몫~~ — 11-25 포털이 담당을 DocForge 배치로 옮겼다(DocForge docs/DEPLOY.md §7 의 2, release 를 옮긴 바로 뒤

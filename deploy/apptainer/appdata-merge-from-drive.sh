@@ -16,15 +16,25 @@ REMOTE="${HEAX_DRIVE_REMOTE:-$(env_get HEAX_DRIVE_REMOTE)}"
 REMOTE="${REMOTE%/}"; REMOTE="${REMOTE%/dist}"; DEST="$REMOTE/app-data"
 RCLONE="$(command -v rclone || true)"; [ -n "$RCLONE" ] || { echo "· rclone 없음 — merge 생략"; exit 0; }
 
+# 영구 캐시(SE-8) — 임시 디렉터리에 받으면 매번 50MB 를 새로 받았다(11-03 · 11-05 모두 0건 추가). 캐시에 받으면 rclone 이 안 바뀐
+# tar 를 건너뛴다. 풀기는 매번 임시 디렉터리에 한다(로컬이라 싸다) — 아래 DB 밖 심기가 tar 가 같아도 계속 돌 수 있게.
+CACHE="${HEAX_APPDATA_CACHE:-$APPT_DIR/cache/.drive-appdata}"; mkdir -p "$CACHE"
+TAR="$CACHE/app-data.tar.gz"
+"$RCLONE" copy "$DEST/latest/app-data.tar.gz" "$CACHE/" 2>/dev/null || true
+[ -f "$TAR" ] || { echo "· Drive 에 app-data 없음 — merge 생략(첫 배포면 정상)"; exit 0; }
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
-"$RCLONE" copy "$DEST/latest/app-data.tar.gz" "$STAGE/" 2>/dev/null || true
-[ -f "$STAGE/app-data.tar.gz" ] || { echo "· Drive 에 app-data 없음 — merge 생략(첫 배포면 정상)"; exit 0; }
-mkdir -p "$STAGE/src"; tar -xzf "$STAGE/app-data.tar.gz" -C "$STAGE/src"
+mkdir -p "$STAGE/src"; tar -xzf "$TAR" -C "$STAGE/src"
 
 APPDATA="$ROOT_DIR/var/app_data"; mkdir -p "$APPDATA"
+# 지난번에 병합까지 끝낸 tar 의 해시 — 같으면 안전백업 · DB 병합을 건너뛴다(병합은 멱등이라 다시 돌아도 0건이고, 사본만 쌓였다).
+TAR_SHA="$(sha256sum "$TAR" | cut -d' ' -f1)"
+MERGED_MARK="$CACHE/merged.sha256"
+SKIP_MERGE=0
+[ -f "$MERGED_MARK" ] && [ "$(cat "$MERGED_MARK")" = "$TAR_SHA" ] && SKIP_MERGE=1
 rc=0
+[ "$SKIP_MERGE" = 1 ] && echo "  · app-data tar 가 지난 병합 때와 같다(${TAR_SHA:0:12}) — 안전백업 · DB 병합 건너뜀"
 # dev 스냅샷의 각 *.db 를 운영의 같은 상대경로 DB 에 merge
-while IFS= read -r sdb; do
+while [ "$SKIP_MERGE" = 0 ] && IFS= read -r sdb; do
   rel="${sdb#"$STAGE/src/"}"
   live="$APPDATA/$rel"
   if [ ! -f "$live" ]; then
@@ -62,6 +72,17 @@ while IFS= read -r sf; do
 # 이미 올라간 사본이 있을 수 있으니 받는 쪽도 막는다(cae00 운영 수정요청 2026-10-27 HH-05).
 done < <(find "$STAGE/src" -type f ! -name "*.db" ! -name "*-wal" ! -name "*-shm" ! -name "*-journal" \
            ! -name "*.lock" ! -name "*.pre-merge-*" ! -name "knobs.env" 2>/dev/null)
+
+# 안전백업은 DB 마다 최근 N개만 남긴다(SE-8 — 11-24 cae00 에 348개 · 8GB 가 쌓였다). 하나는 늘 남긴다.
+KEEP="${HEAX_APPDATA_PREMERGE_KEEP:-3}"
+case "$KEEP" in ''|*[!0-9]*|0) KEEP=3 ;; esac
+pruned=0
+while IFS= read -r base; do
+  while IFS= read -r old; do rm -f -- "$old" && pruned=$((pruned + 1)); done < <(
+    find "$(dirname "$base")" -maxdepth 1 -type f -name "$(basename "$base").pre-merge-*" | sort -r | tail -n +"$((KEEP + 1))")
+done < <(find "$APPDATA" -type f -name "*.pre-merge-*" 2>/dev/null | sed 's/\.pre-merge-[^/]*$//' | sort -u)
+[ "$pruned" -gt 0 ] && echo "  · 옛 안전백업 ${pruned}개 지움(DB 마다 최근 ${KEEP}개 남김)"
+[ "$rc" = 0 ] && [ "$SKIP_MERGE" = 0 ] && echo "$TAR_SHA" > "$MERGED_MARK"
 
 [ "$rc" = 0 ] && echo "✓ app-data merge 완료 — dev 신규 반영 + cae00 데이터 보존" \
              || echo "⚠ 일부 merge 실패 — 위 로그 확인(운영 DB 는 안전백업으로 롤백 가능)"

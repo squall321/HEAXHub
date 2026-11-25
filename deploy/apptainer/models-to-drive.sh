@@ -53,6 +53,16 @@ for app in $APPS; do
   if "$RCLONE" copy "$src" "$dst" --transfers 4 --checkers 8 --progress 2>&1 | tail -1; then
     echo "  ✓ $app models 업로드"
     pushed=1
+    # MANIFEST — 받는 쪽(models-from-drive)이 이 파일 하나만 받아 지난번과 같으면 285개 객체 비교를 건너뛴다(SE-8).
+    # Drive 쪽 목록으로 만든다(경로 · 크기 · 수정시각) — 올린 결과 그대로를 적는다.
+    _mf="$(mktemp)"
+    if "$RCLONE" lsf -R --files-only --fast-list --format pst --exclude MANIFEST "$dst" 2>/dev/null | sort > "$_mf" \
+       && [ -s "$_mf" ] && "$RCLONE" copyto "$_mf" "$dst/MANIFEST" 2>/dev/null; then
+      echo "  ✓ $app MANIFEST($(wc -l < "$_mf")개)"
+    else
+      echo "  · $app MANIFEST 못 올림(비치명 — 받는 쪽이 전체 비교로 돈다)"
+    fi
+    rm -f "$_mf"
   else
     echo "  · $app models 업로드 실패(비치명)"
   fi

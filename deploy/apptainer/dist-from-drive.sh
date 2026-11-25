@@ -60,16 +60,50 @@ _install_if_changed() {  # $1=src $2=dst — 0=설치/동일 · 2=실패
 }
 # 영구 캐시 — 임시 디렉터리면 rclone 이 비교할 것이 없어 매번 전량 전송이다(앱 SIF 여럿, Drive ~2MB/s). 캐시에 받으면 안 바뀐 파일은 전송 0.
 STAGE="${HEAX_DRIVE_CACHE:-$ROOT_DIR/deploy/apptainer/cache/.drive-dist}"; mkdir -p "$STAGE"
-rclone sync --progress "$SRC/" "$STAGE/"    # sync — 원격에서 뺀 파일이 캐시에 남아 옛 SIF 가 되살아나지 않게
-[ -f "$STAGE/SHA256SUMS" ] && { ( cd "$STAGE" && sha256sum -c SHA256SUMS ) || { echo "✗ checksum failed"; exit 1; }; echo "  ✓ checksums OK"; }
+# 이번에 옮긴 파일을 가리려고 sync 앞뒤로 캐시의 (이름 · 크기 · 수정시각) 을 찍는다(SE-8).
+_snap() { find "$STAGE" -maxdepth 1 -type f -printf '%f\t%s\t%T@\n' | sort; }
+_before="$(_snap)"
+# sync — 원격에서 뺀 파일이 캐시에 남아 옛 SIF 가 되살아나지 않게. --progress 는 운영 로그에 줄을 쏟아 한 줄 통계로 바꿨다.
+rclone sync --stats-one-line --stats-log-level NOTICE --stats 30s "$SRC/" "$STAGE/"
+CHANGED="$(comm -13 <(printf '%s\n' "$_before") <(_snap) | cut -f1)"
+# 앞 실행이 검사 · 풀기 전에 끊겼거나 검사에 실패했으면 그때 옮긴 파일은 이번엔 '안 바뀜'으로 보인다 — 적어 둔 목록을 더한다.
+# 표시 파일들은 캐시 밖(형제)에 둔다 — 캐시 안에 두면 다음 sync 가 원격에 없는 파일로 보고 지운다.
+PENDING="${STAGE%/}.pending"
+CHANGED="$( { printf '%s\n' "$CHANGED"; cat "$PENDING" 2>/dev/null || true; } | sed '/^$/d' | sort -u)"
+printf '%s\n' "$CHANGED" > "$PENDING"
 
-# Restore frontend/dist (있을 때만 — 런타임/base 만 올라온 푸시도 지원)
+# 무결성 — 13GB 캐시 전체에 sha256sum -c 를 매번 돌던 것을 이번에 옮긴 파일만으로 줄이고, 전체 검사는 주 1회 한다(SE-8).
+FULL_MARK="${STAGE%/}.full-check"
+if [ -f "$STAGE/SHA256SUMS" ]; then
+  if [ ! -f "$FULL_MARK" ] || [ -n "$(find "$FULL_MARK" -mmin +$((7 * 24 * 60)) 2>/dev/null)" ]; then
+    ( cd "$STAGE" && sha256sum -c --quiet SHA256SUMS ) || { echo "✗ checksum failed"; exit 1; }
+    touch "$FULL_MARK"; echo "  ✓ checksums OK(전체 — 주 1회)"
+  else
+    _sums="$(awk -v list="$CHANGED" 'BEGIN { n = split(list, a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") want[a[i]] = 1 }
+                                    { f = $2; sub(/^\*/, "", f); if (f in want) print }' "$STAGE/SHA256SUMS")"
+    if [ -n "$_sums" ]; then
+      # 실패하면 다음 실행이 전체 검사를 하게 표시를 지운다(옮긴 목록도 PENDING 에 남는다).
+      ( cd "$STAGE" && printf '%s\n' "$_sums" | sha256sum -c --quiet - ) || { rm -f "$FULL_MARK"; echo "✗ checksum failed"; exit 1; }
+      echo "  ✓ checksums OK(이번에 옮긴 $(printf '%s\n' "$_sums" | wc -l)개)"
+    else
+      echo "  · 옮긴 파일 없음 — checksum 생략(전체 검사는 주 1회)"
+    fi
+  fi
+fi
+
+# Restore frontend/dist (있을 때만 — 런타임/base 만 올라온 푸시도 지원). 바뀐 때만 푼다(SE-8).
 if [ -f "$STAGE/frontend-dist.tar.gz" ]; then
-  ( cd "$ROOT_DIR/frontend" && tar -xzf "$STAGE/frontend-dist.tar.gz" )
-  echo "  ✓ extracted frontend/dist"
+  case $'\n'"$CHANGED"$'\n' in *$'\n'frontend-dist.tar.gz$'\n'*) _fd_changed=1 ;; *) _fd_changed=0 ;; esac   # 위 _listing 과 같은 까닭으로 파이프+grep -q 를 안 쓴다
+  if [ "$_fd_changed" = 1 ] || [ ! -f "$ROOT_DIR/frontend/dist/index.html" ]; then
+    ( cd "$ROOT_DIR/frontend" && tar -xzf "$STAGE/frontend-dist.tar.gz" )
+    echo "  ✓ extracted frontend/dist"
+  else
+    echo "  · frontend-dist 그대로 — 풀기 생략"
+  fi
 else
   echo "  · frontend-dist 없음 — 런타임/base 만 반입"
 fi
+rm -f "$PENDING"   # 검사 · 풀기까지 끝났다 — 아래 SIF 설치는 cmp 로 스스로 가린다
 
 # Service SIFs (postgres/redis/caddy/mailhog) — cae00 can't pull/build them, so stage whatever was
 # shipped into ~/serviceApptainers (create the dir; start.sh expects it there).

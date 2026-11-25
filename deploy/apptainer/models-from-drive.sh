@@ -34,6 +34,9 @@ _scan_model_apps() {
 APPS="${HEAX_MODEL_APPS:-$(_scan_model_apps | tr "\n" " ")}"
 [ -n "${APPS// /}" ] || echo "  · models/ 에 내용이 있는 앱 없음 — 반입 대상 없음"
 
+# 지난번에 받은 MANIFEST 를 두는 곳 — 앱 모델 디렉터리(/data/models)에 두면 앱이 모르는 파일을 보게 된다.
+MF_CACHE="${HEAX_MODELS_CACHE:-$ROOT_DIR/deploy/apptainer/cache/.drive-models}"; mkdir -p "$MF_CACHE"
+
 for app in $APPS; do
   src="$REMOTE/models/$app"
   dst="$APPDATA/$app/models"
@@ -42,9 +45,19 @@ for app in $APPS; do
     continue
   fi
   mkdir -p "$dst"
+  # MANIFEST 가 지난번에 받아 둔 것과 같고 모델 디렉터리가 비어 있지 않으면 비교부터 건너뛴다(SE-8 — 285개 객체 · 3~4분).
+  # MANIFEST 가 없으면(옛 업로드) 전체 비교로 돈다.
+  mf_new="$("$RCLONE" cat "$src/MANIFEST" 2>/dev/null || true)"
+  if [ -n "$mf_new" ] && [ -f "$MF_CACHE/$app.MANIFEST" ] && [ "$mf_new" = "$(cat "$MF_CACHE/$app.MANIFEST")" ] \
+     && [ -n "$(ls -A "$dst" 2>/dev/null)" ]; then
+    echo "  · $app models: Drive MANIFEST 가 지난번과 같다 — 건너뜀"
+    continue
+  fi
   echo "→ models: $src → $dst"
-  if "$RCLONE" copy "$src" "$dst" --transfers 4 --checkers 8 2>/dev/null; then
+  if "$RCLONE" copy "$src" "$dst" --exclude MANIFEST --fast-list --stats-one-line --stats-log-level NOTICE \
+       --transfers 4 --checkers 8 2>&1 | tail -n 2; then
     echo "  ✓ $app models ($(du -sh "$dst" 2>/dev/null | cut -f1))"
+    [ -n "$mf_new" ] && printf '%s\n' "$mf_new" > "$MF_CACHE/$app.MANIFEST"
   else
     echo "  · $app models 동기 실패(비치명)"
   fi

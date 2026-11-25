@@ -134,3 +134,45 @@ def test_병합기는_staging_사본을_immutable_로_연다():
     """mode=ro 만이면 WAL 모드 DB 를 열며 staging 에 -wal · -shm 을 만든다 — 시드 제외와 함께 두 겹으로 막는다."""
     src = (APPT / "_materialtwin_merge.py").read_text(encoding="utf-8")
     assert 'sqlite3.connect(f"file:{SRC}?mode=ro&immutable=1", uri=True)' in src
+
+
+def test_tar_가_같으면_안전백업_병합을_건너뛰고_DB_밖_심기는_계속한다(box, monkeypatch):
+    """SE-8 — 같은 tar 를 매번 받아 병합해 0건 추가인데 .pre-merge 사본만 348개 · 8GB 쌓였다."""
+    live, tmp, run = box
+    (live / "mt").mkdir(parents=True)
+    _db(live / "mt/m.db", 3)
+    src = tmp / "src.db"
+    _db(src, 5)
+    members = {"mt/m.db": src.read_bytes(), "mt/curve.parquet": b"curve"}
+    r1 = run(members)
+    assert r1.returncode == 0, r1.stdout + r1.stderr
+    assert len(list((live / "mt").glob("m.db.pre-merge-*"))) == 1
+    (live / "mt/curve.parquet").unlink()                      # 운영에서 없어진 DB 밖 파일
+    # 같은 tar — gzip 머리에 만든 시각이 들어가므로 다시 만들지 않고 첫 바이트를 그대로 쓴다(Drive 의 같은 파일처럼).
+    same = (tmp / "app-data.tar.gz").read_bytes()
+    monkeypatch.setattr(sys.modules[__name__], "_tar", lambda _members: same)
+
+    r2 = run(members)
+
+    assert r2.returncode == 0, r2.stdout + r2.stderr
+    assert "건너뜀" in r2.stdout and "→ merge" not in r2.stdout, r2.stdout
+    assert len(list((live / "mt").glob("m.db.pre-merge-*"))) == 1, "같은 tar 인데 안전백업이 또 생겼다"
+    assert (live / "mt/curve.parquet").read_bytes() == b"curve", "DB 밖 심기는 tar 가 같아도 계속해야 한다"
+
+
+def test_안전백업은_DB_마다_최근_N개만_남긴다(box):
+    live, tmp, run = box
+    (live / "mt").mkdir(parents=True)
+    _db(live / "mt/m.db", 3)
+    for d in range(1, 6):                                      # 예전 실행들이 쌓아 둔 사본
+        (live / f"mt/m.db.pre-merge-2026110{d}-000000Z").write_bytes(b"old")
+    src = tmp / "src.db"
+    _db(src, 5)
+
+    r = run({"mt/m.db": src.read_bytes()})
+
+    assert r.returncode == 0, r.stdout + r.stderr
+    left = sorted(p.name for p in (live / "mt").glob("m.db.pre-merge-*"))
+    assert len(left) == 3, left                                # 기본 3개 — 방금 만든 사본이 그 안에 든다
+    assert left[:2] == ["m.db.pre-merge-20261104-000000Z", "m.db.pre-merge-20261105-000000Z"]
+    assert left[2] > "m.db.pre-merge-20261105-000000Z", left   # 셋째는 방금 만든 사본

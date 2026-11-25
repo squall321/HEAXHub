@@ -15,7 +15,8 @@
 - [x] conftest — 시험이 이 박스의 실제 .env 를 읽지 않게 막는다.
 
 ## 2. HP-71 — .env.example 에 코어 주소(포털 경로 꼴) · NO_PROXY 포털 도메인
-- [ ] 「앱에 넘기는 환경」 절에 두 줄. 값은 따옴표로 감싼다(start.sh 가 bash 로 source — `<…>` 가 리다이렉션으로 읽힌다).
+- [x] 「앱에 넘기는 환경」 절에 두 줄. 값은 따옴표로 감싼다(start.sh 가 bash 로 source — `<…>` 가 리다이렉션으로 읽힌다).
+      주석 줄로 두었고, 주석을 풀어도 bash source · python-dotenv 둘 다 같은 값으로 읽는 것을 확인했다. NO_PROXY 줄은 원래 없어 새로 넣었다.
 
 ## 3. SE-8 — Drive 받기 스크립트의 반복 줄이기
 - [ ] appdata-merge-from-drive.sh — tar 해시가 같으면 받기 · 백업 사본 · 병합을 건너뛴다, 백업 사본은 DB 마다 최근 N개.
